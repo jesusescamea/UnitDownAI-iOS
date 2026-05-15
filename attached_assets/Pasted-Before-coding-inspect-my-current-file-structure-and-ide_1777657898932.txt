@@ -1,0 +1,296 @@
+Before coding, inspect my current file structure and identify the exact files controlling diagnostic recommendations. Do not create duplicate engines if one already exists.
+
+Do not touch App.tsx unless absolutely required.
+
+Show me which files you plan to change before running the changes.
+
+You are a senior HVAC diagnostic systems engineer and expert TypeScript developer.
+
+I am building UnitDown.org / Unit Diagnostics AI, a commercial HVAC troubleshooting web app in Replit.
+
+MISSION:
+Upgrade my diagnostic engine from generic recommendations into a deep, technician-grade expert system using knowledge from HVAC heating system textbook pages covering:
+
+- Gas-fired heating systems
+- Oil-fired heating systems
+- Electric heat systems
+- Combustion theory
+- Fuel/air ratio
+- Flame sensing / flame rectification
+- HSI ignition
+- Spark ignition
+- Standing pilot systems
+- Intermittent pilot systems
+- Induced draft systems
+- Pressure switches
+- Limit switches
+- Rollout switches
+- Vent proving
+- Thermostats
+- Control boards
+- Sequences of operation
+- Burner flame diagnostics
+- Heat exchanger airflow relationships
+- Venting failures
+- Electrical fault logic
+- Sensor troubleshooting
+- Safety lockouts
+- Common field symptoms and probable causes
+
+PRIMARY GOAL:
+When a user enters symptoms, meter readings, observed failures, noises, fault codes, temperatures, pressures, ignition behavior, or sequence behavior, the app must return:
+
+1. Most likely causes ranked by probability
+2. Why each cause fits the symptoms
+3. What tests confirm it
+4. Safety warnings
+5. Fastest next step
+6. Advanced technician notes
+7. Related hidden causes many techs miss
+
+CURRENT PROBLEM:
+The app gives generic same-category recommendations.
+
+Example:
+Gas heat no ignition returns vague gas valve / ignitor / board recommendations every time.
+
+I need specific differentiation based on symptoms and sequence of operation.
+
+FILES TO INSPECT:
+- hvacKnowledgeBase.ts
+- diagnosticEngine.ts
+- any file that controls recommendations, matching, ranking, symptoms, or diagnostic output
+
+NEW KNOWLEDGE BASE STRUCTURE:
+Each diagnostic entry should support fields like:
+
+{
+  id:
+  category:
+  equipmentType:
+  symptoms:
+  triggerPhrases:
+  negativeTriggers:
+  confidenceBoosters:
+  likelyCauses:
+  firstChecks:
+  meterChecks:
+  sequenceChecks:
+  safetyWarnings:
+  technicianNotes:
+  relatedIssues:
+  severity:
+  urgency:
+}
+
+GAS HEAT SEQUENCE LOGIC:
+Use this sequence:
+
+Call for heat ->
+Inducer starts ->
+Pressure switch proves ->
+Ignitor or pilot activates ->
+Gas valve opens ->
+Flame sensed ->
+Blower delay ->
+Heat run ->
+Thermostat satisfies ->
+Gas closes ->
+Fan off delay
+
+At any failed step, diagnose only the components involved up to that point.
+
+EXPERT DIFFERENTIATION EXAMPLES:
+
+IF:
+Inducer runs
+HSI glows
+No flame
+
+THEN prioritize:
+- No gas flow
+- Closed manual gas valve
+- Low inlet gas pressure
+- Stuck gas valve
+- Dirty burners
+- Cross-light issue
+
+IF:
+HSI does NOT glow
+Inducer runs
+Pressure switch is proven
+
+THEN prioritize:
+- Failed/open ignitor
+- No 120V to ignitor
+- Board ignitor relay failure
+- Limit string open
+- Ignition control failure
+
+IF:
+Burners light then shut off after a few seconds
+
+THEN prioritize:
+- Dirty flame sensor
+- Poor ground
+- Weak flame rectification signal
+- Reversed polarity
+- Flame carryover issue
+- Board not reading flame signal
+
+IF:
+Main blower starts immediately on a heat call
+
+THEN prioritize:
+- Limit previously open
+- Fan relay stuck
+- Board failure
+- Thermostat G circuit energized
+- Blower control fault
+
+IF:
+Rollout switch trips
+
+THEN prioritize:
+- Cracked heat exchanger
+- Blocked flue
+- Delayed ignition
+- Burner misalignment
+- Negative building pressure
+- Flame rollout condition
+
+IF:
+Pressure switch stuck open
+
+THEN prioritize:
+- Blocked vent
+- Bad inducer wheel
+- Cracked pressure switch hose
+- Condensate blockage
+- Weak draft
+- Incorrect pressure switch rating
+- Restricted intake or exhaust
+
+IF:
+Pressure switch stuck closed
+
+THEN prioritize:
+- Welded pressure switch contacts
+- Water in tubing
+- Miswired board
+- Jumpered pressure switch
+- Unsafe bypass condition
+
+OIL HEAT LOGIC:
+Add expert diagnostic logic for:
+
+- Cad cell flame sensing
+- Nozzle blockage
+- Pump pressure issues
+- Ignition transformer failure
+- Delayed ignition
+- Sooted heat exchanger
+- Air in fuel line
+- Oil filter restriction
+- Draft issues
+- Electrode gap problems
+- Burner motor failure
+- Primary control lockout
+
+ELECTRIC HEAT LOGIC:
+Add expert diagnostic logic for:
+
+- Sequencer failures
+- Open heating elements
+- High amp draw
+- Stuck contactor
+- Open limit switch
+- Blower interlock failures
+- 24V control issues
+- Line-voltage issues
+- Heat strips not staging
+- Fan running but no heat
+- Heat staying on after call ends
+
+ADVANCED ENGINE FEATURES:
+
+1. Weighted scoring:
+Each matching trigger phrase, symptom, or observation should add score.
+
+2. Negative triggers:
+If a symptom contradicts a fault, reduce or eliminate that recommendation.
+
+3. Sequence engine:
+Use order of operation to eliminate impossible or unlikely causes.
+
+4. Technician mode:
+Include advanced field notes such as:
+"Flame sensor may test okay cold but fail hot."
+"Pressure switch faults may be caused by vent restriction, weak inducer, condensate blockage, or tubing issues."
+"Do not bypass rollout or pressure switches except momentarily for controlled diagnostic verification."
+
+5. Safety mode:
+Dangerous faults must surface clearly, especially:
+- rollout trip
+- cracked heat exchanger suspicion
+- blocked flue
+- carbon monoxide risk
+- gas leak
+- overheating heat exchanger
+- unsafe bypassed safety
+
+OUTPUT FORMAT:
+Return clean UI-ready objects like:
+
+{
+  diagnosis: [
+    {
+      cause:
+      probability:
+      whyItFits:
+      confirmBy:
+      urgency:
+      safetyWarning:
+      technicianNote:
+    }
+  ]
+}
+
+REAL FIELD LANGUAGE:
+Use actual HVAC technician wording:
+
+- No pressure switch closure
+- Limit string open
+- Weak flame rectification
+- Gas valve energized but no flow
+- Inducer proving issue
+- Heat exchanger overheating
+- Fan relay welded
+- Open HSI
+- Low manifold pressure
+- Dirty crossover ports
+- Rollout condition
+- Failed sequencer
+- Cad cell not proving flame
+- Primary control lockout
+- Blocked flue
+- Dirty burner assembly
+
+DO NOW:
+1. Inspect current project structure.
+2. Identify current diagnostic recommendation files.
+3. Upgrade the existing knowledge base instead of creating duplicate unused files.
+4. Upgrade scoring/ranking logic.
+5. Add gas heat sequence reasoning.
+6. Add oil heat reasoning.
+7. Add electric heat reasoning.
+8. Add negative trigger / contradiction logic.
+9. Add confidence scoring.
+10. Keep the frontend working.
+11. Do not break the preview.
+12. Return complete production-ready code or patches.
+
+After coding:
+- Tell me exactly which files changed.
+- Tell me how to test it.
+- Provide at least 10 test phrases I can enter into the app.

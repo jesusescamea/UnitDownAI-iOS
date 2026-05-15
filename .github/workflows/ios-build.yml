@@ -1,0 +1,101 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build-web:
+    name: Build Web Assets (artifacts/unitdown-ai)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install pnpm 10
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Get pnpm store directory
+        id: pnpm-cache
+        run: echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_OUTPUT
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ${{ steps.pnpm-cache.outputs.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck shared libs
+        run: pnpm run typecheck:libs
+
+      - name: Typecheck unitdown-ai
+        run: pnpm --filter @workspace/unitdown-ai run typecheck
+
+      - name: Build unitdown-ai
+        run: pnpm --filter @workspace/unitdown-ai run build
+        env:
+          NODE_ENV: production
+          # VITE_CLERK_PUBLISHABLE_KEY must be set as a GitHub Actions secret
+          # (Settings → Secrets and variables → Actions → New repository secret).
+          # Vite embeds it at build time; without it Clerk will not initialise
+          # in the iOS WebView.
+          VITE_CLERK_PUBLISHABLE_KEY: ${{ secrets.VITE_CLERK_PUBLISHABLE_KEY }}
+          # PORT and BASE_PATH fall back to safe defaults in vite.config.ts
+          # when not provided — no overrides needed for a production build.
+
+      - name: Upload web dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: unitdown-ai-dist
+          path: artifacts/unitdown-ai/dist/
+          retention-days: 7
+
+  sync-capacitor:
+    name: Capacitor Sync (iOS prep)
+    runs-on: macos-latest
+    needs: build-web
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      - name: Install pnpm 10
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Download web dist
+        uses: actions/download-artifact@v4
+        with:
+          name: unitdown-ai-dist
+          path: artifacts/unitdown-ai/dist/
+
+      - name: Capacitor sync (iOS)
+        working-directory: artifacts/unitdown-ai
+        run: npx cap sync ios
+        # NOTE: Requires ios/ directory committed to the repo (run npx cap add ios locally first).
+        continue-on-error: true

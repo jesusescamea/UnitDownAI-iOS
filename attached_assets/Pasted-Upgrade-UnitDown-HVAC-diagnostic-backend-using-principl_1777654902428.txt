@@ -1,0 +1,108 @@
+Upgrade UnitDown HVAC diagnostic backend using principles from Modern Refrigeration and Air Conditioning (22nd Edition).
+
+Current issue:
+The engine still uses symptom keyword matching and over-jumps to catastrophic parts failures.
+
+Convert logic into technician-style systematic troubleshooting.
+
+GLOBAL DIAGNOSTIC FRAMEWORK:
+
+For every symptom, follow this reasoning order:
+
+1. Customer Complaint
+Interpret symptom exactly as entered.
+
+2. Initial Inspection
+Consider common visual/basic causes first:
+- dirty filters
+- loose wires
+- tripped breakers
+- thermostat settings
+- airflow restrictions
+- blocked drains
+- frozen coils
+- obvious damage
+
+3. Sequence of Operation Analysis
+Determine what should happen first, second, third, etc.
+Identify where operation stopped.
+
+Examples:
+Gas heat:
+call for heat → inducer → pressure switch → igniter → gas valve → flame prove → blower
+
+Cooling:
+call for cooling → contactor → condenser fan → compressor → evaporator airflow → temp split
+
+4. Rank Likely Causes by:
+A) most common
+B) lowest repair cost
+C) earliest failure point in sequence
+D) easiest to test
+E) catastrophic failures last unless confirming evidence exists
+
+5. Provide Field Test Recommendations
+
+6. Warn only when dangerous.
+
+GLOBAL RULES:
+
+Do NOT rank compressors, motors, boards, gas valves primary unless supporting clues exist.
+
+Examples:
+
+“compressor hums”
+Rank:
+1 capacitor
+2 contactor/voltage drop
+3 hard start issue
+4 locked rotor
+
+“inducer won’t start”
+Rank:
+1 no heat call
+2 board not sending 120v
+3 pressure switch stuck
+4 open rollout/limit
+5 bad inducer motor
+
+“blower won’t run”
+Rank:
+1 no fan signal
+2 capacitor
+3 relay/contact
+4 module/VFD
+5 failed motor
+
+“no cool”
+Rank:
+1 thermostat/control call
+2 breaker/fuses
+3 contactor
+4 capacitor
+5 low charge / freeze issue
+6 compressor later
+
+“no heat”
+Use furnace sequence of operation.
+
+OUTPUT IMPROVEMENTS:
+
+Every result must include:
+
+- Where sequence likely stopped
+- Top 3 causes ranked logically
+- First 3 technician checks
+- Meter/tests recommended
+- Why expensive failures are lower probability
+
+CONFIDENCE SCORING:
+
+Do not output 95%+ confidence unless symptom is highly specific.
+
+Ambiguous symptoms should score 55–80%.
+
+Keep UI unchanged.
+Preserve schema.
+Backend logic only.
+Run tests/build after update.

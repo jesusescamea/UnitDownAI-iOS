@@ -1,0 +1,108 @@
+This project is the iOS App Store duplicate of UnitDown AI.
+
+Goal:
+Remove or fully disable every Stripe/external-payment path so the iOS app uses Apple In-App Purchase only and does not risk App Store rejection under external payment rules.
+
+Do NOT modify the original web Stripe project. This applies only to this iOS duplicate.
+
+Perform a full project-wide audit and remove/disable all Stripe-related code, UI, routes, environment dependencies, wording, and payment flows.
+
+Search the entire repo for:
+- stripe
+- Stripe
+- STRIPE
+- checkout
+- payment link
+- customer portal
+- billing portal
+- external payment
+- subscription checkout
+- secure checkout
+- pro_session
+- verify-session
+- webhook
+- price id
+- customer id
+- stripeCustomerId
+- stripeSubscriptionId
+
+Required changes:
+
+1. Frontend
+- Remove all Stripe checkout calls.
+- Remove all Stripe customer portal calls.
+- Remove all /api/stripe/status calls.
+- Remove all /api/stripe/verify-session calls.
+- Remove all pro_session URL handling.
+- Remove any “Secure checkout” wording.
+- Replace any payment wording with Apple-safe wording:
+  “Subscribe with Apple”
+  “Manage subscription in Apple Settings”
+  “Restore Purchases”
+  “Cancel anytime in Apple Settings”
+- Ensure upgrade buttons only trigger Apple IAP purchase flow.
+- Ensure restore buttons only trigger Apple restore purchases flow.
+
+2. Backend/API
+- Remove or disable all /api/stripe/* routes from the iOS duplicate.
+- Remove Stripe webhook handling from active server routing.
+- Remove Stripe product/price seeding from startup.
+- Remove Stripe SDK initialization if no longer used.
+- Remove any backend logic that grants Pro using Stripe events.
+- Do not require STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET, STRIPE_PRICE_ID, or other Stripe env vars.
+
+3. Database/schema
+- Remove Stripe-only user fields only if safe and not shared with another app:
+  stripeCustomerId
+  stripeSubscriptionId
+- If removing DB fields could break migrations or shared packages, leave schema alone but ensure iOS runtime never uses these fields.
+- Add/keep Apple IAP-oriented fields only if already supported or safe:
+  iapOriginalTransactionId
+  iapSubscriptionStatus
+  iapPlatform
+
+4. Apple IAP
+- Confirm the iOS app uses Apple IAP only.
+- Confirm purchasePro() uses the Apple purchase flow.
+- Confirm restorePurchases() is only triggered by an explicit Restore Purchases button.
+- Confirm checkIAPSubscriptionActive() does not call restoreTransactions() silently.
+- Confirm product ID is:
+  com.unitdown.ai.pro.monthly
+- Do not add Stripe fallback.
+
+5. App Store rejection prevention
+- Ensure no visible app text references:
+  Stripe
+  checkout
+  external payment
+  billing portal
+  payment processor
+  web subscription
+- Ensure no hidden iOS flow opens an external checkout page.
+- Ensure no links route users to web payment pages.
+- Ensure subscription management wording points to Apple Settings, not Stripe or website billing.
+
+6. Environment cleanup
+- Remove Stripe env requirements from iOS build/deploy config.
+- Keep Clerk/auth env vars if needed.
+- Keep Apple IAP config.
+- Do not hardcode secrets.
+
+7. Verification
+Run:
+pnpm run typecheck
+pnpm --filter @workspace/unitdown-ai run typecheck
+pnpm --filter @workspace/unitdown-ai run build
+
+Then provide a final report with:
+- every file changed
+- every Stripe reference removed or intentionally left inert
+- all Apple IAP payment paths confirmed
+- any remaining Stripe text/code found
+- whether build passed
+- whether TypeScript passed
+- whether this iOS duplicate is App Store payment-compliance safer now
+
+Important:
+Do not delete unrelated Pro gating, usage limits, login, diagnostics, or account features.
+Only remove Stripe/external-payment behavior and replace it with Apple IAP behavior.

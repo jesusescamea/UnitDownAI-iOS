@@ -1,0 +1,116 @@
+Update UnitDown AI authentication and contact email setup.
+
+Current issue:
+The login page is using a session-based access system with restore session ID. This is confusing for users and does not feel professional enough for launch.
+
+Required changes:
+
+1. Replace the current session-based login page
+Remove or hide the current “Access Your Account” flow that says:
+- “session-based system”
+- “no password required”
+- “diagnostic history and subscription are tied to your session ID”
+- “Restore Previous Session”
+- manual session ID input
+
+Replace it with a clean professional authentication screen.
+
+2. Add normal login options
+The login page should show:
+- Continue with Google
+- Login / Sign up with Email
+
+Preferred layout:
+Title: Welcome to UnitDown AI
+Subtitle: Sign in to access your diagnostic history, subscription, and technician tools.
+
+Primary button:
+Continue with Google
+
+Secondary option:
+Sign in with Email
+
+Include simple professional text:
+Your account keeps your diagnostic history, subscription, and saved results secure across devices.
+
+3. Use proper account-based auth
+If authentication is already connected, route login/sign-up through the existing auth provider.
+If Supabase Auth is available, use Supabase Auth with:
+- Google OAuth
+- Email magic link or email/password, whichever is already simplest in the current app
+
+Do not keep the session ID restore system as the main user-facing login method.
+
+4. Preserve user history behavior
+Diagnostic history should be tied to the authenticated user account instead of only a browser session.
+After login, user should return to the main diagnostic page/dashboard.
+
+5. Replace old contact emails globally
+Search the entire project for any old support, sponsor, admin, or contact email addresses.
+
+Replace all of them with:
+
+unitdownsupport@gmail.com
+
+This includes:
+- sponsor button/link
+- sponsor contact line
+- support links
+- footer email
+- contact page email
+- privacy policy email
+- terms page email
+- upgrade/support email
+- any mailto links
+
+All mailto links should use:
+mailto:unitdownsupport@gmail.com
+
+6. Sponsor button fix
+If there is a Sponsor button, it should open an email to:
+
+unitdownsupport@gmail.com
+
+Use:
+mailto:unitdownsupport@gmail.com?subject=UnitDown%20AI%20Sponsorship%20Inquiry
+
+Button text can remain:
+Sponsor UnitDown AI
+or
+Become a Sponsor
+
+7. Terms and Privacy routes
+Make sure these routes/pages work and do not return 404:
+- /terms
+- /privacy
+
+If the files already exist, fix routing.
+If they do not exist, create simple professional Terms of Service and Privacy Policy pages for UnitDown AI.
+
+Both pages should include support/contact email:
+unitdownsupport@gmail.com
+
+8. Remove Admin button
+Remove any visible Admin button/link from the public user interface unless the logged-in user has an actual admin role.
+
+Do not show admin access to regular users.
+
+9. Add Login button
+Make sure there is a visible Login / Sign In button in the header/nav when the user is not logged in.
+
+When logged in, show a simple account/session state such as:
+- Account
+- Sign Out
+or user email if available.
+
+10. Keep visual style consistent
+Use the existing UnitDown AI styling:
+- clean
+- professional
+- mobile-friendly
+- blue accent
+- HVAC diagnostic/tool feel
+- no clutter
+
+Final result:
+Users should no longer see the confusing session ID restore page as the main login experience. They should see a normal professional login screen with Google and Email sign-in, contact emails should all be unitdownsupport@gmail.com, sponsor email should work, terms/privacy should work, admin should be hidden, and login should be visible.

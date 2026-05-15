@@ -1,0 +1,143 @@
+UNITDOWN AI – UPDATE GUIDES + BRAND/MODEL SEO PAGES + MEMBERSHIP GATING
+
+Make the following production-ready changes.
+
+==================================================
+1. ALL SEO / GUIDE PAGES = PRO MEMBERS ONLY
+==================================================
+
+All troubleshooting pages, reference pages, brand pages, and model-specific issue pages should require active membership.
+
+Applies to:
+- Existing Troubleshooting Guides
+- Future SEO pages
+- Brand-specific pages
+- Model-specific shutdown / trip pages
+
+FREE USERS:
+- Can view homepage
+- Can use limited free diagnostics
+- Can see guide titles / previews if desired
+- Clicking any guide/page triggers upgrade modal
+
+PRO USERS ($19):
+- Full access to all pages
+
+TEAM USERS ($59 up to 4 techs):
+- Full access to all pages
+
+==================================================
+2. CREATE NEW SEO PAGE DECK – BRAND / MODEL SPECIFIC ISSUES
+==================================================
+
+Build a second page deck focused on make/model specific searches.
+
+Examples:
+
+Lennox Prodigy M3 Lockout Causes  
+Carrier RTU High Pressure Lockout Reset  
+Trane Voyager Unit Trips on Heat  
+York Simplicity Board Random Shutdown  
+Aaon Freeze Protection Alarm Causes  
+Daikin RTU Safety Lockout Reset  
+Goodman Commercial Pressure Switch Trips  
+Rheem Ignition Retry Lockout  
+Carrier Economizer Fault Causes  
+Trane Supply Fan Proof Failure
+
+Goal:
+Capture searches from techs looking for exact manufacturer problems.
+
+==================================================
+3. PAGE STRUCTURE FOR THESE SEO PAGES
+==================================================
+
+Each page should include:
+
+Title (SEO optimized)
+Symptoms
+Likely causes
+Sequence of operation notes
+Meter checks
+Reset steps (safe only)
+Common repeat failures
+When replacement is likely
+When to escalate
+
+Use original wording only.
+No copied manuals.
+
+==================================================
+4. REMOVE LENNOX TITLE FROM EXISTING GENERAL PAGE
+==================================================
+
+Current page title:
+
+Lennox Rooftop Unit Ignition Lockout
+
+Replace with neutral version:
+
+Rooftop Unit Ignition Lockout Causes
+
+Update slug if needed:
+/guides/rooftop-unit-ignition-lockout
+
+Reason:
+Keep generic guides brand-neutral.
+
+==================================================
+5. HOMEPAGE TRUST BAR TEXT CHANGE
+==================================================
+
+Current wording includes:
+
+Instant Results — No Login
+
+Replace with:
+
+Instant Results
+
+Keep same placement and style.
+
+==================================================
+6. PAYWALL MODAL
+==================================================
+
+When locked page clicked:
+
+Unlock Full HVAC Knowledge Library
+
+Includes:
+✔ Troubleshooting guides
+✔ Brand-specific fault pages
+✔ Meter checks
+✔ Lockout causes
+✔ Field workflows
+
+Buttons:
+Join Pro - $19/mo
+Team Plan - $59/mo
+
+==================================================
+7. CLEAN EXECUTION
+==================================================
+
+Do not clutter homepage.
+
+Keep pages indexed cleanly for SEO.
+
+Use internal links between related guides.
+
+==================================================
+8. FINAL QA
+==================================================
+
+Confirm:
+- All guide/SEO pages locked to members
+- Free users hit paywall on click
+- General ignition page renamed
+- “No Login” removed everywhere
+- Team plan remains $59 / 4 techs
+- Site still loads fast
+
+Deploy after complete.

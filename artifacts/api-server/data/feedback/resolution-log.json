@@ -1,0 +1,2 @@
+{"issueInput":"RTU electric heat RAT 72 DAT 73","resolved":true,"selectedRecommendationId":"electric-heat-no-rise","selectedRecommendationTitle":"Electric Heat Not Energizing / No Temperature Rise","timestamp":1710000000000}
+{"issueInput":"RTU electric heat RAT 72 DAT 73","resolved":false,"actualFix":"Open high-limit switch in electric heat safety circuit","notes":"24V present at W1 but heat contactor never energized","timestamp":1710000000001}

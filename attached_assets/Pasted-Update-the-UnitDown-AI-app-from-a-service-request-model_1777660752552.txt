@@ -1,0 +1,128 @@
+Update the UnitDown AI app from a service-request model to a premium self-guided diagnostic membership model.
+
+IMPORTANT:
+Do not change the diagnostic engine logic unless required for access control or UI display.
+Do not break the current diagnostic output format.
+Do not remove existing diagnostic categories or knowledge base entries.
+
+MAIN GOAL:
+Users should get 3 free diagnostics as a trial. After the 3 free diagnostics are used, diagnostic results should be blurred or partially hidden and a popup should prompt the user to join the Pro membership.
+
+CHANGES REQUIRED:
+
+1. Replace “Request Service”
+Replace every visible “Request Service” button or link with premium membership wording.
+
+Use:
+- Top navigation button: “Join Premium”
+- Main CTA button if needed: “Unlock Full Diagnostics”
+- Popup CTA button: “Join Pro Now”
+
+Remove or hide any wording that implies the site owner personally performs HVAC service, dispatches technicians, calls customers, or accepts job requests.
+
+Position UnitDown AI as a self-guided HVAC diagnostic tool.
+
+2. Free Trial Limit
+Allow each user/session to run 3 free diagnostics.
+
+After 3 diagnostics:
+- Still allow the user to type and submit an issue.
+- Show the diagnostic result page/card, but blur or lock the detailed diagnosis sections.
+- Display a popup/modal encouraging the user to join Pro.
+
+The modal should say something like:
+
+“Your 3 free diagnostics are used.”
+
+“Upgrade to UnitDown Pro to unlock unlimited advanced HVAC diagnostics, deeper fault logic, saved cases, commercial troubleshooting support, refrigeration analysis, electrical/control-path guidance, and priority diagnostic breakdowns.”
+
+CTA button:
+“Join Pro Now”
+
+Secondary button:
+“Maybe Later”
+
+3. Pro Membership Messaging
+Use these Pro perks:
+- Unlimited diagnostics
+- Advanced commercial HVAC troubleshooting
+- Refrigerant imbalance analysis
+- Electrical and control-circuit guidance
+- Rooftop unit diagnostic support
+- Saved diagnostic history
+- Deeper likely-cause ranking
+- Step-by-step field checks
+- Priority fault logic
+
+4. Blurred Locked Results
+After the free trial limit:
+- Keep the title/category visible.
+- Keep confidence score visible if already shown.
+- Blur or lock deeper diagnostic details.
+- Add a locked overlay message:
+  “Upgrade to Pro to view the full diagnostic breakdown.”
+
+Include a “Join Pro Now” button on the locked result.
+
+5. Features Tab
+Remove the “Features” tab from the free/public top navigation.
+
+Features can either:
+- be hidden from public/free users, or
+- be renamed/moved into a Pro/Premium section.
+
+If a Pro/Premium page exists, move the feature/perk content there.
+
+6. Admin Button
+If the Admin button does not serve a real protected admin function, remove it from the top navigation.
+
+If it is needed for development, move it to the footer/bottom area and make it visually subtle.
+
+Do not show Admin prominently to normal users.
+
+7. Header Navigation
+Final public header should be simple:
+
+Left:
+- UnitDown AI logo/name
+
+Center/right:
+- How It Works
+- Join Premium
+
+Remove:
+- Request Service
+- Features
+- prominent Admin button
+
+8. Homepage Text
+Update homepage wording so it does not sound like an HVAC service company.
+
+Use headline:
+“Commercial HVAC Problems Solved Faster”
+
+Use subheadline:
+“Self-guided HVAC troubleshooting for technicians, facility teams, and business owners.”
+
+Input placeholder:
+“Describe the issue… e.g. RTU runs but does not cool, low suction, high superheat, no 24V at contactor.”
+
+9. Persistence
+Use localStorage for now to track the free diagnostic count unless the app already has user accounts/auth.
+
+Example localStorage key:
+unitdown_free_diagnostics_used
+
+If user authentication already exists, track the count per user instead.
+
+10. Safety
+Do not add real payment processing yet unless Stripe or membership infrastructure already exists.
+The “Join Pro Now” button can link to a placeholder premium page/section for now.
+
+The app should be ready for payment integration later.
+
+FINAL RESULT:
+UnitDown AI should feel like a professional HVAC diagnostic software product, not a service-call website.
+Free users get 3 diagnostics.
+After that, results are locked/blurred with a Pro membership popup.
+The public site should push users toward premium membership, not contacting the site owner for HVAC work.

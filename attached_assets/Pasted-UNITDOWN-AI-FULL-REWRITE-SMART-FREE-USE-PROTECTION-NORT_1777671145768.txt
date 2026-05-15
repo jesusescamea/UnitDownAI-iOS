@@ -1,0 +1,196 @@
+UNITDOWN AI – FULL REWRITE: SMART FREE-USE PROTECTION + NORTH AMERICA POSITIONING
+
+Main priority:
+Enforce fair free usage limits, stop easy anonymous bypasses, capture emails after value is shown, smoothly convert users into paid plans, and expand positioning to serve the U.S. + Canada.
+
+Goal:
+Users should not be able to endlessly refresh, use incognito, or start new sessions to avoid limits.
+
+==================================================
+BRAND / MARKET POSITIONING
+==================================================
+
+Update public-facing copy where relevant:
+
+Serving HVAC professionals across the United States and Canada.
+
+Alternative trust text:
+
+North America HVAC Diagnostic Support  
+Built for technicians across the U.S. & Canada
+
+Use clean professional wording.
+
+==================================================
+CORE FREE ACCESS FLOW
+==================================================
+
+1st Diagnosis:
+Free instantly
+
+2nd Diagnosis:
+Free instantly
+
+3rd Attempt:
+Require email signup to continue
+
+After email signup:
+Unlock 1 additional diagnosis
+
+4th+ Uses:
+Show upgrade prompt regularly and require paid membership for continued unlimited use.
+
+==================================================
+USER EXPERIENCE LOGIC
+==================================================
+
+We want users to experience value first, then convert.
+
+So:
+
+- No barriers on first use
+- No barriers on second use
+- Email wall only after user already received value
+- Paid prompt shown after additional use(s)
+
+This keeps friction low and conversions high.
+
+==================================================
+ANTI-BYPASS PROTECTION
+==================================================
+
+Use layered tracking, not browser cookies alone.
+
+Implement:
+
+1. Server-side usage counts
+- Store free-use status in backend database
+
+2. Session tracking
+- Browser session ID
+
+3. IP awareness
+- Use IP as secondary identifier
+
+4. Lightweight device/browser fingerprint
+- Soft matching only
+
+Purpose:
+Reduce abuse from:
+
+- refreshing page
+- clearing cookies
+- incognito mode
+- opening new browser
+- session resets
+
+==================================================
+SIGNUP WALL (3RD ATTEMPT)
+==================================================
+
+On 3rd diagnosis attempt show modal:
+
+You’ve used your free HVAC diagnostics.
+
+Enter your email to unlock one more diagnosis.
+
+Benefits:
+✔ Continue instantly
+✔ Save results
+✔ Get future updates
+✔ Faster next time
+
+Buttons:
+
+[Continue with Email]
+[Join Pro - $19/mo]
+[Team Plan - $59/mo]
+
+==================================================
+POST-EMAIL FLOW
+==================================================
+
+After email entered:
+
+- Instantly unlock next diagnosis
+- Create lightweight account/profile
+- Save user status server-side
+
+Then after next use:
+
+Show upgrade modal.
+
+==================================================
+UPGRADE MODAL (4TH+ USES)
+==================================================
+
+Headline:
+
+Upgrade for Unlimited HVAC Diagnostics
+
+Benefits:
+
+✔ Unlimited diagnoses
+✔ Ranked likely causes
+✔ Meter checks
+✔ Advanced troubleshooting guides
+✔ Saved history
+✔ Built for U.S. & Canadian HVAC pros
+
+Plans:
+
+Pro Tech - $19/mo
+1 user
+
+Team Shop - $59/mo
+Up to 4 technicians
+
+Buttons:
+
+[Upgrade to Pro]
+[Choose Team Plan]
+
+==================================================
+UX REQUIREMENTS
+==================================================
+
+- Tool must remain fast
+- No popups before value delivered
+- Mobile friendly
+- Clean SaaS design
+- Smooth transitions
+
+Optional usage indicator:
+
+Free Uses Remaining: 2 → 1 → Email Unlock Required
+
+==================================================
+FAIRNESS RULES
+==================================================
+
+Do not aggressively punish:
+
+- shared shop Wi-Fi
+- office networks
+- normal repeat users
+
+Use soft enforcement, not harsh bans.
+
+==================================================
+FINAL QA
+==================================================
+
+Confirm:
+
+- U.S. + Canada wording visible where appropriate
+- 1st use free instantly
+- 2nd use free instantly
+- 3rd attempt requires email
+- Email unlocks one more use
+- 4th+ uses trigger upgrade flow
+- Refresh does not reset usage
+- Incognito does not easily bypass
+- Paid users unrestricted
+- Mobile flow clean
+
+Deploy after complete.

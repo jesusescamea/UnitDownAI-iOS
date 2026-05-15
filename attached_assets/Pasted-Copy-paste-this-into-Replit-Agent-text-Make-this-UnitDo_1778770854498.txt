@@ -1,0 +1,89 @@
+Copy/paste this into Replit Agent:
+
+```text
+Make this UnitDownAI-iOS app ready for Apple App Store resubmission.
+
+Apple rejected the app for these issues:
+1. Guideline 3.1.1 — PRO is purchased using non-Apple payments.
+2. Guideline 2.1(b) — PRO is referenced but no Apple In-App Purchase product is submitted.
+3. Guideline 4.8 — app uses third-party login but does not offer Sign in with Apple.
+4. Guideline 2.1(a) — app got stuck loading when logging in on iPad Air 11-inch M2, iPadOS 26.5.
+
+Required fixes:
+
+1. REMOVE ALL NON-APPLE PAYMENT FLOWS FROM IOS
+- Remove Stripe checkout from the iOS app.
+- Remove external payment links.
+- Remove “subscribe on website” links.
+- Remove browser payment redirects.
+- Remove any text that sends users outside the app to pay.
+- Do not mention cheaper web pricing inside the iOS app.
+
+2. CONVERT PRO TO APPLE IAP
+- Replace “Join Premium” / “PRO” purchase flow with Apple In-App Purchase / StoreKit.
+- Create frontend structure for Apple subscription product:
+  Product name: UnitDown AI Pro
+  Product type: auto-renewing monthly subscription
+  Target price: $7.99/month
+  Product ID placeholder: com.unitdown.ai.pro.monthly
+- Add purchase button.
+- Add restore purchases button.
+- Add subscription status handling.
+- Add expired/canceled subscription handling.
+- Unlock Pro features only after verified Apple subscription status.
+
+3. KEEP WEB STRIPE SEPARATE
+- Do not delete Stripe from the web version if shared code exists.
+- Add platform detection so iOS uses Apple IAP only.
+- Web can continue using Stripe separately.
+- iOS must never expose Stripe or external payment UI.
+
+4. ADD SIGN IN WITH APPLE
+- Add Sign in with Apple as an equivalent login option wherever Google/email login appears.
+- Apple login button must be visible on login/signup screens.
+- Make sure the Apple login flow works in Capacitor iOS.
+- Apple login must not collect more than name/email.
+
+5. FIX LOGIN LOADING BUG
+- Audit login flow for stuck loading states.
+- Add timeout protection so login cannot spin forever.
+- Add visible error message if auth fails.
+- Fix OAuth redirect/callback handling for Capacitor iOS.
+- Test behavior for iPad layout and WebView.
+- Ensure login works on iPhone and iPad.
+
+6. IPAD COMPATIBILITY
+- Make login, modals, nav bar, subscription screen, and diagnostic UI responsive on iPad.
+- Test iPad Air 11-inch style layout.
+- No stuck modals, cut-off buttons, or broken scrolling.
+
+7. CLEAN APP STORE UI
+- Remove broken locks after subscription.
+- Remove unfinished placeholders.
+- Remove dead buttons.
+- Remove any PRO references that are not tied to Apple IAP.
+- Make all subscription wording Apple-compliant.
+
+8. PRESERVE CORE APP
+Keep the existing UnitDown AI commercial HVAC diagnostic functionality:
+- commercial HVAC troubleshooting
+- RTU diagnostics
+- technician-focused diagnostic output
+- refrigerant/electrical/airflow/control-sequence logic
+- diagnostic history if already implemented
+
+9. FINAL QA
+After changes, report:
+- files changed
+- payment flow behavior on iOS
+- login flow behavior
+- Sign in with Apple status
+- StoreKit/IAP implementation status
+- any App Store Connect setup still required
+- next build number recommendation, likely 11
+
+Goal:
+Make this forked UnitDownAI-iOS project compliant for Apple App Store resubmission while keeping the web/Stripe version separate.
+```
+
+Apple’s rejection specifically cites payments, missing IAP review submission, Sign in with Apple, and login freeze on iPad. 

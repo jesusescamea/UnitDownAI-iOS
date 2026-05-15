@@ -1,0 +1,143 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.2.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: hvac
+    description: HVAC diagnosis operations
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /hvac/diagnose:
+    post:
+      operationId: diagnoseHvac
+      tags: [hvac]
+      summary: Diagnose HVAC symptoms
+      description: Analyzes HVAC symptoms against the knowledge base and returns the top 3 matching diagnoses
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DiagnoseHvacBody"
+      responses:
+        "200":
+          description: Diagnosis results
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HvacDiagnosisResult"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+    DiagnoseHvacBody:
+      type: object
+      properties:
+        symptoms:
+          type: string
+          description: Description of HVAC symptoms
+        clientId:
+          type: string
+          description: Anonymous client identifier for Pro status lookup
+      required:
+        - symptoms
+    HvacDiagnosisEntry:
+      type: object
+      description: A single matched diagnostic entry from the knowledge base
+      properties:
+        id:
+          type: string
+          description: Knowledge base entry ID
+        title:
+          type: string
+          description: Specific diagnostic title (e.g. "Carrier RTU — Compressor Hard Start")
+        category:
+          type: string
+          description: Broad fault category (e.g. "No Cool", "Trips Breaker")
+        whyThisFits:
+          type: string
+          description: Explanation of why this entry matched the symptoms
+        likelyCauses:
+          type: array
+          items:
+            type: string
+          description: Ranked list of likely root causes
+        firstChecks:
+          type: array
+          items:
+            type: string
+          description: Field-level checks a technician should perform first
+        meterChecks:
+          type: array
+          items:
+            type: string
+          description: Specific meter and instrument measurements to take
+        priorityLevel:
+          type: string
+          enum: [low, medium, high, critical]
+          description: Urgency of repair
+        confidencePercent:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Match confidence percentage
+        recommendedAction:
+          type: string
+          description: Recommended course of action
+        riskNote:
+          type: string
+          description: Safety or operational risk if this issue is left unaddressed
+      required:
+        - id
+        - title
+        - category
+        - whyThisFits
+        - likelyCauses
+        - firstChecks
+        - meterChecks
+        - priorityLevel
+        - confidencePercent
+        - recommendedAction
+        - riskNote
+    HvacDiagnosisResult:
+      type: object
+      description: Top diagnosis match plus up to 2 alternatives
+      properties:
+        primary:
+          $ref: "#/components/schemas/HvacDiagnosisEntry"
+        alternatives:
+          type: array
+          items:
+            $ref: "#/components/schemas/HvacDiagnosisEntry"
+          description: Up to 2 alternative diagnostic matches ranked by confidence
+        isPro:
+          type: boolean
+          description: Whether this response contains full Pro-tier data
+      required:
+        - primary
+        - alternatives
+        - isPro

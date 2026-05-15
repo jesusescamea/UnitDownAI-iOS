@@ -1,0 +1,115 @@
+Convert UnitDown AI premium access from a contact/request form into a functioning paid monthly membership flow.
+
+MAIN GOAL:
+Users should click “Join Premium” or “Join Pro Now,” be sent to a payment checkout page, pay for a monthly subscription, and after successful payment, Pro access should unlock automatically.
+
+IMPORTANT:
+Do not use a “request access” form.
+Do not collect phone number, urgency level, city, business name, or service-request details.
+Do not imply the site owner will contact the user or perform HVAC service.
+This is software membership access only.
+
+PAYMENT MODEL:
+Use Stripe subscription checkout if possible.
+
+Membership:
+- UnitDown Pro
+- Monthly recurring subscription
+- Charge every month until canceled
+- User must clearly see that it is a recurring monthly subscription before payment
+
+Premium unlocks:
+- Unlimited diagnostics
+- Advanced commercial HVAC troubleshooting
+- Refrigerant imbalance analysis
+- Electrical and control-circuit guidance
+- Rooftop unit diagnostic support
+- Saved diagnostic history
+- Deeper likely-cause ranking
+- Step-by-step field checks
+- Priority fault logic
+
+UI CHANGES:
+
+1. Replace current Pro popup/form
+Remove the current “Leave your details and we’ll reach out with Pro access options” modal.
+
+Replace it with a clean Pro upgrade modal:
+
+Title:
+“Unlock UnitDown Pro”
+
+Subtitle:
+“Get unlimited advanced HVAC diagnostics with deeper commercial troubleshooting logic.”
+
+Show perks:
+- Unlimited diagnostics
+- Advanced commercial HVAC fault logic
+- Refrigeration and charging analysis
+- Electrical/control-circuit guidance
+- Saved diagnostic history
+- Step-by-step field checks
+
+Primary button:
+“Start Monthly Pro Membership”
+
+Secondary button:
+“Maybe Later”
+
+Small disclosure text:
+“Monthly subscription. Renews automatically until canceled.”
+
+2. Join Premium button
+The top navigation “Join Premium” button should open the same Pro upgrade modal or go directly to Stripe checkout.
+
+3. After 3 free diagnostics
+After the user uses 3 free diagnostics:
+- allow them to submit another issue
+- show locked/blurred diagnostic details
+- open the Pro upgrade modal
+- include a “Start Monthly Pro Membership” button
+
+4. Payment verification
+After successful Stripe payment:
+- verify the payment/subscription status
+- set the user as Pro
+- unlock full diagnostics
+- remove blur/lock
+- allow unlimited diagnostics
+- enable Pro perks
+
+5. Subscription persistence
+Do not rely only on localStorage for paid Pro status.
+Use backend/server verification for Stripe subscription status if possible.
+
+If there is no auth system yet:
+- add basic user account/login support if needed
+- associate Pro status with the user account/email
+- only unlock Pro after verified payment success
+
+6. Stripe routes / logic
+Add or prepare these flows:
+- Create Stripe checkout session for monthly subscription
+- Success page/route after payment
+- Cancel page/route if payment is abandoned
+- Webhook handler to verify subscription events
+- Store user subscription status as active/canceled/past_due if storage exists
+
+7. Cancellation language
+Add clear membership text:
+“Your UnitDown Pro membership renews monthly until canceled.”
+
+If possible, include:
+“Manage subscription” button for active Pro users.
+
+8. Public site positioning
+UnitDown AI should feel like a self-guided HVAC diagnostic software product, not a service company.
+
+Remove all service/request/contact-job language.
+
+FINAL RESULT:
+Free users get 3 diagnostics.
+After that, full results are locked.
+Users can upgrade through monthly Stripe subscription payment.
+Once payment is verified, Pro access unlocks automatically.
+Membership renews monthly until canceled.

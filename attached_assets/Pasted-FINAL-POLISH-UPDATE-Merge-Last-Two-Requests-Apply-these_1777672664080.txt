@@ -1,0 +1,142 @@
+FINAL POLISH UPDATE — Merge Last Two Requests
+
+Apply these final footer / navigation / sponsor improvements.
+
+==================================================
+1. FOOTER NAV CLEANUP
+==================================================
+
+Current footer has too many separate links.
+
+Change footer nav to:
+
+How It Works
+Guides
+Privacy Policy
+Terms
+Sponsor
+
+Remove separate "Brand Guides" footer button.
+
+==================================================
+2. MERGE BRAND GUIDES INTO GUIDES
+==================================================
+
+Inside /guides page:
+
+Create sections:
+
+A) Troubleshooting Guides
+B) Brand / Model Guides
+
+Examples under Brand / Model Guides:
+
+Carrier Lockout Codes
+Lennox Board Trips
+Trane RTRM Faults
+York Safeties
+Goodman Pressure Switch Trips
+Daikin Communication Faults
+Rheem Ignition Lockouts
+
+All accessed from Guides page only.
+
+No separate footer link needed.
+
+==================================================
+3. FIX SPONSOR BUTTON (MOST IMPORTANT)
+==================================================
+
+Remove ALL mailto sponsor links.
+
+Do NOT open browser chooser.
+Do NOT open email app chooser.
+
+Current behavior feels broken / cheap.
+
+==================================================
+4. NEW SPONSOR PAGE
+==================================================
+
+Sponsor footer link goes to:
+
+/sponsor
+
+Create page:
+
+Title:
+Partner With UnitDown AI
+
+Subtitle:
+Reach commercial HVAC technicians across the U.S. & Canada.
+
+Short copy:
+We partner with tool brands, distributors, training companies, parts suppliers, and strategic advertisers seeking HVAC technician audiences.
+
+==================================================
+5. SPONSOR FORM
+==================================================
+
+Fields:
+
+Company Name
+Contact Name
+Email
+Phone (optional)
+Website (optional)
+
+Dropdown:
+Advertising
+Tool Partnership
+Distributor
+Training
+Investment
+Other
+
+Message
+
+Button:
+Send Inquiry
+
+==================================================
+6. FORM ACTION
+==================================================
+
+Submissions sent to:
+
+jesusescamea@gmail.com
+
+Show success message:
+
+Thanks for your interest. We'll reply shortly.
+
+==================================================
+7. FOOTER CTA
+==================================================
+
+Keep Join Premium button right side.
+
+==================================================
+8. TRUST BOOST
+==================================================
+
+Add mini stats row on sponsor page:
+
+North America HVAC Audience
+Commercial Technician Focused
+Early Growth Placement
+U.S. + Canada Reach
+
+==================================================
+9. FINAL RESULT
+==================================================
+
+Cleaner footer.
+Less clutter.
+Guides organized better.
+Brand pages preserved.
+Sponsor path professional.
+Higher trust.
+Higher conversions.
+
+Deploy after complete.

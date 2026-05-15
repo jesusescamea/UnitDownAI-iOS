@@ -1,0 +1,56 @@
+Mass-correct UnitDown diagnostic reasoning.
+
+Do not make one-off fixes only. Add a sequence-of-operation classification layer before existing keyword scoring.
+
+Goal:
+Prevent generic keyword matches like “motor” from routing inducer complaints to fan bearing/noise entries.
+
+Implement a pre-scoring context classifier that detects:
+
+1. Heating sequence terms:
+inducer, draft, pressure switch, ignitor, igniter, flame sensor, flame proving, gas valve, rollout, limit switch, burner, heat exchanger, no heat
+
+2. Cooling sequence terms:
+compressor, contactor, condenser fan, evaporator, low suction, high head, superheat, subcooling, TXV, filter drier, liquid line, refrigerant
+
+3. Airflow terms:
+blower, supply fan, return air, static pressure, belt, pulley, wheel, VFD, airflow, no air
+
+4. Economizer terms:
+economizer, outside air, damper, actuator, mixed air, enthalpy, CO2, minimum position
+
+5. Electrical/control terms:
+24V, transformer, fuse, board, relay, thermostat, BAS, low voltage, control voltage, no output
+
+6. Drain/water terms:
+condensate, drain, pan, trap, water leak, overflow
+
+7. Noise/mechanical terms:
+grinding, squealing, bearing, vibration, rattling, shaft, loose wheel, scraping
+
+Then apply context gating before final ranking:
+
+- If heating sequence is detected, boost No Heat / Heating / Ignition / Pressure Switch / Inducer related entries.
+- If heating sequence is detected and no explicit noise term is present, penalize Noisy Unit / fan bearing / condenser fan bearing entries.
+- If inducer + won’t start / won’t initiate / not running / does not come on is detected, create or prioritize an “RTU Inducer Motor Not Starting / Pre-Ignition Sequence Fault” diagnosis.
+- For inducer not starting, first checks must follow sequence:
+  1. Verify heat call at board/W terminal.
+  2. Read active fault code.
+  3. Verify safeties/limits/rollouts closed before inducer command.
+  4. Check voltage at inducer output during heat call.
+  5. If voltage is present and inducer does not run, test inducer motor/capacitor/wiring.
+  6. If inducer runs but pressure switch does not close, then check pressure switch tubing, venting, and draft.
+
+Add component-role mapping:
+- inducer motor = heating combustion sequence
+- blower motor = airflow/supply fan sequence
+- condenser fan motor = cooling heat rejection sequence
+- compressor = refrigeration/cooling sequence
+- damper actuator = economizer sequence
+
+Do not change UI.
+Do not modify generated files.
+Preserve current response schema.
+Preserve existing knowledge base entries.
+Add negativeTriggers or category penalties where needed so generic “motor” does not dominate over specific component terms.
+Run TypeScript check/build after changes.

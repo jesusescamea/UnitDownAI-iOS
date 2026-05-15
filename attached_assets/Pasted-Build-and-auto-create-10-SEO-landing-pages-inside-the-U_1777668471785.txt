@@ -1,0 +1,242 @@
+Build and auto-create 10 SEO landing pages inside the UnitDown website.
+
+GOAL:
+Create high-quality HVAC troubleshooting pages designed to rank on Google and convert visitors into UnitDown users.
+
+IMPORTANT:
+- Make pages clean, mobile friendly, readable
+- Use modern SaaS / technical style
+- Strong headings
+- Good spacing
+- CTA at bottom to try UnitDown AI
+- Internal links where useful
+- Add meta title + meta description for each page
+- Slug should match keyword phrase
+- Schema-ready clean HTML structure if possible
+
+BRAND:
+UnitDown = HVAC diagnostic platform for technicians and contractors.
+
+GLOBAL DESIGN:
+Each page should contain:
+
+1. Hero Title
+2. Short intro paragraph
+3. What This Usually Means
+4. Most Likely Causes
+5. Fast Checks You Can Do Now
+6. Meter Readings / Technical Checks
+7. What Pros Inspect Next
+8. When to Call a Technician
+9. CTA Section:
+   "Need faster answers? Use UnitDown AI Diagnostics"
+
+==================================================
+CREATE THESE 10 PAGES
+==================================================
+
+1) PAGE TITLE:
+RTU Not Cooling But Compressor Running
+
+Slug:
+rtu-not-cooling-but-compressor-running
+
+Meta Title:
+RTU Not Cooling But Compressor Running | UnitDown
+
+Meta Description:
+Common causes when rooftop unit compressor runs but building is not cooling. Fast checks and technician troubleshooting steps.
+
+Suggested Content:
+Causes include dirty evaporator coil, failed blower, low airflow, economizer open, low refrigerant, bad capacitor, compressor inefficiency.
+
+--------------------------------------------------
+
+2) PAGE TITLE:
+RTU Blower Motor Hums But Won’t Start
+
+Slug:
+rtu-blower-motor-hums-wont-start
+
+Meta Title:
+RTU Blower Motor Hums But Won’t Start | UnitDown
+
+Meta Description:
+Why rooftop blower motors hum but fail to start. Capacitors, seized bearings, voltage drop and overload causes.
+
+Suggested Content:
+Check capacitor, free spin wheel, amp draw, winding resistance, supply voltage.
+
+--------------------------------------------------
+
+3) PAGE TITLE:
+High Static Pressure Rooftop Unit Causes
+
+Slug:
+high-static-pressure-rooftop-unit-causes
+
+Meta Title:
+High Static Pressure Rooftop Unit Causes | UnitDown
+
+Meta Description:
+Find common reasons rooftop units develop high static pressure and airflow problems.
+
+Suggested Content:
+Dirty filters, blocked coil, closed dampers, undersized ductwork, dirty blower wheel.
+
+--------------------------------------------------
+
+4) PAGE TITLE:
+Economizer Stuck Open Symptoms
+
+Slug:
+economizer-stuck-open-symptoms
+
+Meta Title:
+Economizer Stuck Open Symptoms | UnitDown
+
+Meta Description:
+Symptoms of a rooftop economizer stuck open and how technicians diagnose damper issues.
+
+Suggested Content:
+Warm supply air, poor cooling, humidity complaints, actuator failure, linkage issues, sensor faults.
+
+--------------------------------------------------
+
+5) PAGE TITLE:
+Lennox Rooftop Unit Ignition Lockout
+
+Slug:
+lennox-rooftop-unit-ignition-lockout
+
+Meta Title:
+Lennox Rooftop Unit Ignition Lockout Causes | UnitDown
+
+Meta Description:
+Common reasons Lennox rooftop units enter ignition lockout mode.
+
+Suggested Content:
+Flame sensor dirty, gas valve issue, pressure switch fault, rollout trip, bad board, weak ignition spark.
+
+--------------------------------------------------
+
+6) PAGE TITLE:
+24V Present But No Contactor Pull In
+
+Slug:
+24v-present-no-contactor-pull-in
+
+Meta Title:
+24V Present But No Contactor Pull In | UnitDown
+
+Meta Description:
+24 volts present but contactor won’t pull in? Learn common HVAC causes and fast checks.
+
+Suggested Content:
+Bad coil, loose low-voltage wires, low voltage under load, stuck plunger, burnt coil.
+
+--------------------------------------------------
+
+7) PAGE TITLE:
+Thermostat Calling But No Cooling
+
+Slug:
+thermostat-calling-but-no-cooling
+
+Meta Title:
+Thermostat Calling But No Cooling | UnitDown
+
+Meta Description:
+Thermostat calls for cooling but system does not start. Troubleshooting guide.
+
+Suggested Content:
+Blown fuse, float switch open, bad contactor, open safety circuit, board issue, no line voltage.
+
+--------------------------------------------------
+
+8) PAGE TITLE:
+Float Switch Keeps Tripping Causes
+
+Slug:
+float-switch-keeps-tripping-causes
+
+Meta Title:
+Float Switch Keeps Tripping Causes | UnitDown
+
+Meta Description:
+Why HVAC float switches trip repeatedly and how to solve condensate issues.
+
+Suggested Content:
+Clogged drain, poor trap, cracked pan, negative pressure drainage issue, algae buildup.
+
+--------------------------------------------------
+
+9) PAGE TITLE:
+Contactor Buzzing But Not Pulling In
+
+Slug:
+contactor-buzzing-not-pulling-in
+
+Meta Title:
+Contactor Buzzing But Not Pulling In | UnitDown
+
+Meta Description:
+Contactor buzzing but not engaging? Learn causes like weak voltage, coil failure, mechanical sticking.
+
+Suggested Content:
+Measure control voltage under load, inspect contacts, replace coil, check transformer.
+
+--------------------------------------------------
+
+10) PAGE TITLE:
+High Superheat Troubleshooting Chart
+
+Slug:
+high-superheat-troubleshooting-chart
+
+Meta Title:
+High Superheat Troubleshooting Chart | UnitDown
+
+Meta Description:
+Common causes of high superheat in HVAC systems and how technicians verify charge/feed issues.
+
+Suggested Content:
+Low refrigerant, restriction, underfeeding TXV, dirty evaporator, low load, airflow issue.
+
+==================================================
+CONVERSION REQUIREMENTS
+==================================================
+
+At bottom of every page include:
+
+Headline:
+Need Faster Answers?
+
+Text:
+Use UnitDown AI to get ranked likely causes, meter checks, and next-step diagnostics in seconds.
+
+Button:
+Try UnitDown Now
+
+==================================================
+SEO REQUIREMENTS
+==================================================
+
+- Clean URL slugs
+- H1 only once
+- H2 sections
+- 800–1200 words each if possible
+- Natural keyword use
+- No spammy repetition
+- Mobile optimized
+- Fast loading
+
+==================================================
+BONUS
+==================================================
+
+Create a category hub page:
+
+Commercial HVAC Troubleshooting Guides
+
+List all 10 pages with links.

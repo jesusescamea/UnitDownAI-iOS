@@ -1,0 +1,55 @@
+Do NOT touch:
+- artifacts/unitdown-ai/src/App.tsx
+- UI components
+- freemium logic
+- routing
+- pricing pages
+
+Only modify:
+1. artifacts/api-server/src/lib/hvac-diagnostics.ts
+2. artifacts/api-server/src/data/hvacKnowledgeBase.ts
+3. systemPrompt inside artifacts/api-server/src/routes/hvac.ts if needed
+
+Goals:
+- Replace simple substring matching with phrase-aware HVAC parsing.
+- Prevent false matches like "heat" inside "superheat".
+- Treat refrigeration terms as exact technical phrases.
+- Exact multi-word phrase matches must score higher than generic word matches.
+
+Required rules:
+1. "superheat" must be recognized as a refrigeration term, not heating.
+2. "subcooling" must be recognized as a refrigeration term, not generic cooling.
+3. Use word-boundary matching for standalone terms like heat, cool, fan, gas, flame.
+4. Add negative routing protection:
+If symptoms include superheat, subcooling, suction pressure, head pressure, liquid line, TXV, metering device, filter drier, refrigerant charge, saturation temp, or pressure readings, prioritize Cooling/Refrigeration entries unless user explicitly says furnace, burner, flame, ignitor, gas valve, inducer, rollout, pressure switch, or no heat.
+
+Add or update knowledge base entries for:
+- High Superheat — Evaporator Starved / Low Refrigerant Feed
+- Low Superheat — Floodback / Overfeeding Risk
+- High Subcooling — Liquid Line Restriction / Overcharge
+- Low Subcooling — Low Charge / Flash Gas Risk
+- High Head Pressure — Condenser Heat Rejection Problem
+- Low Suction Pressure — Evaporator Starvation / Airflow / Low Charge
+
+For each entry include:
+- likely causes
+- first checks
+- meter/instrument checks
+- risk if ignored
+- recommended action
+- trigger phrases
+- negative triggers if needed
+
+Test cases that must pass:
+1. "superheat is high" -> High Superheat, Cooling/Refrigeration
+2. "high superheat low suction" -> High Superheat or Low Suction, not No Heat
+3. "low superheat high suction" -> Low Superheat
+4. "high subcooling low suction" -> High Subcooling / Restriction
+5. "no heat furnace ignitor glows" -> Ignition Failure
+6. "heat pump blowing cold in heat mode" -> Heat Pump Heating Issue
+7. "carrier condenser fan dead no 24v" -> Cooling/Electrical condenser fan or low voltage control fault
+
+Keep existing DiagnosisResult response shape unchanged:
+{ primary, alternatives }
+
+After implementation, run typecheck/tests and report results.

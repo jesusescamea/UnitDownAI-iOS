@@ -1,0 +1,180 @@
+/**
+ * Apple In-App Purchase service — Capacitor custom plugin bridge.
+ *
+ * This module registers a custom Capacitor plugin interface that calls
+ * through to native Swift code in the iOS app target.
+ *
+ * Product setup required in App Store Connect:
+ *   Product ID: com.unitdown.ai.pro.monthly
+ *   Type: Auto-renewing subscription
+ *   Price: $7.99/month
+ *
+ * iOS Xcode setup (outside Replit):
+ *   1. Run: npx cap add ios && npx cap sync
+ *   2. Enable "In-App Purchase" capability in the Xcode target.
+ *   3. Add the StoreKit.framework to "Frameworks, Libraries, and Embedded Content".
+ *   4. Copy artifacts/unitdown-ai/ios-plugins/UnitDownIAPPlugin.swift into
+ *      ios/App/App/ in Xcode. It registers the bridge methods used here.
+ *   5. Create the IAP product in App Store Connect and add it to the target.
+ *
+ * This module no-ops gracefully on web so the same React components compile
+ * without errors in the browser.
+ */
+
+import { registerPlugin } from "@capacitor/core";
+
+export const IAP_PRODUCT_ID = "com.unitdown.ai.pro.monthly";
+
+// ── Plugin interface ──────────────────────────────────────────────────────────
+
+interface UnitDownIAPPlugin {
+  getProducts(options: { productIds: string[] }): Promise<{ products: Array<{ productId: string; title: string; description: string; price: string; priceAsDecimal: number; currencyCode: string }> }>;
+  purchaseProduct(options: { productId: string }): Promise<{ transactionId: string; productId: string; state: string }>;
+  restoreTransactions(): Promise<{ transactions: Array<{ transactionId: string; productId: string; state: string }> }>;
+  finishTransaction(options: { transactionId: string; productId: string }): Promise<void>;
+}
+
+const UnitDownIAP = registerPlugin<UnitDownIAPPlugin>("UnitDownIAP", {
+  web: () => import("./appleIAPWebStub").then((m) => new m.UnitDownIAPWebStub()),
+});
+
+// ── Public types ──────────────────────────────────────────────────────────────
+
+export interface IAPProduct {
+  productId: string;
+  title: string;
+  description: string;
+  price: string;
+  priceAsDecimal?: number;
+  currency?: string;
+}
+
+export interface IAPPurchaseResult {
+  success: boolean;
+  productId?: string;
+  transactionId?: string;
+  error?: string;
+  cancelled?: boolean;
+}
+
+export interface IAPRestoreResult {
+  success: boolean;
+  restoredProductIds: string[];
+  error?: string;
+}
+
+// ── In-memory subscription cache ─────────────────────────────────────────────
+// Tracks whether the user has an active Pro subscription within this session.
+// Set to true by purchasePro() on a successful purchase and by restorePurchases()
+// when an active subscription is found.
+//
+// On a cold app start this defaults to false — the user must tap "Restore
+// Purchases" to re-validate with Apple. This is intentional: Apple guidelines
+// require that restore only happens in response to an explicit user action, and
+// passive silent restores (which trigger a system authentication prompt) are not
+// allowed.
+let _iapSubscriptionActive = false;
+
+/** Called by purchasePro() and restorePurchases() to persist session state. */
+export function setIAPSubscriptionActive(active: boolean): void {
+  _iapSubscriptionActive = active;
+}
+
+// ── API ───────────────────────────────────────────────────────────────────────
+
+/** Fetch available products from the App Store. */
+export async function fetchProducts(): Promise<IAPProduct[]> {
+  try {
+    const result = await UnitDownIAP.getProducts({ productIds: [IAP_PRODUCT_ID] });
+    return result.products.map((p) => ({
+      productId: p.productId,
+      title: p.title,
+      description: p.description,
+      price: p.price,
+      priceAsDecimal: p.priceAsDecimal,
+      currency: p.currencyCode,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+/** Initiate a purchase. Must be called from a user gesture. */
+export async function purchasePro(): Promise<IAPPurchaseResult> {
+  try {
+    const result = await UnitDownIAP.purchaseProduct({ productId: IAP_PRODUCT_ID });
+
+    if (result.state === "purchased") {
+      await UnitDownIAP.finishTransaction({
+        transactionId: result.transactionId,
+        productId: IAP_PRODUCT_ID,
+      }).catch(() => {});
+      setIAPSubscriptionActive(true);
+      return { success: true, productId: IAP_PRODUCT_ID, transactionId: result.transactionId };
+    }
+
+    if (result.state === "cancelled" || result.state === "deferred") {
+      return { success: false, cancelled: true };
+    }
+
+    return { success: false, error: "Purchase did not complete. Please try again." };
+  } catch (err: unknown) {
+    const e = err as { message?: string; code?: string };
+    if (e?.code === "USER_CANCELLED" || e?.message?.toLowerCase().includes("cancel")) {
+      return { success: false, cancelled: true };
+    }
+    return { success: false, error: e?.message ?? "Purchase failed. Please try again." };
+  }
+}
+
+/** Restore previous purchases. Required by Apple guidelines. Only call from an
+ *  explicit "Restore Purchases" user action — never call silently on app start,
+ *  as StoreKit may show an authentication prompt. */
+export async function restorePurchases(): Promise<IAPRestoreResult> {
+  try {
+    const result = await UnitDownIAP.restoreTransactions();
+    const productIds = result.transactions
+      .filter((t) => t.state === "purchased" || t.state === "restored")
+      .map((t) => t.productId)
+      .filter(Boolean);
+
+    for (const t of result.transactions) {
+      if (productIds.includes(t.productId)) {
+        await UnitDownIAP.finishTransaction({
+          transactionId: t.transactionId,
+          productId: t.productId,
+        }).catch(() => {});
+      }
+    }
+
+    const hasProSubscription = productIds.includes(IAP_PRODUCT_ID);
+    setIAPSubscriptionActive(hasProSubscription);
+
+    return { success: true, restoredProductIds: [...new Set(productIds)] };
+  } catch (err: unknown) {
+    const e = err as { message?: string };
+    return {
+      success: false,
+      restoredProductIds: [],
+      error: e?.message ?? "Restore failed. Please try again.",
+    };
+  }
+}
+
+/**
+ * Returns whether the user has an active Pro subscription in this session.
+ *
+ * This is a pure in-memory read — it does NOT contact Apple, does NOT call
+ * restoreTransactions(), and will never trigger a system authentication prompt.
+ *
+ * The cache is populated by:
+ *   - purchasePro()     — after a successful new purchase
+ *   - restorePurchases() — after the user taps "Restore Purchases"
+ *
+ * On a cold app start this returns false until one of the above is called.
+ * Users who have an active subscription should tap "Restore Purchases" once
+ * after a fresh install to re-activate their Pro status.
+ */
+export function checkIAPSubscriptionActive(): boolean {
+  return _iapSubscriptionActive;
+}
