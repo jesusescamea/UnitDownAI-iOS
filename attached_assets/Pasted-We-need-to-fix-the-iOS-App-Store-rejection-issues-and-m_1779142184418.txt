@@ -1,0 +1,100 @@
+We need to fix the iOS App Store rejection issues and make UnitDown AI ready for Apple review.
+
+Apple rejected for:
+1. Sign in with Apple missing while Google login exists.
+2. In-App Purchase products referenced but not properly working.
+3. Subscribe button not responsive.
+4. Demo login account did not work.
+5. Apple requires all Pro subscription references to use Apple IAP on iOS, not Stripe.
+
+IMPORTANT GOAL:
+Keep the paid version complete. Do NOT remove monetization entirely. On iOS, subscriptions must use Apple StoreKit / In-App Purchases. Stripe may remain only for web/non-iOS.
+
+Make these changes:
+
+1. Add Sign in with Apple
+- Add a visible “Continue with Apple” login button wherever Google login appears.
+- Use Clerk Apple OAuth if Clerk is already used.
+- The Apple login button must be equivalent in size/visibility to Google login.
+- It must work on iOS Capacitor/WebView and normal browser where possible.
+- Use Clerk strategy/oauth provider for Apple, likely oauth_apple.
+- Do not remove Google login.
+
+2. Fix iOS subscription routing
+- Detect iOS/Capacitor environment.
+- On iOS, hide/disable all Stripe checkout links.
+- On iOS, all Subscribe / Upgrade / Pro buttons must call Apple IAP purchase flow.
+- On web/non-iOS, keep existing Stripe checkout behavior.
+- No dead subscribe buttons.
+- If Apple IAP is unavailable, show a clear message, not a silent button failure.
+
+3. Implement Apple IAP bridge
+- Use existing Capacitor/iOS plugin if present.
+- If not present, create or wire a StoreKit 2 Capacitor plugin with:
+  - purchasePro()
+  - restorePurchases()
+  - checkIAPSubscriptionActive()
+- Product IDs should be centralized in one config file.
+- Use these product IDs unless existing code already defines different ones:
+  - com.unitdown.pro.monthly
+  - com.unitdown.contractor.monthly
+- The subscription purchase flow must:
+  - open Apple purchase sheet
+  - return success/failure
+  - unlock Pro after successful purchase
+  - support Restore Purchases
+
+4. Fix subscribe button bug
+- Find every Subscribe / Upgrade / Join Pro / Premium button.
+- Make sure each button has an onClick handler.
+- On iOS: handler calls StoreKit purchase.
+- On web: handler calls existing Stripe flow.
+- Add loading state and error state.
+- Never leave the button unresponsive.
+
+5. Add Restore Purchases
+- Add a visible “Restore Purchases” button on the pricing/account/profile page for iOS.
+- It should call checkIAPSubscriptionActive() or restorePurchases().
+- If active, unlock Pro.
+- If not active, show “No active subscription found.”
+
+6. Demo account / reviewer access
+- Add clear App Review demo-mode support if possible.
+- Create logic so the Apple reviewer can access full app functionality without needing to purchase if using a configured review/demo account.
+- Suggested account:
+  email: review@unitdown.org
+  password: Review123!
+- If account creation is not handled in code, add instructions in README / APP_REVIEW_NOTES.md explaining that this account must be created manually in production before submission.
+- The demo account should have Pro features unlocked for review.
+
+7. App Review Notes file
+Create or update APP_REVIEW_NOTES.md with:
+- Demo username/password
+- Explanation that Sign in with Apple is available
+- Explanation that iOS subscriptions use Apple IAP
+- Product IDs used
+- Where the reviewer can find Subscribe and Restore Purchases
+- Mention Stripe is hidden on iOS and only used for web
+
+8. Paid Apps Agreement reminder
+Add a checklist file called APPLE_SUBMISSION_CHECKLIST.md that reminds:
+- Paid Apps Agreement must be accepted in App Store Connect
+- IAP products must be created
+- Product IDs must exactly match app code
+- Each IAP needs metadata, price, and App Review screenshot
+- IAP products must be submitted with the binary
+- Sandbox purchase should be tested before resubmission
+
+9. Build safety
+- Do not break Android or web.
+- Keep existing pricing UI, but route payments correctly by platform.
+- Run typecheck/build.
+- Fix any TypeScript errors.
+- Commit all changed files with a clear summary.
+
+10. Final output
+After changes, tell me:
+- Files changed
+- What Apple rejection item each change fixes
+- Any App Store Connect setup I still need to do manually
+- Exact product IDs I must create in App Store Connect

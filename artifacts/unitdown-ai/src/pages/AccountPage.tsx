@@ -158,7 +158,7 @@ export default function AccountPage() {
     setHistory(loadHistory());
     setPrefs(loadPrefs());
 
-    const clientId = localStorage.getItem(CLIENT_ID_KEY) || "";
+    localStorage.getItem(CLIENT_ID_KEY) || "";
     try { if (localStorage.getItem(PRO_KEY) === "1") setIsPro(true); } catch {}
 
     if (shouldUseAppleIAP()) {
@@ -174,6 +174,15 @@ export default function AccountPage() {
 
     return () => { document.title = "UnitDown AI — HVAC Diagnostics"; };
   }, []);
+
+  // Demo / App Review account: if the signed-in user is review@unitdown.org,
+  // grant Pro status automatically so the Apple reviewer can access all features.
+  useEffect(() => {
+    if (email === "review@unitdown.org") {
+      setIsPro(true);
+      try { localStorage.setItem(PRO_KEY, "1"); } catch {}
+    }
+  }, [email]);
 
   useEffect(() => {
     if (user) {
@@ -419,23 +428,36 @@ export default function AccountPage() {
                 </button>
               )}
 
-              {/* On iOS: manage subscription via Apple Settings (App Store guidelines) */}
-              {isPro && shouldUseAppleIAP() && (
+              {/* On iOS: Restore Purchases available for both Pro and Free users.
+                  Free users can restore a prior purchase; Pro users can re-verify. */}
+              {shouldUseAppleIAP() && (
                 <div className="space-y-2">
-                  <p className="text-xs text-slate-500 leading-relaxed">
-                    Your subscription is managed by Apple. To cancel or change your plan, go to{" "}
-                    <strong>Settings → Apple ID → Subscriptions</strong>.
-                  </p>
+                  {isPro && (
+                    <p className="text-xs text-slate-500 leading-relaxed">
+                      Your subscription is managed by Apple. To cancel or change your plan, go to{" "}
+                      <strong>Settings → Apple ID → Subscriptions</strong>.
+                    </p>
+                  )}
                   <button
                     onClick={async () => {
                       setIapRestoring(true);
                       setIapMsg(null);
+                      const wasProBefore = isPro;
                       try {
                         const r = await restorePurchases();
                         if (r.restoredProductIds.includes(IAP_PRODUCT_ID)) {
-                          setIapMsg({ ok: true, text: "Subscription verified and active." });
+                          setIsPro(true);
+                          try { localStorage.setItem(PRO_KEY, "1"); } catch {}
+                          setIapMsg({
+                            ok: true,
+                            text: wasProBefore
+                              ? "Subscription verified and active."
+                              : "Pro subscription restored! All Pro features are now unlocked.",
+                          });
+                        } else if (r.restoredProductIds.length === 0) {
+                          setIapMsg({ ok: false, text: "No previous purchases found for this Apple ID." });
                         } else {
-                          setIapMsg({ ok: false, text: "No active subscription found for this Apple ID." });
+                          setIapMsg({ ok: false, text: "No active UnitDown AI Pro subscription found." });
                         }
                       } catch {
                         setIapMsg({ ok: false, text: "Restore failed. Please try again." });

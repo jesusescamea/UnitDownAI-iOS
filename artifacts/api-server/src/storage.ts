@@ -33,6 +33,11 @@ export class Storage {
 
   async isProUser(clientId: string | undefined | null): Promise<boolean> {
     if (!clientId) return false;
+    // Apple App Store review account bypass.
+    // Set REVIEW_ACCOUNT_CLERK_ID to the Clerk user ID for review@unitdown.org
+    // so the reviewer sees all Pro features without a live IAP purchase.
+    const reviewId = process.env.REVIEW_ACCOUNT_CLERK_ID;
+    if (reviewId && clientId === reviewId) return true;
     // iOS-only build: no live Stripe checks. Returns true only if a
     // subscription record exists in the DB (legacy data or future Apple
     // receipt validation rows). New iOS IAP subscribers always start at false

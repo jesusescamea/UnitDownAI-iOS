@@ -46,9 +46,11 @@ export function shouldUseAppleIAP(): boolean {
 }
 
 /**
- * On iOS, Apple requires Sign in with Apple as an equivalent option
- * wherever any third-party social login (e.g. Google) is available.
+ * Apple guideline 4.8: Sign in with Apple must be offered as an equivalent
+ * option wherever any third-party social login (e.g. Google) is present.
+ * We show it on all platforms so it is always visible to App Store reviewers
+ * and to web users who prefer Apple authentication.
  */
 export function shouldShowAppleSignIn(): boolean {
-  return isIOS();
+  return true;
 }

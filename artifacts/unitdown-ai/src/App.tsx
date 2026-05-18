@@ -1665,6 +1665,13 @@ function Home() {
       localStorage.setItem(CLIENT_ID_KEY, newClientId);
       setClientId(newClientId);
 
+      // Demo / App Store review account: grant Pro automatically so Apple
+      // reviewers can access all Pro features without a live IAP purchase.
+      if (clerkUser.primaryEmailAddress?.emailAddress === "review@unitdown.org") {
+        setIsPro(true);
+        saveIsProCached(true);
+      }
+
     }
   }, [clerkLoaded, clerkUser?.id]);
 
