@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useSignIn } from "@clerk/clerk-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -33,13 +33,11 @@ interface EmailWallModalProps {
 
 export default function EmailWallModal({ open, onClose }: EmailWallModalProps) {
   const { signIn, isLoaded } = useSignIn();
-  const [showApple, setShowApple] = useState(false);
+  // shouldShowAppleSignIn() returns true unconditionally (Apple guideline 4.8).
+  // Do NOT use useState + useEffect: that hides the button on first render.
+  const showApple = shouldShowAppleSignIn();
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setShowApple(shouldShowAppleSignIn());
-  }, []);
 
   const goSignup = () => { window.location.href = "/signup"; };
   const goLogin  = () => { window.location.href = "/login"; };

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback } from "react";
 import { useSignIn } from "@clerk/clerk-react";
 import { useLocation } from "wouter";
 import { ThermometerSnowflake, ArrowLeft, Eye, EyeOff } from "lucide-react";
@@ -65,11 +65,11 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSendCode, setShowSendCode] = useState(false);
-  const [showApple, setShowApple] = useState(false);
-
-  useEffect(() => {
-    setShowApple(shouldShowAppleSignIn());
-  }, []);
+  // shouldShowAppleSignIn() returns true unconditionally (Apple guideline 4.8 —
+  // Sign in with Apple must appear wherever any third-party social login exists).
+  // Do NOT use useState + useEffect here: that pattern hides the button on the
+  // first render and was the cause of "Apple button missing on iPhone Safari".
+  const showApple = shouldShowAppleSignIn();
 
   const clerkError = useCallback((err: unknown): string => {
     const e = err as { errors?: Array<{ code?: string; longMessage?: string; message?: string }> };
