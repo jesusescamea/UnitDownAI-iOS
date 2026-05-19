@@ -38,6 +38,19 @@ export function isWeb(): boolean {
 }
 
 /**
+ * Returns true when the app is running inside Capacitor on iOS.
+ * Use this to gate any behaviour that must differ between the iOS App Store
+ * build and the standard web experience.
+ *
+ * iOS App Store build hides third-party login (Google) and external payment
+ * flows (Stripe) until Sign in with Apple and StoreKit IAP are fully
+ * configured and approved in App Store Connect.
+ */
+export function isIOSApp(): boolean {
+  return isIOS();
+}
+
+/**
  * On iOS (App Store builds) we must NEVER show Stripe or any external
  * payment UI. Apple requires all in-app purchases to go through StoreKit.
  */
