@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
-import { useUser, useClerk, UserButton, SignedIn, SignedOut, SignInButton } from "@clerk/clerk-react";
+import { useUser, useClerk, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { shouldUseAppleIAP } from "@/lib/platform";
 import { purchasePro, restorePurchases, fetchProducts, checkIAPSubscriptionActive, IAP_PRODUCT_ID } from "@/lib/appleIAP";
 import TermsPage from "./pages/terms";
@@ -1983,17 +1983,19 @@ function Home() {
             {/* Signed-out nav — show when clerk confirms no user, OR after timeout */}
             {(clerkLoaded ? !clerkUser : clerkTimedOut) && (
               <>
-                <SignInButton mode="modal">
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="flex text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900"
-                    data-testid="nav-login"
-                  >
-                    <KeyRound className="w-3.5 h-3.5 mr-1.5" />
-                    Login
-                  </Button>
-                </SignInButton>
+                {/* Navigate to our custom /login page which shows both Apple and
+                    Google in code — no Clerk dashboard config required for them
+                    to appear. */}
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="flex text-xs sm:text-sm font-semibold text-slate-600 hover:text-slate-900"
+                  data-testid="nav-login"
+                  onClick={() => navigate("/login")}
+                >
+                  <KeyRound className="w-3.5 h-3.5 mr-1.5" />
+                  Login
+                </Button>
                 {!isPro && (
                   <Button
                     onClick={openModal}
