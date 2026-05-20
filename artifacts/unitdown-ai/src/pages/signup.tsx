@@ -1,7 +1,6 @@
 import { SignUp } from "@clerk/clerk-react";
 import { useLocation } from "wouter";
 import { ThermometerSnowflake, ArrowLeft } from "lucide-react";
-import { isIOSApp } from "@/lib/platform";
 
 export default function SignupPage() {
   const [, navigate] = useLocation();
@@ -34,12 +33,6 @@ export default function SignupPage() {
           </p>
         </div>
 
-        {/*
-         * iOS App Store build hides third-party login and external payment
-         * flows until Sign in with Apple and StoreKit IAP are fully
-         * implemented. On iOS: social buttons are hidden so only email/password
-         * signup is available. On web: all social providers are shown.
-         */}
         <SignUp
           routing="hash"
           fallbackRedirectUrl="/"
@@ -49,13 +42,8 @@ export default function SignupPage() {
               card: "shadow-sm border border-slate-200 rounded-2xl",
               headerTitle: "hidden",
               headerSubtitle: "hidden",
-              // iOS App Store build: hide Google and other third-party social
-              // buttons. Only email/password signup is shown on iOS.
-              socialButtons: isIOSApp() ? { display: "none" } : undefined,
-              dividerRow: isIOSApp() ? { display: "none" } : undefined,
-              socialButtonsBlockButton: isIOSApp()
-                ? { display: "none" }
-                : "border border-slate-200 hover:bg-slate-50 font-semibold text-slate-700",
+              socialButtonsBlockButton:
+                "border border-slate-200 hover:bg-slate-50 font-semibold text-slate-700",
               formButtonPrimary:
                 "bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl",
               formFieldInput:

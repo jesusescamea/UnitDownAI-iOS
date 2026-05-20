@@ -3,7 +3,7 @@ import { useSignIn } from "@clerk/clerk-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck, LogIn, UserPlus } from "lucide-react";
-import { shouldShowAppleSignIn, isIOSApp } from "@/lib/platform";
+import { shouldShowAppleSignIn } from "@/lib/platform";
 
 function GoogleIcon() {
   return (
@@ -33,8 +33,8 @@ interface EmailWallModalProps {
 
 export default function EmailWallModal({ open, onClose }: EmailWallModalProps) {
   const { signIn, isLoaded } = useSignIn();
-  // shouldShowAppleSignIn() returns true unconditionally (Apple guideline 4.8).
-  // Do NOT use useState + useEffect: that hides the button on first render.
+  // shouldShowAppleSignIn() returns true unconditionally (Apple guideline 4.8:
+  // Sign in with Apple must appear wherever any third-party social login exists).
   const showApple = shouldShowAppleSignIn();
   const [oauthLoading, setOauthLoading] = useState(false);
   const [oauthError, setOauthError] = useState<string | null>(null);
@@ -105,98 +105,61 @@ export default function EmailWallModal({ open, onClose }: EmailWallModalProps) {
             </p>
           )}
 
-          {/*
-           * iOS App Store build hides third-party login and external payment
-           * flows until Sign in with Apple and StoreKit IAP are fully
-           * implemented. On iOS: Apple + email only. On web: all options.
-           */}
+          <Button
+            onClick={goSignup}
+            className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
+            data-testid="signup-wall-signup"
+          >
+            <UserPlus className="w-4 h-4 mr-2" />
+            Sign up — it's free
+          </Button>
 
-          {/* On iOS: Apple sign-in is the primary CTA; email login is secondary.
-              On web: standard sign-up button leads to account creation page. */}
-          {isIOSApp() ? (
-            <>
-              {/* Sign in with Apple — primary CTA on iOS (Apple guideline 4.8) */}
-              {showApple && (
-                <Button
-                  onClick={handleApple}
-                  disabled={oauthLoading || !isLoaded}
-                  className="w-full h-11 border-slate-900 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
-                  data-testid="signup-wall-apple"
-                  aria-label="Sign in with Apple"
-                >
-                  <AppleIcon />
-                  {oauthLoading ? "Signing in…" : "Continue with Apple"}
-                </Button>
-              )}
+          <Button
+            onClick={goLogin}
+            variant="outline"
+            className="w-full h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold rounded-xl"
+            data-testid="signup-wall-login"
+          >
+            <LogIn className="w-4 h-4 mr-2" />
+            Log in
+          </Button>
 
-              <Button
-                onClick={goLogin}
-                variant="outline"
-                className="w-full h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold rounded-xl"
-                data-testid="signup-wall-login"
-              >
-                <LogIn className="w-4 h-4 mr-2" />
-                Sign in / Create account with email
-              </Button>
-            </>
-          ) : (
-            <>
-              <Button
-                onClick={goSignup}
-                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
-                data-testid="signup-wall-signup"
-              >
-                <UserPlus className="w-4 h-4 mr-2" />
-                Sign up — it's free
-              </Button>
+          <div className="relative py-1">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200" />
+            </div>
+            <div className="relative flex justify-center text-xs">
+              <span className="px-3 bg-white text-slate-400 font-medium">or continue with</span>
+            </div>
+          </div>
 
-              <Button
-                onClick={goLogin}
-                variant="outline"
-                className="w-full h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold rounded-xl"
-                data-testid="signup-wall-login"
-              >
-                <LogIn className="w-4 h-4 mr-2" />
-                Log in
-              </Button>
-
-              <div className="relative py-1">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-200" />
-                </div>
-                <div className="relative flex justify-center text-xs">
-                  <span className="px-3 bg-white text-slate-400 font-medium">or continue with</span>
-                </div>
-              </div>
-
-              {/* Sign in with Apple — always shown (Apple guideline 4.8) */}
-              {showApple && (
-                <Button
-                  onClick={handleApple}
-                  disabled={oauthLoading || !isLoaded}
-                  variant="outline"
-                  className="w-full h-11 border-slate-900 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
-                  data-testid="signup-wall-apple"
-                  aria-label="Sign in with Apple"
-                >
-                  <AppleIcon />
-                  {oauthLoading ? "Signing in…" : "Continue with Apple"}
-                </Button>
-              )}
-
-              {/* Google — web only. Hidden on iOS App Store build. */}
-              <Button
-                onClick={handleGoogle}
-                disabled={oauthLoading || !isLoaded}
-                variant="outline"
-                className="w-full h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
-                data-testid="signup-wall-google"
-              >
-                <GoogleIcon />
-                {oauthLoading ? "Signing in…" : "Continue with Google"}
-              </Button>
-            </>
+          {/* Sign in with Apple — always shown (Apple guideline 4.8:
+              must appear wherever any third-party social login exists) */}
+          {showApple && (
+            <Button
+              onClick={handleApple}
+              disabled={oauthLoading || !isLoaded}
+              variant="outline"
+              className="w-full h-11 border-slate-900 bg-slate-900 hover:bg-slate-800 text-white font-semibold rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+              data-testid="signup-wall-apple"
+              aria-label="Sign in with Apple"
+            >
+              <AppleIcon />
+              {oauthLoading ? "Signing in…" : "Continue with Apple"}
+            </Button>
           )}
+
+          {/* Continue with Google — shown on all platforms */}
+          <Button
+            onClick={handleGoogle}
+            disabled={oauthLoading || !isLoaded}
+            variant="outline"
+            className="w-full h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold rounded-xl flex items-center justify-center gap-2 disabled:opacity-50"
+            data-testid="signup-wall-google"
+          >
+            <GoogleIcon />
+            {oauthLoading ? "Signing in…" : "Continue with Google"}
+          </Button>
 
           <p className="text-center text-xs text-slate-400 pt-1">
             Free accounts include diagnostic history, saved results, and more.

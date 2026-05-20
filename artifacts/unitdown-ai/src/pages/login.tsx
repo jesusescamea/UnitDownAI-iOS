@@ -5,7 +5,7 @@ import { ThermometerSnowflake, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { shouldShowAppleSignIn, isIOSApp } from "@/lib/platform";
+import { shouldShowAppleSignIn } from "@/lib/platform";
 
 type Step = "email" | "password" | "forgot" | "reset-code" | "reset-password";
 
@@ -314,11 +314,8 @@ export default function LoginPage() {
           {step === "email" && (
             <div className="space-y-3">
 
-                  {/* iOS App Store build hides third-party login and external payment
-                  flows until Sign in with Apple and StoreKit IAP are fully
-                  implemented. On iOS: Apple button only. On web: Apple + Google. */}
-
-              {/* Sign in with Apple — always shown (Apple guideline 4.8) */}
+              {/* Sign in with Apple — always shown (Apple guideline 4.8:
+                  must appear wherever any third-party social login exists) */}
               {showApple && (
                 <button
                   onClick={handleApple}
@@ -332,18 +329,16 @@ export default function LoginPage() {
                 </button>
               )}
 
-              {/* Google — web only. Hidden on iOS App Store build. */}
-              {!isIOSApp() && (
-                <button
-                  onClick={handleGoogle}
-                  disabled={!isLoaded || loading}
-                  className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-semibold text-slate-700 text-sm transition-colors disabled:opacity-50"
-                  data-testid="btn-google"
-                >
-                  <GoogleIcon />
-                  Continue with Google
-                </button>
-              )}
+              {/* Continue with Google — shown on all platforms */}
+              <button
+                onClick={handleGoogle}
+                disabled={!isLoaded || loading}
+                className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-semibold text-slate-700 text-sm transition-colors disabled:opacity-50"
+                data-testid="btn-google"
+              >
+                <GoogleIcon />
+                Continue with Google
+              </button>
 
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-slate-200" />
