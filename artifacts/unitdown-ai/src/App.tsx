@@ -378,20 +378,37 @@ interface AppleIAPUpgradeModalProps {
 
 function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpgradeModalProps) {
   const [productPrice, setProductPrice] = useState("$7.99");
+  const [productsLoading, setProductsLoading] = useState(true);
   const [buying, setBuying] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setError(null);
-      setSuccess(false);
-      fetchProducts().then((products) => {
+    if (!open) return;
+    setError(null);
+    setSuccess(false);
+    setProductsLoading(true);
+    fetchProducts()
+      .then((products) => {
         const match = products.find((p) => p.productId === IAP_PRODUCT_ID);
-        if (match) setProductPrice(match.price);
-      }).catch(() => {});
-    }
+        if (match) {
+          setProductPrice(match.price);
+        } else {
+          // On iOS this means the product wasn't found — either the native
+          // plugin isn't installed in Xcode or the product ID isn't live in
+          // App Store Connect. Surface it explicitly so it can be diagnosed.
+          setError(
+            `Subscription product could not be loaded from the App Store (ID: ${IAP_PRODUCT_ID}). ` +
+            "Ensure the product is active in App Store Connect and the native plugin is installed in Xcode.",
+          );
+        }
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : "Failed to load subscription products.";
+        setError(msg);
+      })
+      .finally(() => setProductsLoading(false));
   }, [open]);
 
   useEffect(() => {
@@ -545,11 +562,19 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
                   {/* Purchase button */}
                   <Button
                     onClick={handleBuy}
-                    disabled={buying || restoring}
-                    className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold h-12 rounded-xl text-sm transition-all"
+                    disabled={buying || restoring || productsLoading || !!error}
+                    className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-extrabold h-12 rounded-xl text-sm transition-all"
                     data-testid="btn-apple-iap-buy"
                   >
-                    {buying ? (
+                    {productsLoading ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Loading…
+                      </span>
+                    ) : buying ? (
                       <span className="flex items-center gap-2">
                         <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -563,7 +588,7 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
                   {/* Restore purchases */}
                   <button
                     onClick={handleRestore}
-                    disabled={buying || restoring}
+                    disabled={buying || restoring || productsLoading}
                     className="w-full text-xs font-semibold text-slate-500 hover:text-blue-600 transition-colors py-1 disabled:opacity-50"
                     data-testid="btn-apple-iap-restore"
                   >

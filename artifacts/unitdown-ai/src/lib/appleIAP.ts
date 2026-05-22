@@ -113,14 +113,23 @@ export async function purchasePro(): Promise<IAPPurchaseResult> {
       return { success: true, productId: IAP_PRODUCT_ID, transactionId: result.transactionId };
     }
 
-    if (result.state === "cancelled" || result.state === "deferred") {
+    // "deferred" = parental approval pending — not a user cancellation or error.
+    if (result.state === "deferred") {
+      return { success: false, error: "Purchase is pending parental approval." };
+    }
+
+    // "cancelled" = user explicitly dismissed the Apple payment sheet. Silent.
+    if (result.state === "cancelled") {
       return { success: false, cancelled: true };
     }
 
     return { success: false, error: "Purchase did not complete. Please try again." };
   } catch (err: unknown) {
     const e = err as { message?: string; code?: string };
-    if (e?.code === "USER_CANCELLED" || e?.message?.toLowerCase().includes("cancel")) {
+    // Only treat USER_CANCELLED (the explicit Capacitor code) as a silent cancel.
+    // Do NOT match on error message strings — that would swallow real errors
+    // such as plugin-not-found fallbacks from the web stub.
+    if (e?.code === "USER_CANCELLED") {
       return { success: false, cancelled: true };
     }
     return { success: false, error: e?.message ?? "Purchase failed. Please try again." };
