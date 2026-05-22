@@ -1626,8 +1626,14 @@ function Home() {
   const [emailWallOpen, setEmailWallOpen] = useState(false);
   const [diagCount, setDiagCount] = useState(0);
   const [freeRemaining, setFreeRemaining] = useState(5);
-  const [isPro, setIsPro] = useState(loadIsProCached);
-  const [proCheckDone, setProCheckDone] = useState<boolean>(loadIsProCached);
+  // Always start Free. isPro is only elevated to true after the server (or
+  // Apple IAP) explicitly confirms an active paid subscription. Never trust
+  // the localStorage cache at startup — it can be stale after a sub lapses,
+  // a new account signs in, or a test session was left behind.
+  const [isPro, setIsPro] = useState(false);
+  // proCheckDone gates the upgrade CTA. Keep it false until the server
+  // responds so we never show a "Join Pro" button to an already-Pro user.
+  const [proCheckDone, setProCheckDone] = useState(false);
   const [clientId, setClientId] = useState(getOrCreateClientId);
   const [, navigate] = useLocation();
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
@@ -1752,7 +1758,9 @@ function Home() {
 
   const resultsRef = useRef<HTMLDivElement>(null);
 
-  // Refresh usage status from server
+  // Refresh usage status from server — this is the single source of truth for
+  // isPro. Both branches must update isPro so a lapsed subscription or a new
+  // account on the same device is correctly shown as Free.
   const refreshUsageStatus = useCallback((cid: string, email?: string) => {
     const fp = getFingerprint();
     const emailParam = email ? `&testerEmail=${encodeURIComponent(email)}` : "";
@@ -1764,11 +1772,23 @@ function Home() {
           saveIsProCached(true);
           setFreeRemaining(99);
         } else {
+          // Explicitly demote to Free — do NOT leave stale Pro state from
+          // localStorage or a previous account's session.
+          setIsPro(false);
+          saveIsProCached(false);
           setDiagCount(d.useCount ?? 0);
-          setFreeRemaining(d.freeRemaining ?? Math.max(0, 3 - (d.useCount ?? 0)));
+          setFreeRemaining(d.freeRemaining ?? Math.max(0, FREE_DIAGNOSES - (d.useCount ?? 0)));
         }
+        // In both cases the server has answered — unlock the upgrade CTA.
+        setProCheckDone(true);
       })
-      .catch(() => {});
+      .catch(() => {
+        // Network error: default to Free defensively, but still show the CTA
+        // so the user is not stuck on a blank nav with no way to upgrade.
+        setIsPro(false);
+        saveIsProCached(false);
+        setProCheckDone(true);
+      });
   }, []);
 
   useEffect(() => {
@@ -1789,9 +1809,9 @@ function Home() {
       }
     } catch {}
 
-    // iOS-only build: Pro status is determined by Apple IAP.
-    setProCheckDone(true);
-
+    // Pro status is determined by the server response in refreshUsageStatus.
+    // Do NOT call setProCheckDone(true) here — let the fetch response do it
+    // so the UI never shows a stale Pro/Free state before the server answers.
     refreshUsageStatus(clientId, testerEmail);
   }, [clientId, refreshUsageStatus]);
 

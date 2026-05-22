@@ -158,8 +158,9 @@ export default function AccountPage() {
     setHistory(loadHistory());
     setPrefs(loadPrefs());
 
-    localStorage.getItem(CLIENT_ID_KEY) || "";
-    try { if (localStorage.getItem(PRO_KEY) === "1") setIsPro(true); } catch {}
+    // Do NOT seed isPro from localStorage here — the cache can be stale after
+    // a subscription lapses, a new account signs in, or a test session was left
+    // behind. Instead, fetch the authoritative status from the server below.
 
     if (shouldUseAppleIAP()) {
       // iOS: read the in-memory IAP subscription cache (populated by
@@ -183,6 +184,27 @@ export default function AccountPage() {
       try { localStorage.setItem(PRO_KEY, "1"); } catch {}
     }
   }, [email]);
+
+  // Server-side Pro check for web (Stripe) subscribers. This is the fallback
+  // for non-iOS sessions where Apple IAP is not used. The iOS IAP check above
+  // already sets isPro for iOS users — this only runs if that returned false.
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    const cid = (() => { try { return localStorage.getItem(CLIENT_ID_KEY) || user.id; } catch { return user.id; } })();
+    const emailParam = email ? `&testerEmail=${encodeURIComponent(email)}` : "";
+    fetch(`/api/usage/status?fingerprint=account-page&clientId=${encodeURIComponent(cid)}${emailParam}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d: { isPro?: boolean }) => {
+        if (d.isPro) {
+          setIsPro(true);
+          try { localStorage.setItem(PRO_KEY, "1"); } catch {}
+        }
+        // If server says not Pro, leave isPro as false (already the default).
+        // Do not write "0" here to avoid overwriting an iOS IAP-set "1".
+      })
+      .catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, user?.id]);
 
   useEffect(() => {
     if (user) {
