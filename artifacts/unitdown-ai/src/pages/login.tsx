@@ -148,11 +148,22 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const result = await withTimeout(
-        signIn.create({ identifier: email.trim(), password })
+        signIn.create({ identifier: email.trim(), strategy: "password", password })
       );
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
         navigate("/");
+      } else if (result.status === "needs_first_factor") {
+        // Account exists but Clerk needs an additional first-factor verification
+        // (e.g. email code). Surface the send-code option so the user can proceed.
+        setError(
+          "Your account requires a verification step. Please use the button below to receive a code by email."
+        );
+        setShowSendCode(true);
+      } else {
+        // Any other incomplete status — surface a clear error rather than silently doing nothing
+        setError("Sign-in could not be completed. Please try again or use Google sign-in.");
+        setShowSendCode(true);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -160,7 +171,12 @@ export default function LoginPage() {
         setError(msg);
       } else {
         const code = (err as { errors?: Array<{ code?: string }> })?.errors?.[0]?.code ?? "";
-        if (
+        if (code === "form_strategy_for_user_invalid" || code.includes("strategy")) {
+          // Account was created via Google or Apple — it has no password
+          setError(
+            "This account uses Google or Apple sign-in. Please use the Google or Apple button above."
+          );
+        } else if (
           code === "form_password_incorrect" ||
           code === "form_identifier_not_found" ||
           code.includes("password") ||
