@@ -1,0 +1,65 @@
+Two issues remain. Please fix ONLY these access/usage bugs and do not redesign anything.
+
+ISSUE 1 — Demo Pro access is still incomplete:
+unitdownsupport@gmail.com can sign in, but Guides are still locked and individual guide pages still show the Pro paywall.
+
+Required behavior:
+- unitdownsupport@gmail.com must always have full Pro access across the entire app.
+- This must bypass Stripe, Apple IAP, subscription lookup, and restore purchase checks.
+- It must unlock:
+  - Guides landing page
+  - Individual guide pages
+  - Brand-specific fault pages
+  - Field workflows
+  - Any ProGate / premium content component
+- Do not affect any other user.
+- Do not change Apple/Google sign-in behavior.
+- Do not change normal billing logic for real users.
+
+Please search all access gates and entitlement checks for:
+- isPro
+- hasPro
+- subscription
+- entitlement
+- ProGate
+- requirePro
+- locked
+- guide access
+- premium
+- membership
+- user.plan
+- iap
+- stripe
+
+Create one centralized helper if needed, such as:
+
+isDemoProUser(email) => email?.toLowerCase() === "unitdownsupport@gmail.com"
+
+Then make every Pro access check treat that email as Pro.
+
+ISSUE 2 — Free diagnostic limit is gone:
+Users can currently run unlimited diagnostics. Restore the free diagnostic limit.
+
+Required behavior:
+- Free users get 5 free diagnostics total.
+- After 5 diagnostics, they must see the upgrade/paywall prompt.
+- Pro users remain unlimited.
+- unitdownsupport@gmail.com must be unlimited because it is the demo Pro account.
+- This must be enforced server-side, not only localStorage/sessionStorage.
+- Do not allow clearing cache/incognito/session refresh to reset usage.
+- Preserve existing diagnostic flow and UI as much as possible.
+
+Please inspect:
+- /api/hvac/diagnose
+- /api/usage/status
+- usage tracking logic
+- diagnostic count storage
+- Pro bypass logic
+- frontend upgrade prompt logic
+
+Expected result:
+1. unitdownsupport@gmail.com logs in and all Guides are fully unlocked.
+2. A normal free user can run only 5 diagnostics total.
+3. On the 6th diagnostic, normal free users are blocked with upgrade prompt.
+4. Existing Pro users remain unlimited.
+5. No unrelated UI or payment changes.

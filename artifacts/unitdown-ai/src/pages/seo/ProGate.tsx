@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Lock, CheckCircle2, Loader2, ArrowRight, RotateCcw } from "lucide-react";
+import { useUser } from "@clerk/clerk-react";
 import { purchasePro, restorePurchases, checkIAPSubscriptionActive } from "@/lib/appleIAP";
+import { isDemoProEmail } from "@/lib/demoAccess";
 
 const PRO_KEY = "unitdown_is_pro";
 
@@ -11,6 +13,7 @@ interface ProGateProps {
 }
 
 export default function ProGate({ children, previewTitle }: ProGateProps) {
+  const { user } = useUser();
   const [isPro, setIsPro] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     if (checkIAPSubscriptionActive()) return true;
@@ -28,7 +31,8 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
     }
   }, []);
 
-  if (isPro) {
+  const email = user?.primaryEmailAddress?.emailAddress;
+  if (isDemoProEmail(email) || isPro) {
     return <>{children}</>;
   }
 

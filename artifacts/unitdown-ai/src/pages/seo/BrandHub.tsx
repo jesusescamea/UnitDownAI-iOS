@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { brandPages } from "./brand-data";
 import { ArrowRight, ChevronRight, Tag, Zap, Lock, CheckCircle2 } from "lucide-react";
+import { useUser } from "@clerk/clerk-react";
 import { checkIAPSubscriptionActive } from "@/lib/appleIAP";
+import { isDemoProEmail } from "@/lib/demoAccess";
 
 const CLIENT_ID_KEY = "unitdown_client_id";
 const PRO_KEY = "unitdown_is_pro";
@@ -19,6 +21,7 @@ const brandCategories = [
 ];
 
 function useProStatus() {
+  const { user } = useUser();
   const [isPro, setIsPro] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     if (checkIAPSubscriptionActive()) return true;
@@ -32,7 +35,8 @@ function useProStatus() {
     }
   }, []);
 
-  return isPro;
+  const email = user?.primaryEmailAddress?.emailAddress;
+  return isDemoProEmail(email) || isPro;
 }
 
 export default function BrandHub() {

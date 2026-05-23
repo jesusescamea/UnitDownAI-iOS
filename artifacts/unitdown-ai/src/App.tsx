@@ -131,7 +131,7 @@ const LEADS_KEY = "unitdown_leads";
 const DIAG_COUNT_KEY = "unitdown_free_diagnostics_used";
 const CLIENT_ID_KEY = "unitdown_client_id";
 const PRO_KEY = "unitdown_is_pro";
-const FREE_DIAGNOSES = 3;
+const FREE_DIAGNOSES = 5;
 const MAX_HISTORY = 20;
 
 function getOrCreateClientId(): string {

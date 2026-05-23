@@ -2,7 +2,7 @@
 // the usage router and the hvac router (backstop check).
 
 export const FREE_ANON_USES = 2;         // anonymous: 1st & 2nd free
-export const FREE_AUTH_USES = 3;         // Clerk users: up to 3rd free
+export const FREE_AUTH_USES = 5;         // Clerk users: up to 5th free
 
 export type UsageStatus = "free" | "login_gate" | "upgrade_wall";
 
