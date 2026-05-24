@@ -83,7 +83,13 @@ hvacRouter.post("/hvac/diagnose", async (req: Request, res: Response) => {
   // a freshly-logged-in user is not blocked by their old anonymous browser session.
   let freeSession: (typeof freeUsage.$inferSelect) | null = null;
   if (!isPro) {
-    const sessionLookupId: string | undefined = clientId
+    // Only Clerk user IDs (user_xxx) are stable per-account identifiers.
+    // Anonymous localStorage UUIDs are NOT the same as the cookie-based session
+    // IDs that the gate creates — using clientId for anon users would never find
+    // the session and the backstop check would silently skip, allowing unlimited
+    // diagnoses. Always use the session cookie for non-Clerk users.
+    const isAuthClient = typeof clientId === "string" && clientId.startsWith("user_");
+    const sessionLookupId: string | undefined = isAuthClient
       ? clientId
       : (req as any).cookies?.unitdown_session;
 
@@ -94,18 +100,19 @@ hvacRouter.post("/hvac/diagnose", async (req: Request, res: Response) => {
         .where(sql`${freeUsage.sessionId} = ${sessionLookupId}`);
 
       if (session) {
-        const isAuthClient = typeof clientId === "string" && clientId.startsWith("user_");
         const backstopStatus = computeStatus(session, isAuthClient);
         if (backstopStatus !== "free") {
           res.status(429).json({ error: "Usage limit reached", status: backstopStatus });
           return;
         }
         freeSession = session;
-      } else if (clientId) {
+      } else if (isAuthClient) {
         // Clerk user with no session yet (gate creates it; this is a safety net).
         // Allow the request — their count will be 0 and will be created on increment.
         freeSession = null;
       }
+      // Anonymous user with no cookie session: allow once (gate should have run
+      // first and set the cookie; if not, the server cannot track this request).
     }
   }
 

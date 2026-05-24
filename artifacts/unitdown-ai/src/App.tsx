@@ -131,7 +131,7 @@ const LEADS_KEY = "unitdown_leads";
 const DIAG_COUNT_KEY = "unitdown_free_diagnostics_used";
 const CLIENT_ID_KEY = "unitdown_client_id";
 const PRO_KEY = "unitdown_is_pro";
-const FREE_DIAGNOSES = 5;
+const FREE_DIAGNOSES = 4;
 const MAX_HISTORY = 20;
 
 function getOrCreateClientId(): string {
@@ -1650,7 +1650,7 @@ function Home() {
   const [modalOpen, setModalOpen] = useState(false);
   const [emailWallOpen, setEmailWallOpen] = useState(false);
   const [diagCount, setDiagCount] = useState(0);
-  const [freeRemaining, setFreeRemaining] = useState(5);
+  const [freeRemaining, setFreeRemaining] = useState(4);
   // Always start Free. isPro is only elevated to true after the server (or
   // Apple IAP) explicitly confirms an active paid subscription. Never trust
   // the localStorage cache at startup — it can be stale after a sub lapses,
@@ -1949,8 +1949,14 @@ function Home() {
         openModal();
       }
     } catch (gateErr) {
-      console.warn("[UnitDown] Gate request failed — allowing diagnosis anyway:", gateErr);
-      // Network error — still allow (graceful degradation)
+      console.warn("[UnitDown] Gate request failed:", gateErr);
+      // Network error: use local usage count as a backstop.
+      // If we can confirm the user is already over the limit, block them.
+      // Only allow if we have no reliable data (diagCount is 0 or under limit).
+      if (!isPro && diagCount >= FREE_DIAGNOSES) {
+        openModal();
+        return;
+      }
       runDiagnosis(trimmed);
     }
   };

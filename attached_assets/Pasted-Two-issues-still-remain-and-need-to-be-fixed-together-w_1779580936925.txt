@@ -1,0 +1,101 @@
+Two issues still remain and need to be fixed together without redesigning the app.
+
+ISSUE 1 — Demo Pro access is still NOT fully working
+
+Current result:
+
+* [unitdownsupport@gmail.com](mailto:unitdownsupport@gmail.com) can successfully sign in
+* Guides landing page appears unlocked
+* BUT individual guide routes still show the premium paywall
+
+Example failing route:
+/guides/rtu-not-cooling-but-compressor-running
+
+The following paywall is still rendering:
+
+* “Unlock Full HVAC Knowledge Library”
+* “Subscribe with Apple”
+* “Restore Purchases”
+
+This means there is still another entitlement gate deeper in the guide/page rendering flow.
+
+Please trace ALL remaining guide-level premium locks and wrappers.
+
+Search for:
+
+* Unlock Full HVAC Knowledge Library
+* Subscribe with Apple
+* Restore Purchases
+* premium gate
+* locked content
+* requirePro
+* ProGate
+* hasAccess
+* isLocked
+* paywall
+* guide wrapper
+* membership gate
+* entitlement checks
+* Apple IAP checks
+* subscription checks
+
+Requirements:
+
+* [unitdownsupport@gmail.com](mailto:unitdownsupport@gmail.com) must bypass ALL premium gates everywhere
+* Individual guide pages must fully render content
+* No Apple subscription screen should appear
+* No restore purchase prompt should appear
+* No premium overlay should appear
+* Do NOT remove monetization logic globally
+* Do NOT affect normal users
+* Do NOT alter Apple/Google sign-in behavior
+
+The paywall component itself must NEVER render for:
+[unitdownsupport@gmail.com](mailto:unitdownsupport@gmail.com)
+
+Please identify the exact remaining component causing the lock and patch it directly.
+
+---
+
+ISSUE 2 — Free diagnostic limit is still broken
+
+Current problem:
+
+* Logged-out users can still run unlimited diagnostics
+* The limit is not being enforced
+* The UI currently says 4 free diagnostics, so keep the limit at 4
+
+Required behavior:
+
+1. Free users get 4 free diagnostics total
+2. This applies to logged-out users and logged-in free users
+3. On the 5th diagnostic attempt, show the Pro upgrade/paywall prompt
+4. Pro users remain unlimited
+5. [unitdownsupport@gmail.com](mailto:unitdownsupport@gmail.com) remains unlimited because it is the demo Pro account
+6. The limit must be enforced server-side, not just localStorage/sessionStorage
+7. Clearing cache, refreshing, or incognito should not easily bypass the limit
+8. Preserve the existing diagnostic flow and UI as much as possible
+
+Please inspect and fix:
+
+* /api/hvac/diagnose
+* /api/usage/status
+* App.tsx diagnostic submit logic
+* handleDiagnose
+* FREE_DIAGNOSES
+* FREE_AUTH_USES
+* anonymous usage tracking
+* authenticated usage tracking
+* upgrade overlay trigger
+* any fallback path allowing diagnosis after limit exhaustion
+
+CRITICAL:
+Do NOT allow the AI diagnosis request to execute once the user has already used 4 diagnostics.
+
+Expected final behavior:
+
+* Logged-out users can run diagnostics 1–4 only
+* Attempt 5 triggers upgrade/paywall
+* Logged-in free users are also blocked on attempt 5
+* Pro users remain unlimited
+* [unitdownsupport@gmail.com](mailto:unitdownsupport@gmail.com) has unlimited diagnostics and full unrestricted Pro access across the entire app

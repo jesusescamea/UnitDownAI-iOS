@@ -13,7 +13,7 @@ interface ProGateProps {
 }
 
 export default function ProGate({ children, previewTitle }: ProGateProps) {
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
   const [isPro, setIsPro] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     if (checkIAPSubscriptionActive()) return true;
@@ -30,6 +30,17 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
       setIsPro(true);
     }
   }, []);
+
+  // While Clerk is still initialising, show a neutral spinner.
+  // Never render the paywall during the loading phase — it would flash
+  // for demo/Pro users whose session hasn't resolved yet.
+  if (!isLoaded) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <Loader2 className="w-7 h-7 text-blue-400 animate-spin" />
+      </div>
+    );
+  }
 
   const email = user?.primaryEmailAddress?.emailAddress;
   if (isDemoProEmail(email) || isPro) {
