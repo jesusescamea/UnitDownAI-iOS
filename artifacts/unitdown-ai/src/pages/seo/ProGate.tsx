@@ -5,7 +5,9 @@ import { useUser } from "@clerk/clerk-react";
 import { purchasePro, restorePurchases, checkIAPSubscriptionActive } from "@/lib/appleIAP";
 import { isDemoProEmail } from "@/lib/demoAccess";
 
+// Must match the key used by App.tsx's saveIsProCached("1" / "0")
 const PRO_KEY = "unitdown_is_pro";
+const CLIENT_ID_KEY = "unitdown_client_id";
 
 interface ProGateProps {
   children: React.ReactNode;
@@ -14,27 +16,70 @@ interface ProGateProps {
 
 export default function ProGate({ children, previewTitle }: ProGateProps) {
   const { user, isLoaded } = useUser();
+
+  // Initialise from localStorage immediately so returning Pro users never see
+  // the paywall even for a frame. App.tsx saves "1" via saveIsProCached — the
+  // previous check for "true" was the primary bug: they never matched.
   const [isPro, setIsPro] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     if (checkIAPSubscriptionActive()) return true;
-    return localStorage.getItem(PRO_KEY) === "true";
+    return localStorage.getItem(PRO_KEY) === "1";
   });
+
   const [loading, setLoading] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
 
+  // Apple IAP active-subscription check (runs once on mount).
   useEffect(() => {
     if (checkIAPSubscriptionActive()) {
-      localStorage.setItem(PRO_KEY, "true");
+      localStorage.setItem(PRO_KEY, "1");
       setIsPro(true);
     }
   }, []);
 
+  // Server-side Pro verification — mirrors App.tsx's refreshUsageStatus.
+  // Runs on mount and again when Clerk finishes loading so both the
+  // cached-localStorage path and the Clerk-loaded path are covered.
+  //
+  // Why this is needed:
+  //   • localStorage fix handles returning users who already have "1" cached.
+  //   • This useEffect handles first-visit or when Clerk errors caused the
+  //     cache to be absent. It passes testerEmail so the server's tester
+  //     whitelist fires for unitdownsupport@gmail.com regardless of Stripe/IAP.
+  useEffect(() => {
+    if (isPro) return; // already unlocked — no need to query
+
+    const email = user?.primaryEmailAddress?.emailAddress ?? undefined;
+    // Prefer the Clerk user ID; fall back to whatever is stored in localStorage
+    // (App.tsx writes the Clerk ID there on sign-in, so it survives page loads).
+    const clientId: string =
+      user?.id ?? localStorage.getItem(CLIENT_ID_KEY) ?? "";
+
+    if (!clientId) return;
+
+    const params = new URLSearchParams({ clientId });
+    if (email) params.set("testerEmail", email);
+
+    fetch(`/api/usage/status?${params.toString()}`, { credentials: "include" })
+      .then((r) => r.json())
+      .then((d: { isPro: boolean }) => {
+        if (d.isPro) {
+          setIsPro(true);
+          localStorage.setItem(PRO_KEY, "1");
+        }
+      })
+      .catch(() => {/* network error — leave current state */});
+  // Re-run when Clerk transitions from loading → loaded so the email is
+  // available on the first successful load after sign-in.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded]);
+
   // While Clerk is still initialising, show a neutral spinner.
-  // Never render the paywall during the loading phase — it would flash
-  // for demo/Pro users whose session hasn't resolved yet.
-  if (!isLoaded) {
+  // Never show the paywall during the loading phase — it would appear for
+  // Pro/demo users whose Clerk session hasn't resolved yet.
+  if (!isLoaded && !isPro) {
     return (
       <div className="min-h-[60vh] flex items-center justify-center">
         <Loader2 className="w-7 h-7 text-blue-400 animate-spin" />
@@ -42,6 +87,7 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
     );
   }
 
+  // Clerk-based demo check (works when Clerk loads the signed-in user).
   const email = user?.primaryEmailAddress?.emailAddress;
   if (isDemoProEmail(email) || isPro) {
     return <>{children}</>;
@@ -53,7 +99,7 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
     setMsg(null);
     const result = await purchasePro();
     if (result.success) {
-      localStorage.setItem(PRO_KEY, "true");
+      localStorage.setItem(PRO_KEY, "1");
       setIsPro(true);
     } else if (!result.cancelled) {
       setError(result.error ?? "Purchase failed. Please try again.");
@@ -67,7 +113,7 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
     setMsg(null);
     const result = await restorePurchases();
     if (result.restoredProductIds.length > 0) {
-      localStorage.setItem(PRO_KEY, "true");
+      localStorage.setItem(PRO_KEY, "1");
       setIsPro(true);
       setMsg("Subscription restored successfully.");
     } else if (result.success) {
