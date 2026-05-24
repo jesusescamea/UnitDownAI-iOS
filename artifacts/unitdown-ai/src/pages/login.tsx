@@ -6,8 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { shouldShowAppleSignIn } from "@/lib/platform";
+import { isDemoProEmail } from "@/lib/demoAccess";
 
-type Step = "email" | "password" | "forgot" | "reset-code" | "reset-password";
+type Step = "email" | "password" | "forgot" | "reset-code" | "reset-password" | "demo-account";
 
 const AUTH_TIMEOUT_MS = 15_000;
 
@@ -130,13 +131,20 @@ export default function LoginPage() {
     }
   }, [signIn, isLoaded]);
 
-  // ── Email → password step ─────────────────────────────────────────────────────
+  // ── Email → password (or demo-account) step ──────────────────────────────────
   const handleEmailContinue = useCallback((e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim()) return;
     setError(null);
     setShowSendCode(false);
-    setStep("password");
+    // Demo/review accounts use Google OAuth — they have no password set.
+    // Route them directly to the dedicated sign-in step so they see a clear
+    // explanation and the correct button, rather than a confusing failure.
+    if (isDemoProEmail(email.trim())) {
+      setStep("demo-account");
+    } else {
+      setStep("password");
+    }
   }, [email]);
 
   // ── Sign in with password ─────────────────────────────────────────────────────
@@ -272,7 +280,7 @@ export default function LoginPage() {
   const goBack = () => {
     setError(null);
     setShowSendCode(false);
-    if (step === "password" || step === "forgot") setStep("email");
+    if (step === "password" || step === "forgot" || step === "demo-account") setStep("email");
     else if (step === "reset-code") setStep("forgot");
     else if (step === "reset-password") setStep("reset-code");
     else navigate("/");
@@ -284,6 +292,7 @@ export default function LoginPage() {
     forgot: "Reset your password",
     "reset-code": "Check your email",
     "reset-password": "Set a new password",
+    "demo-account": "Sign in to continue",
   };
 
   const stepSubtitle: Record<Step, string> = {
@@ -292,6 +301,7 @@ export default function LoginPage() {
     forgot: "We'll send a 6-digit code to your email address.",
     "reset-code": `If an account exists for ${email || "that address"}, a verification code or reset link has been sent.`,
     "reset-password": "Create a new secure password for your account.",
+    "demo-account": email,
   };
 
   return (
@@ -468,6 +478,49 @@ export default function LoginPage() {
                 </Button>
               )}
             </form>
+          )}
+
+          {/* ── STEP: demo-account ── */}
+          {/* Shown when the user enters a demo/review email (e.g. unitdownsupport@gmail.com).
+              These accounts were created with Google OAuth and have no password set.
+              We skip the password form entirely and guide them to the correct method. */}
+          {step === "demo-account" && (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-blue-50 border border-blue-200 px-4 py-3 text-sm text-blue-800 leading-snug">
+                <p className="font-semibold mb-1">Demo / review account</p>
+                <p>
+                  This account uses <strong>Google Sign-In</strong> — no password is set.
+                  Tap <em>Continue with Google</em> below to sign in instantly.
+                </p>
+              </div>
+
+              <button
+                onClick={handleGoogle}
+                disabled={!isLoaded || loading}
+                className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-semibold text-slate-700 text-sm transition-colors disabled:opacity-50"
+                data-testid="btn-google-demo"
+              >
+                <GoogleIcon />
+                Continue with Google
+              </button>
+
+              <div className="flex items-center gap-3">
+                <div className="flex-1 h-px bg-slate-200" />
+                <span className="text-xs text-slate-400 font-medium">having trouble?</span>
+                <div className="flex-1 h-px bg-slate-200" />
+              </div>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={sendCode}
+                disabled={!isLoaded || loading}
+                className="w-full h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold rounded-xl"
+                data-testid="btn-send-code-demo"
+              >
+                {loading ? "Sending…" : "Send verification code instead"}
+              </Button>
+            </div>
           )}
 
           {/* ── STEP: forgot ── */}
