@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { useUser, useClerk, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { shouldUseAppleIAP } from "@/lib/platform";
+import { isDemoProEmail } from "@/lib/demoAccess";
 import { purchasePro, restorePurchases, fetchProducts, checkIAPSubscriptionActive, IAP_PRODUCT_ID } from "@/lib/appleIAP";
 import TermsPage from "./pages/terms";
 import PrivacyPage from "./pages/privacy";
@@ -395,18 +396,13 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
         if (match) {
           setProductPrice(match.price);
         } else {
-          // On iOS this means the product wasn't found — either the native
-          // plugin isn't installed in Xcode or the product ID isn't live in
-          // App Store Connect. Surface it explicitly so it can be diagnosed.
           setError(
-            `Subscription product could not be loaded from the App Store (ID: ${IAP_PRODUCT_ID}). ` +
-            "Ensure the product is active in App Store Connect and the native plugin is installed in Xcode.",
+            "Subscriptions are temporarily unavailable. Please try again later.",
           );
         }
       })
-      .catch((err: unknown) => {
-        const msg = err instanceof Error ? err.message : "Failed to load subscription products.";
-        setError(msg);
+      .catch(() => {
+        setError("Subscriptions are temporarily unavailable. Please try again later.");
       })
       .finally(() => setProductsLoading(false));
   }, [open]);
@@ -1696,11 +1692,13 @@ function Home() {
       localStorage.setItem(CLIENT_ID_KEY, newClientId);
       setClientId(newClientId);
 
-      // Demo / App Store review account: grant Pro automatically so Apple
-      // reviewers can access all Pro features without a live IAP purchase.
-      if (clerkUser.primaryEmailAddress?.emailAddress === "review@unitdown.org") {
+      // Demo / App Store review accounts: grant Pro immediately so reviewers
+      // can access all Pro features without a live IAP purchase or Stripe sub.
+      // isDemoProEmail covers both unitdownsupport@gmail.com and review@unitdown.org.
+      if (isDemoProEmail(clerkUser.primaryEmailAddress?.emailAddress)) {
         setIsPro(true);
         saveIsProCached(true);
+        setFreeRemaining(99);
       }
 
     }
@@ -1787,11 +1785,30 @@ function Home() {
   // isPro. Both branches must update isPro so a lapsed subscription or a new
   // account on the same device is correctly shown as Free.
   const refreshUsageStatus = useCallback((cid: string, email?: string) => {
+    // Demo / review emails are whitelisted unconditionally — skip the server
+    // round-trip entirely so no network timeout can block Pro access.
+    if (isDemoProEmail(email)) {
+      setIsPro(true);
+      saveIsProCached(true);
+      setFreeRemaining(99);
+      setProCheckDone(true);
+      return;
+    }
+
     const fp = getFingerprint();
     const emailParam = email ? `&testerEmail=${encodeURIComponent(email)}` : "";
-    fetch(`/api/usage/status?fingerprint=${encodeURIComponent(fp)}&clientId=${encodeURIComponent(cid)}${emailParam}`, { credentials: "include" })
+    // 8-second hard cap — if the server doesn't answer in time, unblock the
+    // UI so the app never stays frozen on a slow network or cold iOS start.
+    const controller = new AbortController();
+    const timerId = setTimeout(() => controller.abort(), 8_000);
+
+    fetch(`/api/usage/status?fingerprint=${encodeURIComponent(fp)}&clientId=${encodeURIComponent(cid)}${emailParam}`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
       .then((r) => r.json())
       .then((d) => {
+        clearTimeout(timerId);
         if (d.isPro) {
           setIsPro(true);
           saveIsProCached(true);
@@ -1808,8 +1825,9 @@ function Home() {
         setProCheckDone(true);
       })
       .catch(() => {
-        // Network error: default to Free defensively, but still show the CTA
-        // so the user is not stuck on a blank nav with no way to upgrade.
+        clearTimeout(timerId);
+        // Network error or 8-second timeout: default to Free defensively but
+        // still unlock the CTA so the user is never stuck on a blank screen.
         setIsPro(false);
         saveIsProCached(false);
         setProCheckDone(true);

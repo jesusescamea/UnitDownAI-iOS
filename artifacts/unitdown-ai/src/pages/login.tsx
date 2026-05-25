@@ -83,7 +83,14 @@ export default function LoginPage() {
 
   // ── Sign in with Apple (iOS native) ──────────────────────────────────────────
   const handleApple = useCallback(async () => {
-    if (!signIn || !isLoaded) return;
+    if (!isLoaded) return;
+    // Clerk loaded but signIn is null → Clerk initialised in an error state.
+    // Surface a clear message instead of silently doing nothing (which looked
+    // like a freeze to App Store reviewers).
+    if (!signIn) {
+      setError("Sign in with Apple is temporarily unavailable. Please try again or use email.");
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
@@ -98,9 +105,9 @@ export default function LoginPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.toLowerCase().includes("timeout")) {
-        setError(msg);
+        setError("Sign in with Apple timed out. Please check your connection and try again.");
       } else {
-        setError("Sign in with Apple is unavailable right now. Please try email.");
+        setError("Sign in with Apple is unavailable right now. Please try again.");
       }
       setLoading(false);
     }
@@ -108,7 +115,11 @@ export default function LoginPage() {
 
   // ── Google OAuth ──────────────────────────────────────────────────────────────
   const handleGoogle = useCallback(async () => {
-    if (!signIn || !isLoaded) return;
+    if (!isLoaded) return;
+    if (!signIn) {
+      setError("Google sign-in is temporarily unavailable. Please try again or use email.");
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
@@ -125,7 +136,7 @@ export default function LoginPage() {
       if (msg.toLowerCase().includes("timeout")) {
         setError("Google sign-in timed out. Please check your connection and try again.");
       } else {
-        setError("Google sign-in is unavailable right now. Please try email.");
+        setError("Google sign-in is unavailable right now. Please try again.");
       }
       setLoading(false);
     }

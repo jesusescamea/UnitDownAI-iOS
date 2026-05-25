@@ -82,21 +82,27 @@ export function setIAPSubscriptionActive(active: boolean): void {
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
-/** Fetch available products from the App Store. */
+/** Fetch available products from the App Store.
+ *  Resolves to [] on any error or if StoreKit doesn't respond within 6 seconds,
+ *  so callers never hang waiting for IAP when the plugin isn't installed or the
+ *  App Store is unreachable. */
 export async function fetchProducts(): Promise<IAPProduct[]> {
-  try {
-    const result = await UnitDownIAP.getProducts({ productIds: [IAP_PRODUCT_ID] });
-    return result.products.map((p) => ({
-      productId: p.productId,
-      title: p.title,
-      description: p.description,
-      price: p.price,
-      priceAsDecimal: p.priceAsDecimal,
-      currency: p.currencyCode,
-    }));
-  } catch {
-    return [];
-  }
+  const timeout = new Promise<IAPProduct[]>((resolve) =>
+    setTimeout(() => resolve([]), 6_000)
+  );
+  const fetch = UnitDownIAP.getProducts({ productIds: [IAP_PRODUCT_ID] })
+    .then((result) =>
+      result.products.map((p) => ({
+        productId: p.productId,
+        title: p.title,
+        description: p.description,
+        price: p.price,
+        priceAsDecimal: p.priceAsDecimal,
+        currency: p.currencyCode,
+      }))
+    )
+    .catch(() => [] as IAPProduct[]);
+  return Promise.race([fetch, timeout]);
 }
 
 /** Initiate a purchase. Must be called from a user gesture. */
