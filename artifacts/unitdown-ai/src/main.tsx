@@ -2,6 +2,13 @@ import { createRoot } from "react-dom/client";
 import { ClerkProvider } from "@clerk/clerk-react";
 import App from "./App";
 import "./index.css";
+import { installIOSPaymentGuard } from "./lib/iosPaymentGuard";
+
+// Install the iOS payment guard BEFORE React renders so that no Stripe or
+// external billing URL can slip through — regardless of how navigation is
+// triggered (window.open, <a> clicks, location.assign, etc.).
+// This is a no-op on web and Android; only activates when isIOSApp() is true.
+installIOSPaymentGuard();
 
 const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
 

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useUser, useClerk, useSignIn } from "@clerk/clerk-react";
-import { shouldUseAppleIAP, isIOS } from "@/lib/platform";
+import { shouldUseAppleIAP, isIOS, isIOSApp } from "@/lib/platform";
 import { checkIAPSubscriptionActive, restorePurchases, IAP_PRODUCT_ID } from "@/lib/appleIAP";
 import {
   ChevronLeft,
@@ -436,7 +436,9 @@ export default function AccountPage() {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-2 pt-1 flex-wrap">
-              {!isPro && (
+              {!isPro && !isIOSApp() && (
+                /* Web only — on iOS all purchases must go through StoreKit (IAP),
+                   never through an external payment provider like Stripe. */
                 <button
                   onClick={() => {
                     navigate("/");
@@ -448,6 +450,16 @@ export default function AccountPage() {
                   <Sparkles className="w-4 h-4" />
                   Upgrade to Pro
                 </button>
+              )}
+
+              {!isPro && isIOSApp() && (
+                /* iOS: direct the user to the in-app purchase flow on the home
+                   screen. No external payment link is ever shown on iOS. */
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  To upgrade, return to the home screen and tap{" "}
+                  <strong>Subscribe</strong> when prompted. All purchases are
+                  processed securely through the App Store.
+                </p>
               )}
 
               {/* On iOS: Restore Purchases available for both Pro and Free users.

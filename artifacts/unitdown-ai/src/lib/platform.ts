@@ -1,7 +1,7 @@
 /**
  * Platform detection utilities.
  * Detects whether the app is running inside a Capacitor native wrapper
- * (iOS or Android) vs. a standard web browser.
+ * (iOS or Android), a Median/GoNative webview, or a standard web browser.
  */
 
 declare global {
@@ -10,6 +10,10 @@ declare global {
       isNativePlatform(): boolean;
       getPlatform(): string;
     };
+    /** Injected by Median (formerly GoNative) webview wrappers. */
+    median?: unknown;
+    /** Legacy GoNative object — older Median SDK versions. */
+    gonative?: unknown;
   }
 }
 
@@ -34,28 +38,43 @@ export function isAndroid(): boolean {
 }
 
 export function isWeb(): boolean {
-  return getPlatform() === "web";
+  return !isNative() && !isMedian();
 }
 
 /**
- * Returns true when the app is running inside Capacitor on iOS.
- * Use this to gate any behaviour that must differ between the iOS App Store
- * build and the standard web experience.
+ * Returns true when running inside a Median (formerly GoNative) webview.
  *
- * iOS App Store build hides third-party login (Google) and external payment
- * flows (Stripe) until Sign in with Apple and StoreKit IAP are fully
- * configured and approved in App Store Connect.
+ * Median does NOT inject window.Capacitor, so isIOS() / isNative() return
+ * false even on a real iPhone. Median instead injects window.median and
+ * sets a recognisable user-agent string — we detect both.
+ */
+export function isMedian(): boolean {
+  if (typeof window === "undefined") return false;
+  if (window.median !== undefined) return true;
+  if (window.gonative !== undefined) return true;
+  const ua = typeof navigator !== "undefined" ? (navigator.userAgent ?? "") : "";
+  return ua.includes("Median") || ua.includes("GoNative");
+}
+
+/**
+ * Returns true when the app is running inside Capacitor on iOS OR inside a
+ * Median/GoNative webview wrapper. Use this to gate any behaviour that must
+ * differ between the iOS App Store build and the standard web experience.
+ *
+ * Both environments must never show Stripe or any external payment UI —
+ * Apple requires all in-app purchases to go through StoreKit.
  */
 export function isIOSApp(): boolean {
-  return isIOS();
+  return isIOS() || isMedian();
 }
 
 /**
- * On iOS (App Store builds) we must NEVER show Stripe or any external
- * payment UI. Apple requires all in-app purchases to go through StoreKit.
+ * On iOS (Capacitor builds AND Median webviews) we must NEVER show Stripe or
+ * any external payment UI. Apple requires all in-app purchases to go through
+ * StoreKit (IAP). Returns false on web and Android.
  */
 export function shouldUseAppleIAP(): boolean {
-  return isIOS();
+  return isIOS() || isMedian();
 }
 
 /**
