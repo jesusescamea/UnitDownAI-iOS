@@ -379,7 +379,7 @@ interface AppleIAPUpgradeModalProps {
 
 function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpgradeModalProps) {
   const [productPrice, setProductPrice] = useState("$7.99");
-  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsLoading, setProductsLoading] = useState(false);
   const [buying, setBuying] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -387,22 +387,31 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
 
   useEffect(() => {
     if (!open) return;
+    // Reset all transient state on every open so a prior error or success
+    // state from a previous session is never carried into the new one.
     setError(null);
     setSuccess(false);
+    setBuying(false);
+    setRestoring(false);
     setProductsLoading(true);
     fetchProducts()
       .then((products) => {
         const match = products.find((p) => p.productId === IAP_PRODUCT_ID);
         if (match) {
+          // StoreKit confirmed the product — show the live App Store price.
           setProductPrice(match.price);
-        } else {
-          setError(
-            "Subscriptions are temporarily unavailable. Please try again later.",
-          );
         }
+        // If StoreKit returned no products (plugin warming up, simulator,
+        // sandbox environment, or Median WebView without the Capacitor bridge),
+        // keep the default $7.99 price and stay silent. The purchase attempt
+        // itself will surface a meaningful error if StoreKit is truly
+        // unavailable. Showing a pre-emptive error before any user action
+        // violates Apple's HIG and breaks the UX in simulators.
       })
       .catch(() => {
-        setError("Subscriptions are temporarily unavailable. Please try again later.");
+        // fetchProducts() never rejects (it catches internally and resolves []),
+        // but guard against unexpected rejections — fall back to default price
+        // without showing an error.
       })
       .finally(() => setProductsLoading(false));
   }, [open]);
@@ -558,7 +567,7 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
                   {/* Purchase button */}
                   <Button
                     onClick={handleBuy}
-                    disabled={buying || restoring || productsLoading || !!error}
+                    disabled={buying || restoring || productsLoading}
                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-extrabold h-12 rounded-xl text-sm transition-all"
                     data-testid="btn-apple-iap-buy"
                   >
