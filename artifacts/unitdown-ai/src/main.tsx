@@ -27,17 +27,30 @@ const proxyUrl = import.meta.env.PROD
 
 // Always redirect back to the exact origin the user logged in from.
 // Using an explicit absolute URL (not "/") prevents Clerk from resolving
-// the redirect against its own registered home URL (shared-gateway.replit.com).
+// the redirect against its own registered home URL (shared-gateway.replit.com)
+// or the stale unit-down-ai-new.replit.app URL in Clerk's instance config.
+//
+// IMPORTANT: Clerk's production instance display_config contains stale URLs
+// (accounts.unitdown.org, unit-down-ai-new.replit.app) left over from an
+// earlier custom-domain configuration attempt. These ClerkProvider props
+// override every one of those at the SDK level so the app never navigates
+// to a non-existent domain.
 const origin = window.location.origin;
 
 createRoot(document.getElementById("root")!).render(
   <ClerkProvider
     publishableKey={PUBLISHABLE_KEY}
     proxyUrl={proxyUrl}
-    signInFallbackRedirectUrl={origin}
-    signUpFallbackRedirectUrl={origin}
+    // ── Sign-in / sign-up paths live inside the app, never on accounts.unitdown.org ──
     signInUrl="/login"
     signUpUrl="/signup"
+    // ── Post-auth redirects: always return to this origin ────────────────────
+    signInFallbackRedirectUrl={origin}
+    signUpFallbackRedirectUrl={origin}
+    afterSignInUrl={origin}
+    afterSignUpUrl={origin}
+    // ── Post sign-out: return to this origin, not accounts.unitdown.org ──────
+    afterSignOutUrl={origin}
   >
     <App />
   </ClerkProvider>

@@ -1,0 +1,88 @@
+URGENT: Full Production Auth/Subscription Audit + Fix Required
+
+The iOS App Store build was rejected again due to a broken subscription/account flow.
+
+Root issue identified:
+The app attempts to open:
+
+https://accounts.unitdown.org
+
+but the domain does not resolve publicly and returns:
+DNS_PROBE_FINISHED_NXDOMAIN
+
+This appears to be breaking the iOS authentication/subscription flow during Apple review and causing:
+“Subscriptions are temporarily unavailable.”
+
+I need a COMPLETE production audit AND fix implementation.
+
+Please perform a full investigation and corrective cleanup of all production auth/subscription infrastructure, including:
+
+1. Identify EVERY reference to:
+
+* accounts.unitdown.org
+* old auth/account domains
+* old Stripe checkout flows
+* deprecated production URLs
+* stale redirect/callback URLs
+
+Search through:
+
+* environment variables
+* Clerk configuration
+* OAuth settings
+* Apple Sign In config
+* Capacitor/iOS config
+* middleware
+* production deployment config
+* publish settings
+* subscription flow
+* StoreKit flow
+* redirect handlers
+* auth guards
+
+2. Determine whether the issue originates from:
+
+* old Replit published deployment
+* stale production environment
+* previous Stripe integration
+* legacy Clerk/auth setup
+* deprecated domain configuration
+* mixed production/dev configs
+
+3. Audit all current production deployments and identify:
+
+* which deployment the App Store build is actually using
+* whether old deployments are still affecting auth/subscription behavior
+* whether stale production databases or environment variables remain attached
+
+4. FIX the issue completely:
+
+* remove stale/deprecated references
+* eliminate dead domains from the iOS flow
+* ensure all auth/account URLs resolve publicly
+* ensure Clerk production config is valid
+* ensure Apple Sign In works cleanly
+* ensure StoreKit purchase flow completes correctly
+* ensure no legacy Stripe web subscription logic remains in the iOS app
+
+5. Verify externally before generating a new build:
+
+* clean install test
+* account login test
+* Apple Sign In test
+* subscription purchase test
+* restore purchases test
+* Pro state persistence after app restart
+* all domains reachable publicly from mobile devices
+
+6. IMPORTANT:
+   Do not make unrelated UI or business logic changes.
+   Focus only on production auth/subscription infrastructure cleanup and stabilization for App Store approval.
+
+Please provide:
+
+* exact root cause
+* what was cleaned up
+* what was fixed
+* what deployment/domain is now authoritative for production
+* confirmation that all broken/deprecated references were removed

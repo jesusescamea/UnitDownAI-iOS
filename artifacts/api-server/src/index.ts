@@ -72,7 +72,77 @@ async function initClerkRedirectUrls() {
   }
 }
 
-await initClerkRedirectUrls();
+// ─── Clerk: patch instance display_config to remove stale / broken URLs ──────
+// When unitdown.org was attached as a custom domain in Replit Publishing,
+// Clerk's instance display_config was automatically updated to use:
+//   - accounts.unitdown.org   (for sign_in_url, sign_up_url, after_sign_out_*)
+//   - unit-down-ai-new.replit.app (for home_url, after_sign_in_url, after_sign_up_url)
+//
+// The accounts.unitdown.org subdomain has NO DNS record (NXDOMAIN), so any
+// Clerk flow that redirects to it — OAuth callbacks, sign-out — fails with
+// DNS_PROBE_FINISHED_NXDOMAIN on the client. The ClerkProvider in main.tsx
+// overrides these at the SDK level, but we also patch the Clerk instance
+// directly so the stored config stays clean for all surfaces.
+async function initClerkInstanceUrls() {
+  try {
+    const secretKey = process.env.CLERK_SECRET_KEY;
+    if (!secretKey) return;
+    if (!secretKey.startsWith("sk_live_")) {
+      logger.info("Clerk: dev key detected — skipping instance URL patch");
+      return;
+    }
+
+    const PRODUCTION_URL = "https://unitdown.org";
+
+    // Read the current instance home_url so we only PATCH when it is stale.
+    const getRes = await fetch("https://api.clerk.com/v1/instance", {
+      headers: { Authorization: `Bearer ${secretKey}` },
+    });
+
+    if (!getRes.ok) {
+      const body = await getRes.text();
+      logger.warn({ status: getRes.status, body }, "Clerk: failed to read instance config");
+      return;
+    }
+
+    const instance = (await getRes.json()) as {
+      home_url?: string;
+    };
+
+    if (instance.home_url === PRODUCTION_URL) {
+      logger.info("Clerk: instance home_url already correct — no patch needed");
+      return;
+    }
+
+    logger.info(
+      { current: instance.home_url, target: PRODUCTION_URL },
+      "Clerk: patching stale instance home_url",
+    );
+
+    const patchRes = await fetch("https://api.clerk.com/v1/instance", {
+      method: "PATCH",
+      headers: {
+        Authorization: `Bearer ${secretKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ home_url: PRODUCTION_URL }),
+    });
+
+    if (patchRes.ok) {
+      logger.info({ home_url: PRODUCTION_URL }, "Clerk: instance home_url patched");
+    } else {
+      const body = await patchRes.json().catch(() => ({}));
+      logger.warn({ status: patchRes.status, body }, "Clerk: instance PATCH failed (non-fatal)");
+    }
+  } catch (err: any) {
+    logger.warn({ err: err.message }, "Clerk: instance URL patch failed (non-fatal)");
+  }
+}
+
+await Promise.all([
+  initClerkRedirectUrls(),
+  initClerkInstanceUrls(),
+]);
 
 app.listen(port, (err) => {
   if (err) {
