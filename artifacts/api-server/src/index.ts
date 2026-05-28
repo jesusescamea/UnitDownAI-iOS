@@ -94,7 +94,21 @@ async function initClerkInstanceUrls() {
 
     const PRODUCTION_URL = "https://unitdown.org";
 
-    // Read the current instance home_url so we only PATCH when it is stale.
+    // All URL fields that must point to unitdown.org, never to
+    // accounts.unitdown.org or the old replit.app domain. These map directly
+    // to the PATCH /v1/instance request body fields supported by Clerk's BAPI.
+    const TARGET_URLS: Record<string, string> = {
+      home_url:               PRODUCTION_URL,
+      sign_in_url:            `${PRODUCTION_URL}/login`,
+      sign_up_url:            `${PRODUCTION_URL}/signup`,
+      after_sign_in_url:      PRODUCTION_URL,
+      after_sign_up_url:      PRODUCTION_URL,
+      after_sign_out_one_url: PRODUCTION_URL,
+      after_sign_out_all_url: PRODUCTION_URL,
+      after_switch_session_url: PRODUCTION_URL,
+    };
+
+    // Read the current instance config so we can diff before patching.
     const getRes = await fetch("https://api.clerk.com/v1/instance", {
       headers: { Authorization: `Bearer ${secretKey}` },
     });
@@ -105,18 +119,24 @@ async function initClerkInstanceUrls() {
       return;
     }
 
-    const instance = (await getRes.json()) as {
-      home_url?: string;
-    };
+    const instance = (await getRes.json()) as Record<string, unknown>;
 
-    if (instance.home_url === PRODUCTION_URL) {
-      logger.info("Clerk: instance home_url already correct — no patch needed");
+    // Build a patch body containing only the fields that are currently stale.
+    const patchBody: Record<string, string> = {};
+    for (const [field, target] of Object.entries(TARGET_URLS)) {
+      if (instance[field] !== target) {
+        patchBody[field] = target;
+      }
+    }
+
+    if (Object.keys(patchBody).length === 0) {
+      logger.info("Clerk: all instance URLs already correct — no patch needed");
       return;
     }
 
     logger.info(
-      { current: instance.home_url, target: PRODUCTION_URL },
-      "Clerk: patching stale instance home_url",
+      { staleFields: Object.keys(patchBody), patchBody },
+      "Clerk: patching stale instance URLs",
     );
 
     const patchRes = await fetch("https://api.clerk.com/v1/instance", {
@@ -125,11 +145,11 @@ async function initClerkInstanceUrls() {
         Authorization: `Bearer ${secretKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ home_url: PRODUCTION_URL }),
+      body: JSON.stringify(patchBody),
     });
 
     if (patchRes.ok) {
-      logger.info({ home_url: PRODUCTION_URL }, "Clerk: instance home_url patched");
+      logger.info({ patchedFields: Object.keys(patchBody) }, "Clerk: instance URLs patched");
     } else {
       const body = await patchRes.json().catch(() => ({}));
       logger.warn({ status: patchRes.status, body }, "Clerk: instance PATCH failed (non-fatal)");
