@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useUser, useClerk, useSignIn } from "@clerk/clerk-react";
 import { shouldUseAppleIAP, isIOS, isIOSApp } from "@/lib/platform";
 import { checkIAPSubscriptionActive, restorePurchases, IAP_PRODUCT_ID } from "@/lib/appleIAP";
+import { isDemoProEmail } from "@/lib/demoAccess";
 import {
   ChevronLeft,
   ChevronRight,
@@ -176,10 +177,11 @@ export default function AccountPage() {
     return () => { document.title = "UnitDown AI — HVAC Diagnostics"; };
   }, []);
 
-  // Demo / App Review account: if the signed-in user is review@unitdown.org,
-  // grant Pro status automatically so the Apple reviewer can access all features.
+  // Demo / App Review accounts: grant Pro status automatically so Apple
+  // reviewers can access all features without a real purchase.
+  // isDemoProEmail covers both unitdownsupport@gmail.com and review@unitdown.org.
   useEffect(() => {
-    if (email === "review@unitdown.org") {
+    if (isDemoProEmail(email)) {
       setIsPro(true);
       try { localStorage.setItem(PRO_KEY, "1"); } catch {}
     }

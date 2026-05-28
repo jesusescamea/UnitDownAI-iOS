@@ -20,6 +20,7 @@ import { isIOSApp } from "./platform";
 
 /** Substrings that identify external payment pages that must be blocked. */
 const BLOCKED_PATTERNS: readonly string[] = [
+  // Stripe checkout surfaces
   "checkout.stripe.com",
   "buy.stripe.com",
   "billing.stripe.com",
@@ -27,6 +28,10 @@ const BLOCKED_PATTERNS: readonly string[] = [
   "stripe.com/pay",
   "stripe.com/b/",
   "js.stripe.com",
+  // Stripe Link checkout (checkout.link.com)
+  "checkout.link.com",
+  // Generic Stripe payment links
+  "stripe.com/payment-links",
 ];
 
 function isBlockedUrl(url: string): boolean {
