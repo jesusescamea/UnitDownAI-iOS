@@ -4,10 +4,14 @@
  * Capacitor plugin that bridges StoreKit 2 purchases to the JavaScript layer.
  *
  * Installation (in Xcode, outside Replit):
- *   1. Copy this file into ios/App/App/ in your Xcode project.
+ *   1. Copy THIS file AND UnitDownIAPPlugin.m into ios/App/App/.
  *   2. Enable "In-App Purchase" capability on the App target.
- *   3. Create product com.unitdown.ai.pro.monthly in App Store Connect.
+ *   3. Create product com.unitdown.subscription.monthly in App Store Connect
+ *      as an Auto-Renewable Subscription in a subscription group.
  *   4. Run: npx cap sync
+ *
+ * The .m file is the Objective-C bridge that registers the plugin methods
+ * with the Capacitor runtime. Both files are required.
  *
  * This plugin exposes four methods to JavaScript:
  *   - getProducts({ productIds })

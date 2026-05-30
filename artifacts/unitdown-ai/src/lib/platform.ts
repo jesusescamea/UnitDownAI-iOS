@@ -57,24 +57,25 @@ export function isMedian(): boolean {
 }
 
 /**
- * Returns true when the app is running inside Capacitor on iOS OR inside a
- * Median/GoNative webview wrapper. Use this to gate any behaviour that must
- * differ between the iOS App Store build and the standard web experience.
+ * Returns true when the app is running inside a Capacitor iOS shell.
+ * Use this to gate behaviour that must differ between the iOS App Store build
+ * and the standard web / Android experience.
  *
- * Both environments must never show Stripe or any external payment UI —
- * Apple requires all in-app purchases to go through StoreKit.
+ * This is Capacitor-only — it returns false in a plain browser, in Android,
+ * and in any non-Capacitor WebView wrapper (e.g. Median simulator).
+ * The iOS Capacitor shell injects window.Capacitor and reports platform "ios".
  */
 export function isIOSApp(): boolean {
-  return isIOS() || isMedian();
+  return isIOS();
 }
 
 /**
- * On iOS (Capacitor builds AND Median webviews) we must NEVER show Stripe or
- * any external payment UI. Apple requires all in-app purchases to go through
- * StoreKit (IAP). Returns false on web and Android.
+ * On Capacitor iOS builds we must NEVER show Stripe or any external payment
+ * UI. Apple requires all in-app purchases to go through StoreKit (IAP).
+ * Returns false on web and Android.
  */
 export function shouldUseAppleIAP(): boolean {
-  return isIOS() || isMedian();
+  return isIOS();
 }
 
 /**

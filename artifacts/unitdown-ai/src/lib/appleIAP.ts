@@ -5,17 +5,18 @@
  * through to native Swift code in the iOS app target.
  *
  * Product setup required in App Store Connect:
- *   Product ID: com.unitdown.ai.pro.monthly
+ *   Product ID: com.unitdown.subscription.monthly
  *   Type: Auto-renewing subscription
  *   Price: $7.99/month
  *
  * iOS Xcode setup (outside Replit):
  *   1. Run: npx cap add ios && npx cap sync
- *   2. Enable "In-App Purchase" capability in the Xcode target.
- *   3. Add the StoreKit.framework to "Frameworks, Libraries, and Embedded Content".
- *   4. Copy artifacts/unitdown-ai/ios-plugins/UnitDownIAPPlugin.swift into
- *      ios/App/App/ in Xcode. It registers the bridge methods used here.
- *   5. Create the IAP product in App Store Connect and add it to the target.
+ *   2. Enable "In-App Purchase" capability on the App target.
+ *   3. Copy artifacts/unitdown-ai/ios-plugins/UnitDownIAPPlugin.swift AND
+ *      UnitDownIAPPlugin.m into ios/App/App/ in Xcode.
+ *   4. The .m file registers the plugin methods with the Capacitor bridge.
+ *   5. Create the IAP product com.unitdown.subscription.monthly in App Store
+ *      Connect and configure the subscription group.
  *
  * This module no-ops gracefully on web so the same React components compile
  * without errors in the browser.
@@ -23,7 +24,7 @@
 
 import { registerPlugin } from "@capacitor/core";
 
-export const IAP_PRODUCT_ID = "com.unitdown.ai.pro.monthly";
+export const IAP_PRODUCT_ID = "com.unitdown.subscription.monthly";
 
 // ── Plugin interface ──────────────────────────────────────────────────────────
 
