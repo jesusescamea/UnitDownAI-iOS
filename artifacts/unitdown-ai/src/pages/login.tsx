@@ -143,20 +143,54 @@ export default function LoginPage() {
   }, [signIn, isLoaded]);
 
   // ── Email → password (or demo-account) step ──────────────────────────────────
-  const handleEmailContinue = useCallback((e: React.FormEvent) => {
+  //
+  // APPLE REVIEW DEMO ACCOUNT BYPASS
+  // When unitdownsupport@gmail.com (or any DEMO_PRO_EMAILS entry) is entered,
+  // we silently obtain a Clerk sign-in token from the backend and complete
+  // authentication via the "ticket" strategy — no OTP, email code, magic link,
+  // 2FA, or password prompt of any kind. The reviewer lands directly in the app.
+  // Normal email addresses are unaffected and follow the password step as usual.
+  const handleEmailContinue = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim()) return;
+    if (!email.trim() || !signIn || !isLoaded) return;
     setError(null);
     setShowSendCode(false);
-    // Demo/review accounts use Google OAuth — they have no password set.
-    // Route them directly to the dedicated sign-in step so they see a clear
-    // explanation and the correct button, rather than a confusing failure.
+
     if (isDemoProEmail(email.trim())) {
+      // APPLE REVIEW — attempt silent token-based sign-in
+      setLoading(true);
+      try {
+        const res = await fetch("/api/auth/demo-token", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: email.trim().toLowerCase() }),
+        });
+        if (res.ok) {
+          const { token } = (await res.json()) as { token: string };
+          const result = await withTimeout(
+            // Clerk "ticket" strategy — completes sign-in instantly, no verification step
+            signIn.create({ strategy: "ticket", ticket: token })
+          );
+          if (result.status === "complete") {
+            await setActive({ session: result.createdSessionId });
+            navigate("/");
+            return; // Done — reviewer is now signed in as Pro
+          }
+        }
+      } catch {
+        // Token flow failed (env var not set, network issue, etc.)
+        // Fall through to the demo-account step as a fallback.
+      } finally {
+        setLoading(false);
+      }
+      // Fallback: show the Google / email-code step
       setStep("demo-account");
-    } else {
-      setStep("password");
+      return;
     }
-  }, [email]);
+
+    // Normal users → password step
+    setStep("password");
+  }, [email, signIn, isLoaded, setActive, navigate]);
 
   // ── Sign in with password ─────────────────────────────────────────────────────
   const handleSignIn = useCallback(async (e: React.FormEvent) => {

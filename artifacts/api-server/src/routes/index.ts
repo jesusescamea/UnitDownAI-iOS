@@ -6,6 +6,7 @@ import sponsorRouter from "./sponsor";
 import feedbackRouter from "./feedback";
 import resolutionRouter from "./resolution";
 import historyRouter from "./history";
+import demoRouter from "./demo"; // APPLE REVIEW — demo-account bypass
 
 const router: IRouter = Router();
 
@@ -16,5 +17,6 @@ router.use(sponsorRouter);
 router.use(feedbackRouter);
 router.use(resolutionRouter);
 router.use(historyRouter);
+router.use(demoRouter); // APPLE REVIEW — demo sign-in token endpoint
 
 export default router;
