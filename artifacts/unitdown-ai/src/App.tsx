@@ -1657,11 +1657,11 @@ function Home() {
   const [emailWallOpen, setEmailWallOpen] = useState(false);
   const [diagCount, setDiagCount] = useState(0);
   const [freeRemaining, setFreeRemaining] = useState(4);
-  // Always start Free. isPro is only elevated to true after the server (or
-  // Apple IAP) explicitly confirms an active paid subscription. Never trust
-  // the localStorage cache at startup — it can be stale after a sub lapses,
-  // a new account signs in, or a test session was left behind.
-  const [isPro, setIsPro] = useState(false);
+  // Start as Pro immediately for demo/review sessions (sessionStorage flag set
+  // by login.tsx) so the paywall never flashes before refreshUsageStatus fires.
+  // All other users start Free — isPro is elevated only after the server or
+  // Apple IAP confirms an active paid subscription.
+  const [isPro, setIsPro] = useState(() => isDemoSessionActive());
   // proCheckDone gates the upgrade CTA. Keep it false until the server
   // responds so we never show a "Join Pro" button to an already-Pro user.
   const [proCheckDone, setProCheckDone] = useState(false);
