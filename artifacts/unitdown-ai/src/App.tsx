@@ -3,6 +3,7 @@ import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { useUser, useClerk, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { shouldUseAppleIAP } from "@/lib/platform";
 import { isDemoProEmail } from "@/lib/demoAccess";
+import { isDemoSessionActive } from "@/lib/demoSession";
 import { purchasePro, restorePurchases, fetchProducts, checkIAPSubscriptionActive, IAP_PRODUCT_ID } from "@/lib/appleIAP";
 import TermsPage from "./pages/terms";
 import PrivacyPage from "./pages/privacy";
@@ -1794,6 +1795,17 @@ function Home() {
   // isPro. Both branches must update isPro so a lapsed subscription or a new
   // account on the same device is correctly shown as Free.
   const refreshUsageStatus = useCallback((cid: string, email?: string) => {
+    // APPLE REVIEW — local demo session bypass. Checked first so it works even
+    // when there is no Clerk session. getDemoSessionEmail() is used as a
+    // fallback testerEmail so the server also whitelists the session.
+    if (isDemoSessionActive()) {
+      setIsPro(true);
+      saveIsProCached(true);
+      setFreeRemaining(99);
+      setProCheckDone(true);
+      return;
+    }
+
     // Demo / review emails are whitelisted unconditionally — skip the server
     // round-trip entirely so no network timeout can block Pro access.
     if (isDemoProEmail(email)) {
@@ -1966,8 +1978,10 @@ function Home() {
 
       if (gateData.allowed) {
         runDiagnosis(trimmed);
-      } else if (!clerkUser) {
+      } else if (!clerkUser && !isDemoSessionActive()) {
         // Anonymous user hit free limit → show signup/login prompt
+        // APPLE REVIEW: demo session is treated as Pro (isPro=true above) so
+        // this branch is never reached for the reviewer — but guard explicitly.
         pendingSymptomsRef.current = trimmed;
         setEmailWallOpen(true);
       } else {

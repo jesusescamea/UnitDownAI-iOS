@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { shouldShowAppleSignIn } from "@/lib/platform";
 import { isDemoProEmail } from "@/lib/demoAccess";
+import { activateDemoSession } from "@/lib/demoSession";
 
 type Step = "email" | "password" | "forgot" | "reset-code" | "reset-password" | "demo-account";
 
@@ -142,14 +143,16 @@ export default function LoginPage() {
     }
   }, [signIn, isLoaded]);
 
-  // ── Email → password (or demo-account) step ──────────────────────────────────
+  // ── Email → password (or demo bypass) step ───────────────────────────────────
   //
   // APPLE REVIEW DEMO ACCOUNT BYPASS
-  // When unitdownsupport@gmail.com (or any DEMO_PRO_EMAILS entry) is entered,
-  // we silently obtain a Clerk sign-in token from the backend and complete
-  // authentication via the "ticket" strategy — no OTP, email code, magic link,
-  // 2FA, or password prompt of any kind. The reviewer lands directly in the app.
-  // Normal email addresses are unaffected and follow the password step as usual.
+  // When unitdownsupport@gmail.com (or any DEMO_PRO_EMAILS entry) is entered:
+  //   1. Try a silent Clerk token-based sign-in (works if sign_in_tokens enabled).
+  //   2. If that fails for any reason, fall back to a LOCAL demo session that
+  //      requires NO external provider, NO OTP, NO redirect — just sessionStorage.
+  //      activateDemoSession() stores a flag; the app then treats the session as
+  //      authenticated Pro without any Clerk session at all.
+  // Normal email addresses are completely unaffected.
   const handleEmailContinue = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !signIn || !isLoaded) return;
@@ -157,7 +160,7 @@ export default function LoginPage() {
     setShowSendCode(false);
 
     if (isDemoProEmail(email.trim())) {
-      // APPLE REVIEW — attempt silent token-based sign-in
+      // APPLE REVIEW — step 1: attempt silent Clerk token sign-in
       setLoading(true);
       try {
         const res = await fetch("/api/auth/demo-token", {
@@ -168,23 +171,25 @@ export default function LoginPage() {
         if (res.ok) {
           const { token } = (await res.json()) as { token: string };
           const result = await withTimeout(
-            // Clerk "ticket" strategy — completes sign-in instantly, no verification step
             signIn.create({ strategy: "ticket", ticket: token })
           );
           if (result.status === "complete") {
             await setActive({ session: result.createdSessionId });
             navigate("/");
-            return; // Done — reviewer is now signed in as Pro
+            return;
           }
         }
       } catch {
-        // Token flow failed (env var not set, network issue, etc.)
-        // Fall through to the demo-account step as a fallback.
+        // Clerk ticket strategy unavailable on this instance — use local bypass
       } finally {
         setLoading(false);
       }
-      // Fallback: show the Google / email-code step
-      setStep("demo-account");
+
+      // APPLE REVIEW — step 2 (guaranteed fallback):
+      // Activate a local demo session. No Clerk required. Reviewer enters the
+      // app directly as a Pro user. sessionStorage is cleared on tab close.
+      activateDemoSession(email.trim().toLowerCase());
+      navigate("/");
       return;
     }
 

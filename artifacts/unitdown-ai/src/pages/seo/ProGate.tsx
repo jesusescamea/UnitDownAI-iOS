@@ -4,6 +4,7 @@ import { Lock, CheckCircle2, Loader2, ArrowRight, RotateCcw } from "lucide-react
 import { useUser } from "@clerk/clerk-react";
 import { purchasePro, restorePurchases, checkIAPSubscriptionActive } from "@/lib/appleIAP";
 import { isDemoProEmail } from "@/lib/demoAccess";
+import { isDemoSessionActive } from "@/lib/demoSession";
 
 // Must match the key used by App.tsx's saveIsProCached("1" / "0")
 const PRO_KEY = "unitdown_is_pro";
@@ -85,6 +86,13 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
         <Loader2 className="w-7 h-7 text-blue-400 animate-spin" />
       </div>
     );
+  }
+
+  // APPLE REVIEW — local demo session bypass (no Clerk required).
+  // isDemoSessionActive() reads from sessionStorage — set by login.tsx when the
+  // reviewer enters unitdownsupport@gmail.com and clicks Continue.
+  if (isDemoSessionActive()) {
+    return <>{children}</>;
   }
 
   // Clerk-based demo check (works when Clerk loads the signed-in user).
