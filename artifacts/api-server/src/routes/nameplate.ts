@@ -133,7 +133,7 @@ nameplateRouter.post(
         model: "gpt-5.4",
         // 900 tokens gives the no-nameplate early-exit path (19-field array) and
         // a full extraction enough headroom to complete without truncation.
-        max_tokens: 900,
+        max_completion_tokens: 900,
         messages: [
           {
             role: "user",
