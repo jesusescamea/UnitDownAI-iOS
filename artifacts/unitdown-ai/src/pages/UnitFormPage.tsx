@@ -3,13 +3,12 @@ import { useLocation, useParams } from "wouter";
 import { useUser } from "@clerk/clerk-react";
 import {
   ChevronRight, Camera, Loader2, AlertTriangle, CheckCircle2,
-  ThermometerSnowflake, Save, Trash2, RotateCcw,
+  ThermometerSnowflake, Save, Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,6 +45,57 @@ const emptyForm = (): UnitFormData => ({
 
 function getClientId(): string {
   try { return localStorage.getItem("unitdown_client_id") ?? ""; } catch { return ""; }
+}
+
+// ─── Image resize helper ──────────────────────────────────────────────────────
+// Resizes to at most maxPx on the longest side and converts to JPEG at the
+// given quality. This prevents sending multi-megabyte phone photos to the API
+// and keeps the OCR token count low.
+
+async function resizeImage(
+  file: File,
+  maxPx = 1200,
+  quality = 0.82,
+): Promise<{ base64: string; mimeType: string; previewUrl: string }> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const img = new Image();
+
+    img.onload = () => {
+      URL.revokeObjectURL(objectUrl);
+      const { width: w, height: h } = img;
+      const scale = Math.min(1, maxPx / Math.max(w, h));
+      const canvas = document.createElement("canvas");
+      canvas.width = Math.round(w * scale);
+      canvas.height = Math.round(h * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { reject(new Error("Canvas unavailable")); return; }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) { reject(new Error("Resize failed")); return; }
+          const previewUrl = URL.createObjectURL(blob);
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            const b64 = result.split(",")[1];
+            if (b64) resolve({ base64: b64, mimeType: "image/jpeg", previewUrl });
+            else reject(new Error("Base64 conversion failed"));
+          };
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        },
+        "image/jpeg",
+        quality,
+      );
+    };
+
+    img.onerror = () => {
+      URL.revokeObjectURL(objectUrl);
+      reject(new Error("Image load failed"));
+    };
+    img.src = objectUrl;
+  });
 }
 
 // ─── Form field component ─────────────────────────────────────────────────────
@@ -105,6 +155,8 @@ export default function UnitFormPage() {
   const [rawOcrText, setRawOcrText] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);
   const [ocrError, setOcrError] = useState<string | null>(null);
+  const [ocrConfidence, setOcrConfidence] = useState<number | null>(null);
+  const [ocrFieldCount, setOcrFieldCount] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [loadingUnit, setLoadingUnit] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
@@ -166,25 +218,18 @@ export default function UnitFormPage() {
     setOcrLoading(true);
     setOcrError(null);
     setRawOcrText(null);
+    setOcrConfidence(null);
+    setOcrFieldCount(null);
 
     try {
-      const reader = new FileReader();
-      const base64 = await new Promise<string>((resolve, reject) => {
-        reader.onload = () => {
-          const result = reader.result as string;
-          const b64 = result.split(",")[1];
-          if (b64) resolve(b64); else reject(new Error("Failed to read file"));
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(file);
-      });
-
-      const imageBlobUrl = `data:${file.type};base64,${base64}`;
+      // Resize to 1200px max before uploading — prevents token overuse on
+      // large phone photos and avoids "oversized entity" errors.
+      const { base64, mimeType, previewUrl } = await resizeImage(file);
 
       const res = await fetch("/api/nameplate/ocr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
+        body: JSON.stringify({ imageBase64: base64, mimeType }),
       });
 
       if (!res.ok) {
@@ -195,26 +240,45 @@ export default function UnitFormPage() {
       const data = await res.json();
       const ext = data.extracted ?? {};
 
+      // Confidence + summary
+      const confidence = typeof ext.confidence === "number" ? ext.confidence : null;
+      setOcrConfidence(confidence);
       setRawOcrText(ext.rawText ?? data.rawResponse ?? null);
+
+      // Uncertain fields flagging
       const uncertain: Set<string> = new Set(ext.uncertainFields ?? []);
       setUncertainFields(uncertain);
 
+      // Map extracted keys → form fields
       const fieldMap: Record<string, keyof UnitFormData> = {
-        manufacturer: "manufacturer", modelNumber: "modelNumber", serialNumber: "serialNumber",
-        equipmentType: "equipmentType", systemType: "systemType", refrigerantType: "refrigerantType",
-        voltage: "voltage", phase: "phase", mca: "mca", mocp: "mocp", rla: "rla", lra: "lra",
-        capacityTons: "capacityTons", manufactureDate: "manufactureDate",
+        manufacturer:    "manufacturer",
+        modelNumber:     "modelNumber",
+        serialNumber:    "serialNumber",
+        equipmentType:   "equipmentType",
+        systemType:      "systemType",
+        refrigerantType: "refrigerantType",
+        voltage:         "voltage",
+        phase:           "phase",
+        mca:             "mca",
+        mocp:            "mocp",
+        rla:             "rla",
+        lra:             "lra",
+        capacityTons:    "capacityTons",
+        manufactureDate: "manufactureDate",
       };
 
+      let filled = 0;
       setForm((prev) => {
-        const updated = { ...prev, nameplateImageUrl: imageBlobUrl };
+        const updated = { ...prev, nameplateImageUrl: previewUrl };
         for (const [extKey, formKey] of Object.entries(fieldMap)) {
           if (ext[extKey] != null && String(ext[extKey]).trim()) {
             updated[formKey] = String(ext[extKey]).trim();
+            filled++;
           }
         }
         return updated;
       });
+      setOcrFieldCount(filled);
     } catch (err: any) {
       setOcrError(err.message ?? "OCR failed — please enter fields manually");
     } finally {
@@ -280,6 +344,8 @@ export default function UnitFormPage() {
     );
   }
 
+  const scanSucceeded = ocrFieldCount != null && ocrFieldCount > 0 && !ocrLoading && !ocrError;
+
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
       {/* Header */}
@@ -315,48 +381,72 @@ export default function UnitFormPage() {
           </div>
         )}
 
-        {/* Scan Nameplate Button */}
+        {/* Scan Nameplate Card */}
         <div className="bg-gradient-to-br from-blue-600 to-blue-700 rounded-2xl p-4 text-white">
           <div className="flex items-start justify-between gap-3">
             <div>
               <h3 className="font-bold text-sm mb-0.5">Scan Nameplate</h3>
-              <p className="text-blue-100 text-xs">Take or upload a photo of the equipment nameplate to auto-fill fields.</p>
+              <p className="text-blue-100 text-xs">
+                Point camera at the equipment data plate. Fields auto-fill from the nameplate only.
+              </p>
             </div>
             <Button
               onClick={handleScanNameplate}
               disabled={ocrLoading}
               className="bg-white text-blue-700 hover:bg-blue-50 font-bold rounded-xl h-9 px-3 text-xs flex-shrink-0"
             >
-              {ocrLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Camera className="w-3.5 h-3.5 mr-1" />Scan</>}
+              {ocrLoading
+                ? <Loader2 className="w-4 h-4 animate-spin" />
+                : <><Camera className="w-3.5 h-3.5 mr-1" />Scan</>}
             </Button>
           </div>
+
+          {/* Scanning indicator */}
           {ocrLoading && (
             <div className="mt-3 bg-blue-500/40 rounded-xl p-3 text-xs text-blue-100 flex items-center gap-2">
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              Analyzing nameplate — this may take a few seconds…
+              <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+              Reading nameplate — extracting equipment data…
             </div>
           )}
+
+          {/* Error */}
           {ocrError && (
             <div className="mt-3 bg-red-500/20 border border-red-400/30 rounded-xl p-3 text-xs text-red-100 flex items-start gap-2">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
               {ocrError}
             </div>
           )}
+
+          {/* Success summary */}
+          {scanSucceeded && (
+            <div className="mt-3 bg-green-500/20 border border-green-400/30 rounded-xl p-3 text-xs text-green-100 flex items-start gap-2">
+              <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+              <span>
+                Extracted {ocrFieldCount} field{ocrFieldCount !== 1 ? "s" : ""}
+                {ocrConfidence != null ? ` · ${ocrConfidence}% confidence` : ""}.
+                {uncertainFields.size > 0 && ` ${uncertainFields.size} field${uncertainFields.size > 1 ? "s" : ""} need${uncertainFields.size === 1 ? "s" : ""} confirmation.`}
+              </span>
+            </div>
+          )}
+
+          {/* Uncertain fields notice */}
+          {uncertainFields.size > 0 && !ocrLoading && (
+            <div className="mt-2 bg-amber-400/20 border border-amber-400/30 rounded-xl p-3 text-xs text-amber-100 flex items-center gap-2">
+              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
+              {uncertainFields.size} field{uncertainFields.size > 1 ? "s" : ""} highlighted below — verify before saving
+            </div>
+          )}
+
+          {/* Raw OCR text toggle */}
           {rawOcrText && !ocrLoading && (
             <details className="mt-3">
               <summary className="text-xs text-blue-200 cursor-pointer hover:text-white select-none">
-                View raw OCR text
+                View raw nameplate text
               </summary>
               <pre className="mt-2 text-xs text-blue-100 bg-blue-500/30 rounded-xl p-3 whitespace-pre-wrap font-mono leading-relaxed max-h-40 overflow-y-auto">
                 {rawOcrText}
               </pre>
             </details>
-          )}
-          {uncertainFields.size > 0 && !ocrLoading && (
-            <div className="mt-3 bg-amber-400/20 border border-amber-400/30 rounded-xl p-3 text-xs text-amber-100 flex items-center gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
-              {uncertainFields.size} field{uncertainFields.size > 1 ? "s" : ""} need confirmation (highlighted below)
-            </div>
           )}
         </div>
 
@@ -446,7 +536,7 @@ export default function UnitFormPage() {
           disabled={saving}
           className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-12 text-sm"
         >
-          {saving ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Save className="w-4 h-4 mr-2" />}
+          {saving ? <Loader2 className="w-4 h-4 mr-2" /> : <Save className="w-4 h-4 mr-2" />}
           {isEdit ? "Save Changes" : "Save Unit"}
         </Button>
 

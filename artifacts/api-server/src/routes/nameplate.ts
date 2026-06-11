@@ -3,50 +3,71 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 
 const nameplateRouter = Router();
 
-const EXTRACT_PROMPT = `You are an HVAC nameplate data extraction assistant. The user has uploaded a photo of an HVAC equipment nameplate.
+// Strict nameplate-only extraction prompt.
+// Explicitly forbids analysing the unit cabinet or anything outside the data plate.
+// Targets < 700 output tokens — keeps response under 2 KB.
+const EXTRACT_PROMPT = `You are a specialized HVAC nameplate OCR extractor.
 
-Extract every field you can read clearly. For any field that is unclear, partially obscured, or not present on this nameplate, set it to null.
+TASK: Locate the equipment data plate / nameplate label in this image and extract ONLY the text printed on that label.
 
-IMPORTANT RULES:
-- Do NOT guess or infer values that are not visible.
-- Only extract what you can actually read on the nameplate.
-- If a field is ambiguous, set it to null and flag it in "uncertainFields".
-- Return ONLY valid JSON — no markdown, no explanation.
+IGNORE COMPLETELY:
+- Unit cabinet, sheet metal, rooftop surface
+- Wiring, pipes, conduit, ductwork
+- Background, tools, people, jobsite conditions
+- Any text or markings that are NOT on the nameplate label itself
 
-Return this exact JSON structure:
+EXTRACTION RULES:
+- Extract exactly what you can read on the nameplate label — nothing more.
+- NEVER guess, infer, or hallucinate values. If a field is absent or unreadable, set it to null.
+- If a field is partially readable, return the partial text as-is.
+- confidence: integer 0–100 reflecting overall image clarity and nameplate legibility.
+- missing_fields: list every key that you set to null.
+
+Return ONLY the following JSON. No markdown. No explanation. No surrounding text.
+
 {
-  "manufacturer": string | null,
-  "modelNumber": string | null,
-  "serialNumber": string | null,
-  "equipmentType": string | null,
-  "systemType": string | null,
-  "refrigerantType": string | null,
-  "voltage": string | null,
-  "phase": string | null,
-  "mca": string | null,
-  "mocp": string | null,
-  "rla": string | null,
-  "lra": string | null,
-  "capacityTons": string | null,
-  "manufactureDate": string | null,
-  "rawText": string,
-  "uncertainFields": string[],
-  "otherData": string | null
+  "manufacturer": string|null,
+  "modelNumber": string|null,
+  "serialNumber": string|null,
+  "equipmentType": string|null,
+  "systemType": string|null,
+  "voltage": string|null,
+  "phase": string|null,
+  "hertz": string|null,
+  "mca": string|null,
+  "mocp": string|null,
+  "rla": string|null,
+  "lra": string|null,
+  "refrigerantType": string|null,
+  "refrigerantCharge": string|null,
+  "coolingCapacity": string|null,
+  "heatingCapacity": string|null,
+  "capacityTons": string|null,
+  "gasType": string|null,
+  "manufactureDate": string|null,
+  "confidence": number,
+  "missing_fields": string[],
+  "rawText": string
 }
 
-For "equipmentType": extract as written (e.g., "Packaged Rooftop Unit", "Air-Cooled Condensing Unit", "Split System Condensing Unit", "Heat Pump").
-For "systemType": infer from nameplate indicators — "heat pump", "gas heat", "electric heat", or "cooling-only".
-For "voltage": include all voltage ratings if multiple (e.g., "208-230/1/60" or "460/3/60").
-For "phase": extract as number string if visible (e.g., "1", "3").
-For "mca": look for "MCA", "Min Circuit Amps", or "Min. Circ. Amps".
-For "mocp": look for "MOCP", "Max Fuse", "Max Overcurrent", "Max Breaker".
-For "rla" / "lra": look for "RLA", "FLA", "LRA", "RLA/LRA".
-For "capacityTons": look for tonnage, BTU/h (divide by 12000 for tons), or "tons".
-For "rawText": transcribe ALL visible text from the nameplate exactly as you read it.
-For "uncertainFields": list field names you could only partially read.`;
+FIELD GUIDANCE:
+equipmentType  — as printed (e.g. "Packaged Rooftop Unit", "Split System Condensing Unit", "Heat Pump Condenser")
+systemType     — infer from nameplate indicators only: "heat pump" | "gas heat" | "electric heat" | "cooling-only"
+voltage        — include all ratings exactly as printed (e.g. "208-230/1/60", "460/3/60")
+hertz          — Hz rating, usually "60"
+mca            — labeled MCA, Min Circuit Amps, Min. Circ. Amps
+mocp           — labeled MOCP, Max Fuse, Max Overcurrent, Max Breaker, MOP
+rla            — labeled RLA or FLA (Rated/Full Load Amps)
+lra            — labeled LRA (Locked Rotor Amps)
+refrigerantCharge — factory refrigerant charge in oz or lbs (e.g. "84 oz", "5.25 lbs")
+coolingCapacity   — BTU/h or tons for cooling stage
+heatingCapacity   — BTU/h or kW for heating stage
+gasType        — natural gas, LP, propane, etc.
+manufactureDate   — production date code decoded to month/year when possible
+rawText        — every word visible on the nameplate, transcribed exactly as printed`;
 
 // POST /api/nameplate/ocr
-// Body: { imageBase64: string (base64 data, no prefix), mimeType: "image/jpeg" | "image/png" | "image/webp" }
+// Body: { imageBase64: string (base64, no data-URL prefix), mimeType: "image/jpeg" | "image/png" | "image/webp" }
 nameplateRouter.post("/nameplate/ocr", async (req: Request, res: Response) => {
   const { imageBase64, mimeType } = req.body ?? {};
 
@@ -60,18 +81,24 @@ nameplateRouter.post("/nameplate/ocr", async (req: Request, res: Response) => {
 
   const dataUrl = `data:${mime};base64,${imageBase64}`;
 
-  req.log?.info({ mimeType: mime, size: imageBase64.length }, "Nameplate OCR request");
+  req.log?.info(
+    { mimeType: mime, sizeKB: Math.round(imageBase64.length * 0.75 / 1024) },
+    "Nameplate OCR request"
+  );
 
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-5.4",
-      max_tokens: 1200,
+      // 700 tokens is sufficient for the structured JSON output (<2 KB).
+      // detail:"auto" lets the model pick tile strategy after the frontend has
+      // already resized the image — avoids excessive tiling on large originals.
+      max_tokens: 700,
       messages: [
         {
           role: "user",
           content: [
             { type: "text", text: EXTRACT_PROMPT },
-            { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
+            { type: "image_url", image_url: { url: dataUrl, detail: "auto" } },
           ],
         },
       ],
