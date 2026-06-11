@@ -17,6 +17,10 @@ import BrandPage from "./pages/seo/BrandPage";
 import BrandHub from "./pages/seo/BrandHub";
 import SponsorPage from "./pages/SponsorPage";
 import AccountPage from "./pages/AccountPage";
+import RecordsPage from "./pages/RecordsPage";
+import UnitFormPage from "./pages/UnitFormPage";
+import UnitDetailPage from "./pages/UnitDetailPage";
+import DiagnosticLogDetailPage from "./pages/DiagnosticLogDetailPage";
 import InstallPromptBanner from "./components/InstallPromptBanner";
 import EmailWallModal from "./components/EmailWallModal";
 import { getFingerprint } from "./lib/fingerprint";
@@ -1668,6 +1672,8 @@ function Home() {
   const [clientId, setClientId] = useState(getOrCreateClientId);
   const [, navigate] = useLocation();
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
+  const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
+  const [selectedUnitLabel, setSelectedUnitLabel] = useState<string | null>(null);
   const { signOut: clerkSignOut } = useClerk();
   // Google Play closed testing whitelist — remove or replace after testing.
   const testerEmail = clerkUser?.primaryEmailAddress?.emailAddress;
@@ -1859,6 +1865,18 @@ function Home() {
     setHistory(loadHistory());
     setDiagCount(loadDiagCount());
 
+    // Read pre-selected unit navigated from UnitDetailPage
+    try {
+      const preUnitId = sessionStorage.getItem("unitdown_selected_unit_id");
+      const preUnitLabel = sessionStorage.getItem("unitdown_selected_unit_label");
+      if (preUnitId) {
+        sessionStorage.removeItem("unitdown_selected_unit_id");
+        sessionStorage.removeItem("unitdown_selected_unit_label");
+        setSelectedUnitId(preUnitId);
+        setSelectedUnitLabel(preUnitLabel);
+      }
+    } catch {}
+
     // Replay a saved diagnosis navigated back from AccountPage
     try {
       const replayRaw = sessionStorage.getItem("unitdown_replay");
@@ -1930,6 +1948,27 @@ function Home() {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ clientId, entries: [entry] }),
+            }).catch(() => {});
+
+            // Auto-save diagnostic log (linked to selected unit if any)
+            const unitIdForLog = selectedUnitId;
+            const primary = result?.primary;
+            fetch("/api/diagnostic-logs", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                clientId,
+                log: {
+                  unitId: unitIdForLog ?? null,
+                  symptoms: trimmed,
+                  diagnosisId: primary?.id ?? null,
+                  diagnosisTitle: primary?.title ?? null,
+                  confidencePercent: primary?.confidencePercent ?? null,
+                  result,
+                  status: "unresolved",
+                  timestamp: entry.timestamp,
+                },
+              }),
             }).catch(() => {});
           }
           // Refresh server-side count
@@ -2069,6 +2108,16 @@ function Home() {
               <BookOpen className="w-4 h-4" />
               <span className="hidden sm:inline">Guides</span>
             </button>
+            {clerkLoaded && clerkUser && (
+              <button
+                onClick={() => navigate("/records")}
+                className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-blue-50"
+                data-testid="nav-records"
+              >
+                <Wrench className="w-4 h-4" />
+                <span className="hidden sm:inline">Records</span>
+              </button>
+            )}
           </nav>
 
           <div className="flex items-center gap-2">
@@ -2194,6 +2243,35 @@ function Home() {
                   data-testid="hero-input-symptoms"
                   aria-label="Describe HVAC symptoms"
                 />
+                {/* Unit selector — shown only when logged in */}
+                {clerkLoaded && clerkUser && (
+                  <div className="mx-3 mb-2 flex items-center gap-2">
+                    {selectedUnitId ? (
+                      <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-blue-700 flex-1 min-w-0">
+                        <Wrench className="w-3.5 h-3.5 flex-shrink-0" />
+                        <span className="truncate">{selectedUnitLabel ?? "Unit selected"}</span>
+                        <button
+                          type="button"
+                          onClick={() => { setSelectedUnitId(null); setSelectedUnitLabel(null); }}
+                          className="ml-auto text-blue-400 hover:text-blue-700 flex-shrink-0"
+                          aria-label="Remove unit selection"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => navigate("/records")}
+                        className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-blue-600 transition-colors"
+                      >
+                        <Wrench className="w-3.5 h-3.5" />
+                        Select unit (optional)
+                      </button>
+                    )}
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-2 px-3 sm:px-4 pb-3 sm:pb-4 pt-1 sm:pt-2">
                   <div className="hidden sm:flex items-center gap-2 text-sm font-medium">
                     {isPro ? (
@@ -3023,6 +3101,11 @@ function App() {
             <Route path="/brand-guides/:slug" component={BrandPage} />
             <Route path="/sponsor" component={SponsorPage} />
             <Route path="/account" component={AccountPage} />
+            <Route path="/records" component={RecordsPage} />
+            <Route path="/records/new" component={UnitFormPage} />
+            <Route path="/records/:id/edit" component={UnitFormPage} />
+            <Route path="/records/:id" component={UnitDetailPage} />
+            <Route path="/logs/:id" component={DiagnosticLogDetailPage} />
             <Route path="*">
               <div className="p-10 font-bold text-xl">404 Not Found</div>
             </Route>
