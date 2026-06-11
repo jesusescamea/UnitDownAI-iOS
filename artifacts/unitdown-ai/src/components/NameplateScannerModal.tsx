@@ -330,6 +330,9 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
 
       // Auto-timeout → fall back to manual options
       if (Date.now() - startTimeRef.current > TIMEOUT_MS) {
+        // Cancel the already-queued RAF (same pattern as auto-capture path)
+        // so the loop does not keep firing indefinitely after timeout.
+        if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
         setPhase("timeout");
         setInstruction("Couldn't auto-capture. Take a photo manually or enter fields below.");
         return;
