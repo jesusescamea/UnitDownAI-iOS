@@ -28,6 +28,10 @@ export interface DiagnosisDebug {
   controlDropoutSignals: string[];
   pressureCyclingSignals: string[];
   shortCycleBroadWords: string[];
+  lraSignals: string[];
+  inducerRunningSignals: string[];
+  fanRelayOpenSignals: string[];
+  refPatterns: string[];
   top5: Array<{ id: string; title: string; score: number }>;
   penaltiesApplied: string[];
 }
@@ -219,13 +223,13 @@ const CONTROL_DROPOUT_BOOST = SCORE_TRIGGER * 3;
 // (dirty flame sensor, poor ground, gas valve coil dropout).
 // Broad ignition-failure entries are contradicted; the flame-dropout entry is boosted.
 const FLAME_PROVEN_TERMS = [
-  "burners light", "flame lights", "lights then goes out", "flame comes on then",
+  "burners light", "flame lights then", "lights then goes out", "flame comes on then",
   "burners come on then", "fires then goes out", "lights for a second",
   "ignites then cuts out", "burners ignite then", "flame on then off",
   "lights briefly then", "flame then shuts off", "burners fire then",
   "flame dropout", "flame drops out", "proves then drops", "flame carryover",
   "lights up then shuts", "flame for a few seconds", "burners light then",
-  "flame lights then", "fires then shuts", "lights for 2 seconds",
+  "fires then shuts", "lights for 2 seconds",
   "ignites then shuts", "burner lights then", "flame on then shuts",
 ];
 
@@ -257,6 +261,94 @@ const BLOWER_IMMEDIATE_PENALIZED_IDS = new Set([
   "inducer-motor-fault",
 ]);
 const BLOWER_IMMEDIATE_PENALTY = 40;
+
+// ─── Locked Rotor Amps (LRA) detection ────────────────────────────────────────
+// When the user explicitly describes compressor LRA current draw, `compressor-
+// locked-rotor` is the correct fault tree. `ground-fault-wiring` is penalized
+// because both faults trip breakers on compressor start, but LRA is a mechanical
+// starting-torque failure, not an insulation/winding-to-ground fault — the
+// repair path and confirmation test are completely different.
+const LRA_SIGNALS = [
+  "locked rotor amps", "lra", "draws lra", "pulling lra", "lra current",
+  "at lra", "full lra", "locked rotor current", "drawing lra",
+  "lra amperage", "locked rotor amperage", "lra spike",
+];
+const LRA_LOCKED_ROTOR_BOOST = SCORE_TRIGGER * 3;  // 36 pts
+const LRA_GROUND_FAULT_PENALTY = 45;
+
+// ─── Multi-variable refrigerant pattern resolver ──────────────────────────────
+// When multiple refrigerant-side readings appear together the combination
+// unambiguously identifies the fault tree (undercharge vs. floodback vs.
+// overcharge vs. condenser/non-condensables). Apply targeted boosts and
+// penalties so the engine routes to the most specific entry rather than the
+// entry that simply has the most individual term overlaps.
+const REF_LOW_SUCTION_DETECT = [
+  "low suction", "suction pressure low", "suction low", "suction dropping",
+  "low suction pressure", "suction below spec", "suction pressure too low",
+  "suction pressure dropping", "low suction line pressure",
+];
+const REF_HIGH_SH_DETECT = [
+  "high superheat", "superheat high", "superheat too high", "superheat elevated",
+  "superheat above", "superheat is high", "superheat reading high", "evaporator starved",
+];
+const REF_LOW_SH_DETECT = [
+  "low superheat", "superheat low", "superheat too low", "superheat below",
+  "floodback", "flooding back", "liquid floodback", "suction line cold and sweating",
+  "overfeeding refrigerant",
+];
+const REF_HIGH_SC_DETECT = [
+  "high subcooling", "subcooling high", "subcooling too high", "subcooling elevated",
+  "subcooling above spec", "subcooling reading high", "subcooling above",
+];
+const REF_LOW_SC_DETECT = [
+  "low subcooling", "subcooling low", "subcooling too low", "subcooling below spec",
+  "flash gas", "bubbles in sight glass", "sight glass bubbles", "subcooling reading low",
+];
+const REF_HIGH_HEAD_DETECT = [
+  "high head pressure", "head pressure high", "head pressure elevated",
+  "discharge pressure high", "high discharge pressure", "condensing pressure high",
+];
+
+// Undercharge pattern: low-suction + high-SH → starved evaporator / low charge
+const UNDERCHARGE_BOOST_IDS    = new Set(["ref-high-superheat", "ref-low-subcooling", "ref-low-suction-pressure"]);
+const UNDERCHARGE_PENALIZE_IDS = new Set(["ref-low-superheat", "ref-high-subcooling"]);
+// Floodback pattern: low-suction + low-SH → refrigerant flooding back to compressor
+const FLOODBACK_BOOST_IDS      = new Set(["ref-low-superheat"]);
+// Overcharge / restriction pattern: high-head + high-SC → backed-up liquid column
+const OVERCHARGE_BOOST_IDS     = new Set(["ref-high-subcooling"]);
+// Condenser / non-condensables pattern: high-head + low-SC → heat-rejection problem
+const CONDENSER_BOOST_IDS      = new Set(["ref-high-head-pressure"]);
+
+const REF_MULTI_BOOST   = SCORE_TRIGGER * 2;  // 24 pts — equivalent to 2 extra trigger matches
+const REF_MULTI_PENALTY = 35;
+
+// ─── Inducer-running detection ────────────────────────────────────────────────
+// When the user confirms the inducer IS running, `inducer-motor-fault` (which
+// diagnoses a motor that WILL NOT start) is physically contradicted. Penalize
+// it so downstream sequence faults (pressure switch, flame sensor) surface first.
+const INDUCER_RUNNING_TERMS = [
+  "inducer running", "inducer is running", "inducer started", "inducer runs", "inducer starts",
+  "draft motor running", "inducer came on", "inducer motor running",
+  "inducer on", "inducer spinning", "inducer started and ran",
+  "inducer ran", "inducer started running",
+];
+const INDUCER_RUNNING_PENALTY = 42;
+
+// ─── Fan-relay-open-failure detection ────────────────────────────────────────
+// Relay coil receives 24VAC but contacts fail to close → boost the dedicated
+// entry; penalize `gas-heat-immediate-blower` (contacts STUCK CLOSED = blower
+// starts immediately — the opposite physical state from contacts stuck OPEN).
+const FAN_RELAY_OPEN_SIGNALS = [
+  "relay never energizes", "fan relay never energizes",
+  "relay contacts open", "relay contacts measure open",
+  "relay coil gets 24v", "relay coil confirmed",
+  "relay contacts won't close", "blower relay contacts open",
+  "fan relay failed open", "relay contacts stuck open",
+  "relay won't close", "blower relay never closes",
+  "relay coil energized contacts open",
+];
+const FAN_RELAY_OPEN_BOOST  = SCORE_TRIGGER * 3;  // 36 pts
+const FAN_RELAY_GHI_PENALTY = 40;  // penalty on gas-heat-immediate-blower (opposite polarity)
 
 // ─── Heating-mode-active contradiction ────────────────────────────────────────
 // When the user explicitly describes a HEATING mode operation — electric heating,
@@ -730,6 +822,7 @@ const DISCIPLINE_BY_ID_PREFIX: Record<string, string> = {
   "low-delta-t-weak-cooling":        "Cooling Capacity — Airflow / Economizer / Condenser Before Refrigerant Work",
   "main-fuse-overcurrent":           "High-Voltage Electrical — Overcurrent / Ground Fault / Dead Short (Line-Voltage Level)",
   "cooling-call-dropout-control-fault": "Electrical Controls — Low-Voltage Control Dropout / Y-Circuit / Transformer Load",
+  "fan-relay-open-failure":             "Gas Heat Electrical — Blower Relay Contact Failure (Coil Energized / Contacts Open)",
 };
 
 const SEQ_STOP_BY_ID_PREFIX: Record<string, string> = {
@@ -758,6 +851,7 @@ const SEQ_STOP_BY_ID_PREFIX: Record<string, string> = {
   "low-delta-t-weak-cooling":       "Low temperature split — system is running but capacity is reduced. NOT automatically a low-charge fault. Walk the full checklist before gauges: blower speed/CFM vs. design (400 CFM/ton) → measurement location (supply plenum, not register) → economizer damper position → condenser coil condition → then refrigerant pressures only after these are confirmed.",
   "main-fuse-overcurrent":          "Line-voltage overcurrent event — the fuse is protecting against a real fault. DO NOT replace the fuse and restore power without first isolating the cause. Walk the isolation sequence: (1) disconnect compressor contactor load-side leads → restore power → if fuse holds, fault is downstream of contactor; (2) megger compressor windings to ground (500V, must read >1 MΩ); (3) inspect contactor for welded contacts; (4) test run capacitor (>6% low = replace before LRA test); (5) trace all conductors for rodent damage, pinched insulation, or burn marks.",
   "cooling-call-dropout-control-fault": "Sequence stopped at Y-call — compressor and condenser fan start and drop out immediately, OR do not start at all. This is a control-circuit behavior, NOT a refrigerant or mechanical fault. Walk: transformer secondary voltage under load (R to C during Y call) → Y-to-C at each junction (stat sub-base → board Y-in → board Y-out → outdoor Y terminal → contactor coil) → Y1/Y2 termination check against OEM wiring diagram → series safeties (LP switch, HP switch, float, freeze stat). The first 0V measurement locates the break.",
+  "fan-relay-open-failure":             "Sequence reached fan/blower relay energization stage — relay coil IS receiving 24VAC but contacts are not closing. Walk: confirm 24VAC at relay coil terminals (not just at board output) → manual plunger actuation test (depress plunger by hand; contacts should snap to near-zero Ω) → relay coil resistance (100–500 Ω normal for 24VAC coil) → contact resistance across output terminals with plunger depressed. If manual actuation closes contacts but coil energization does not, coil magnetic force is insufficient (wrong coil voltage or spring fatigue). If manual actuation also fails, contacts are physically seized or broken — relay must be replaced.",
 };
 
 const ASSUMPTION_BY_ID_PREFIX: Record<string, string> = {
@@ -786,6 +880,7 @@ const ASSUMPTION_BY_ID_PREFIX: Record<string, string> = {
   "low-delta-t-weak-cooling":      "Do not add refrigerant based on a low delta-T reading alone. Confirm airflow is within design range, the economizer is at minimum position, and the condenser coil is clean before connecting gauges. Adding refrigerant to a high-airflow or economizer problem overcharges the system when the actual fault is later corrected.",
   "main-fuse-overcurrent":         "Do not upsize or bypass the fuse — a fuse blowing on main power is protecting against a real overcurrent or ground fault. Do not megger the compressor with leads still connected to the contactor; disconnect completely first. Do not condemn the compressor before replacing the run capacitor and retesting — a failed capacitor is the most common cause of preventable locked-rotor LRA events.",
   "cooling-call-dropout-control-fault": "Do not connect manifold gauges or add refrigerant until the control circuit is confirmed intact. A cooling call that drops out within 2 seconds of compressor start is almost never a refrigerant fault — do not treat cycling language or a brief startup as evidence of low charge. Verify Y1/Y2 wiring against the OEM diagram before replacing any component; a miswired Y2 lead costs nothing to fix and is the most easily overlooked cause of immediate dropout.",
+  "fan-relay-open-failure":             "Do not replace the control board before confirming 24VAC is present AT the relay coil terminals — a board output fault and a failed relay coil produce identical symptoms but completely different repair paths. Test the relay coil resistance (OL = failed coil) and perform the manual plunger actuation test before ordering any part. A relay that passes the plunger test but still fails to close electrically almost always has an incorrect coil voltage rating (24VAC vs. 24VDC) or a spring-force problem — check the coil voltage spec on the replacement before installation.",
 };
 
 /** Finds the most specific ID-prefix override for a given entry ID. */
@@ -1017,6 +1112,37 @@ export function diagnoseByKnowledgeBase(symptoms: string): DiagnosisResult {
   const shortCycleBroadFound = containsAnyWord(text, SHORT_CYCLE_BROAD_WORDS);
   const shortCycleBroadDetected = shortCycleBroadFound.length > 0;
 
+  // ── LRA detection ─────────────────────────────────────────────────────────
+  const lraSignalsFound = containsAnyWord(text, LRA_SIGNALS);
+  const lraDetected = lraSignalsFound.length > 0;
+
+  // ── Multi-variable refrigerant pattern detection ──────────────────────────
+  const refLowSuctionDetected = containsAnyWord(text, REF_LOW_SUCTION_DETECT).length > 0;
+  const refHighShDetected     = containsAnyWord(text, REF_HIGH_SH_DETECT).length > 0;
+  const refLowShDetected      = containsAnyWord(text, REF_LOW_SH_DETECT).length > 0;
+  const refHighScDetected     = containsAnyWord(text, REF_HIGH_SC_DETECT).length > 0;
+  const refLowScDetected      = containsAnyWord(text, REF_LOW_SC_DETECT).length > 0;
+  const refHighHeadDetected   = containsAnyWord(text, REF_HIGH_HEAD_DETECT).length > 0;
+
+  const underchargePattern = refLowSuctionDetected && refHighShDetected;
+  const floodbackPattern   = refLowSuctionDetected && refLowShDetected;
+  const overchargePattern  = refHighHeadDetected   && refHighScDetected;
+  const condenserPattern   = refHighHeadDetected   && refLowScDetected;
+
+  const refPatternsFound: string[] = [];
+  if (underchargePattern) refPatternsFound.push("undercharge");
+  if (floodbackPattern)   refPatternsFound.push("floodback");
+  if (overchargePattern)  refPatternsFound.push("overcharge-restriction");
+  if (condenserPattern)   refPatternsFound.push("condenser-non-condensables");
+
+  // ── Inducer-running detection ─────────────────────────────────────────────
+  const inducerRunningSignalsFound = containsAnyWord(text, INDUCER_RUNNING_TERMS);
+  const inducerRunningDetected = inducerRunningSignalsFound.length > 0;
+
+  // ── Fan-relay-open detection ──────────────────────────────────────────────
+  const fanRelayOpenSignalsFound = containsAnyWord(text, FAN_RELAY_OPEN_SIGNALS);
+  const fanRelayOpenDetected = fanRelayOpenSignalsFound.length > 0;
+
   // ── Sequence-of-operation context ─────────────────────────────────────────
   const ctx = detectSequenceContext(text);
 
@@ -1122,6 +1248,58 @@ export function diagnoseByKnowledgeBase(symptoms: string): DiagnosisResult {
       }
     }
 
+    // ── LRA boost / ground-fault penalty ─────────────────────────────────
+    // Measured locked-rotor amps confirm the fault tree is compressor locked
+    // rotor — NOT a winding ground fault. Ground fault trips breakers via a
+    // completely different current path and requires megohmmeter confirmation;
+    // LRA is a mechanical starting-torque failure.
+    if (lraDetected) {
+      if (entry.id === "compressor-locked-rotor") {
+        adjustedScore += LRA_LOCKED_ROTOR_BOOST;
+      }
+      if (entry.id === "ground-fault-wiring") {
+        adjustedScore -= LRA_GROUND_FAULT_PENALTY;
+      }
+    }
+
+    // ── Multi-variable refrigerant pattern resolver ────────────────────────
+    // When two or more refrigerant readings appear together, apply targeted
+    // boosts and penalties to route to the correct fault tree.
+    if (underchargePattern) {
+      if (UNDERCHARGE_BOOST_IDS.has(entry.id))    adjustedScore += REF_MULTI_BOOST;
+      if (UNDERCHARGE_PENALIZE_IDS.has(entry.id)) adjustedScore -= REF_MULTI_PENALTY;
+    }
+    if (floodbackPattern && FLOODBACK_BOOST_IDS.has(entry.id)) {
+      adjustedScore += REF_MULTI_BOOST;
+    }
+    if (overchargePattern && OVERCHARGE_BOOST_IDS.has(entry.id)) {
+      adjustedScore += REF_MULTI_BOOST;
+    }
+    if (condenserPattern && CONDENSER_BOOST_IDS.has(entry.id)) {
+      adjustedScore += REF_MULTI_BOOST;
+    }
+
+    // ── Inducer-running contradiction ──────────────────────────────────────
+    // If the inducer IS confirmed running, inducer-motor-fault (motor won't
+    // start) is physically impossible as the primary result.
+    if (inducerRunningDetected && entry.id === "inducer-motor-fault") {
+      adjustedScore -= INDUCER_RUNNING_PENALTY;
+    }
+
+    // ── Fan-relay-open boost / opposite-polarity penalty ──────────────────
+    // Relay coil energized but contacts won't close → dedicated entry gets
+    // priority; penalize the opposite-polarity entry (blower starts immediately
+    // = relay stuck CLOSED — the opposite physical state from relay contacts
+    // stuck OPEN).
+    if (fanRelayOpenDetected) {
+      if (entry.id === "fan-relay-open-failure") {
+        adjustedScore += FAN_RELAY_OPEN_BOOST;
+      }
+      if (entry.id === "gas-heat-immediate-blower") {
+        adjustedScore -= FAN_RELAY_GHI_PENALTY;
+      }
+    }
+
     // ── Compressor-running boost for dedicated capacity-fault entry ────────
     // When the compressor is confirmed running (no-start contradiction active),
     // boost the capacity-fault entry above refrigerant-leak and other entries.
@@ -1221,6 +1399,10 @@ export function diagnoseByKnowledgeBase(symptoms: string): DiagnosisResult {
   if (controlDropoutDetected) penaltiesApplied.push(`controlDropout: signals=[${controlDropoutSignalsFound.join(",")}]`);
   if (pressureCyclingEvidenceDetected) penaltiesApplied.push(`pressureCycling: signals=[${pressureCyclingSignalsFound.join(",")}]`);
   if (shortCycleBroadDetected) penaltiesApplied.push(`shortCycleBroad: words=[${shortCycleBroadFound.join(",")}]`);
+  if (lraDetected) penaltiesApplied.push(`lra: signals=[${lraSignalsFound.join(",")}]`);
+  if (refPatternsFound.length > 0) penaltiesApplied.push(`refPatterns=[${refPatternsFound.join(",")}]`);
+  if (inducerRunningDetected) penaltiesApplied.push(`inducerRunning: signals=[${inducerRunningSignalsFound.join(",")}]`);
+  if (fanRelayOpenDetected) penaltiesApplied.push(`fanRelayOpen: signals=[${fanRelayOpenSignalsFound.join(",")}]`);
 
   const _debug: DiagnosisDebug = {
     normalizedInput: text.slice(0, 200),
@@ -1228,6 +1410,10 @@ export function diagnoseByKnowledgeBase(symptoms: string): DiagnosisResult {
     controlDropoutSignals: controlDropoutSignalsFound,
     pressureCyclingSignals: pressureCyclingSignalsFound,
     shortCycleBroadWords: shortCycleBroadFound,
+    lraSignals: lraSignalsFound,
+    inducerRunningSignals: inducerRunningSignalsFound,
+    fanRelayOpenSignals: fanRelayOpenSignalsFound,
+    refPatterns: refPatternsFound,
     top5: scored.slice(0, 5).map((s) => ({ id: s.entry.id, title: s.entry.title, score: s.score })),
     penaltiesApplied,
   };

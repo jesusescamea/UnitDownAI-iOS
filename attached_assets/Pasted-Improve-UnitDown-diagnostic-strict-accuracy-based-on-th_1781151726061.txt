@@ -1,0 +1,125 @@
+Improve UnitDown diagnostic strict accuracy based on the 15-case validation report.
+
+Do NOT change:
+- UI
+- app layout
+- Stripe/IAP
+- login/auth
+- usage gate
+- Records/Units feature
+- Nameplate OCR
+- pricing
+
+Only improve diagnostic scoring/classification.
+
+Goal:
+Move strict primary accuracy from 8/15 to at least 13/15 while preserving current 93%+ fault-family coverage.
+
+Fix these exact problems:
+
+1. Multi-variable refrigerant resolution
+
+Add priority logic for combined pressure/SH/SC patterns before generic low-suction/high-head trees.
+
+Rules:
+- low suction + high superheat + low subcooling = primary should be undercharge / refrigerant leak
+- low suction + low superheat = primary should be airflow issue / low load / overfeeding / floodback risk
+- high head + high subcooling = primary should be overcharge or liquid-line restriction
+- high head + low subcooling = primary should be condenser airflow issue / non-condensables / heat rejection problem
+
+Generic “Low Suction Pressure” or “High Head Pressure” entries should not win when SH/SC direction clearly resolves the fault.
+
+2. Add qualifier / negation parsing
+
+The matcher must respect ruled-out or affirmative phrases.
+
+Examples:
+- “capacitor tests good” should penalize Failed Capacitor as primary
+- “inducer runs” should block “Inducer Motor Not Starting”
+- “relay never energizes” should block stuck-on / always-on relay diagnoses
+- “no voltage reaches contactor coil” should favor open control circuit
+- “pulls LRA” should favor locked rotor / compressor mechanical/electrical start fault, not generic ground fault
+
+3. Add missing KB entry for relay/contactor open-failure
+
+Add a specific entry:
+
+Title:
+“Fan Relay / Control Output Does Not Energize”
+
+Triggers:
+- blower receives G call but relay never energizes
+- G call present, fan relay does not pull in
+- control board receives fan call but blower output stays off
+- no voltage leaving fan relay
+- relay never closes
+- fan relay open failure
+
+Likely causes:
+1. Failed fan relay or control board output
+2. Open control circuit between thermostat and board
+3. Missing common/reference voltage
+4. Safety/input condition preventing fan output
+5. Loose wiring or failed terminal connection
+
+Meter checks:
+- Confirm 24VAC G to C at thermostat
+- Confirm G signal reaches control board
+- Check board fan output voltage
+- Check relay coil/control signal if accessible
+- Verify line voltage to blower circuit
+- Check board fuse and low-voltage common
+
+This entry must beat any “blower starts immediately,” “relay stuck closed,” or “limit/relay fault” tree when the phrase “never energizes” or “does not energize” appears.
+
+4. Improve locked rotor priority
+
+If input contains:
+- pulls LRA
+- locked rotor amps
+- trips breaker immediately
+- trips within 2 seconds
+- compressor hums then trips
+
+Then prioritize:
+- locked rotor
+- failed compressor
+- failed start/run capacitor
+- hard-start/start circuit issue
+
+Do not make Ground Fault primary unless the input includes:
+- trips instantly with no LRA ramp
+- grounded compressor
+- short to ground
+- megger failure
+- breaker trips immediately when contactor closes before motor attempts start
+
+5. Add debug validation output
+
+For each of the 15 validation tests, log:
+- detected refrigerant pattern
+- detected negation/qualifier phrases
+- selected primary
+- top 3 alternatives
+- reason primary was selected
+
+6. Re-run the same 15-case validation suite.
+
+Success criteria:
+- Test 1 primary = undercharge / refrigerant leak
+- Test 2 primary = low superheat / floodback / overfeeding / airflow-low load
+- Test 3 primary = overcharge or liquid-line restriction
+- Test 4 primary = condenser airflow / non-condensables / heat rejection issue
+- Test 6 primary = locked rotor / compressor start fault
+- Test 10 primary must NOT be “inducer not starting”
+- Test 13 primary must NOT be “failed capacitor” if input says capacitor tests good
+- Test 15 primary = fan relay/control output does not energize
+
+Do not publish after changes.
+
+Return:
+- files changed
+- exact scoring rules added
+- before/after validation table
+- new strict accuracy %
+- whether any previous PASS test regressed

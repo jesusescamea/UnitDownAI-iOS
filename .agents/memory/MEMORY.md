@@ -1,2 +1,1 @@
-- [req.params in Drizzle routes](req-params-drizzle.md) — always `String(req.params.id)` before passing to `eq()`; the Express param type widens to cause TS2769 overload errors.
-- [DB lib rebuild before API typecheck](db-lib-rebuild.md) — after any schema change, run `pnpm run typecheck:libs` before API server typecheck or new exports won't be found.
+- [Diagnostic engine scoring lessons](diagnostic-engine-scoring.md) — false-positive triggers in FLAME_PROVEN_TERMS and broad-word triggers on general entries cascade into wrong primaries.

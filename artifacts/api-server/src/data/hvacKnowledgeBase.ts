@@ -519,8 +519,8 @@ export const hvacKnowledgeBase: KnowledgeBaseEntry[] = [
     category: "No Heat",
     equipment: ["furnace", "rooftop", "rtu", "gas heat", "packaged unit", "gas pack"],
     brands: ["carrier", "trane", "york", "lennox", "goodman", "rheem", "ruud", "american standard", "bryant", "aaon"],
-    triggers: ["won't heat", "no heat", "igniter not lighting", "no flame", "furnace clicking", "pilot light", "igniter glowing", "blower runs no heat"],
-    symptomClues: ["igniter", "ignition", "flame", "gas", "pilot", "heat", "clicking", "furnace", "burner", "cold air on heat"],
+    triggers: ["won't heat", "igniter not lighting", "furnace clicking", "pilot light", "igniter glowing", "blower runs no heat", "ignition sequence failed", "no ignition"],
+    symptomClues: ["igniter", "ignition", "flame", "gas", "pilot", "heat", "clicking", "furnace", "burner", "cold air on heat", "no heat", "no flame"],
     failureStage: "startup",
     confidenceBase: 88,
     priority: "high",
@@ -2242,6 +2242,10 @@ export const hvacKnowledgeBase: KnowledgeBaseEntry[] = [
       "igniter red hot no fire", "glowing igniter no heat", "ignitor glowing no flame",
       "glow rod red but no flame", "igniter glows nothing lights", "hot surface igniter no flame",
       "igniter glowing no ignition", "hsi red no burner", "glows but won't light",
+      "igniter glows but no flame", "ignitor glows but no flame", "igniter glowing but no flame",
+      "igniter glows but won't light", "hsi glows but no burner ignition",
+      "glows but no flame", "igniter on but no flame", "igniter glowing but burners won't light",
+      "glow but no ignition", "igniter glowing but nothing lights",
     ],
     symptomClues: [
       "igniter", "ignitor", "hsi", "glow", "glowing", "no flame", "no gas", "gas valve",
@@ -2250,7 +2254,7 @@ export const hvacKnowledgeBase: KnowledgeBaseEntry[] = [
     failureStage: "startup",
     confidenceBase: 93,
     priority: "high",
-    negativeTriggers: ["inducer", "pressure switch", "blower", "rollout"],
+    negativeTriggers: ["blower", "rollout"],
     likelyCauses: [
       "Closed manual gas shutoff valve upstream of the unit — most commonly missed first check",
       "Low inlet gas pressure — supply pressure at manifold below minimum (typically 5–7\" W.C. for natural gas, 11\" for LP)",
@@ -2421,6 +2425,80 @@ export const hvacKnowledgeBase: KnowledgeBaseEntry[] = [
       "A blower that runs continuously without a heat call may indicate the heat exchanger previously overheated. Do not ignore this — inspect the heat exchanger for cracks or deformation. A cracked heat exchanger allows combustion gases including carbon monoxide to enter the airstream.",
   },
 
+  // ─── FAN/BLOWER RELAY OPEN CONTACT FAILURE ────────────────────────────────
+  // Polarity-opposite of gas-heat-immediate-blower: the relay coil IS receiving
+  // 24VAC but the contacts fail to close — blower NEVER starts on heat call.
+  // Distinct from a no-24V fault (control-voltage-no-power) and from a stuck-
+  // closed relay (gas-heat-immediate-blower).
+
+  {
+    id: "fan-relay-open-failure",
+    title: "Fan/Blower Relay — Contacts Fail to Close (Coil Energized, Open Contact Failure)",
+    category: "No Heat",
+    equipment: ["furnace", "rooftop", "rtu", "gas heat", "air handler", "packaged unit", "gas pack"],
+    brands: ["carrier", "trane", "york", "lennox", "goodman", "rheem", "ruud", "american standard", "bryant", "aaon", "daikin"],
+    triggers: [
+      "relay never energizes",
+      "fan relay never energizes",
+      "relay contacts open",
+      "relay contacts measure open",
+      "relay coil gets 24v contacts open",
+      "relay contacts won't close",
+      "blower relay contacts open",
+      "fan relay failed open",
+      "relay contacts stuck open",
+      "relay coil energized contacts open",
+      "relay coil 24v contacts won't close",
+      "relay won't close",
+      "blower relay never closes",
+      "fan relay contacts open",
+      "relay contacts open with 24v",
+      "blower relay open contacts",
+      "fan relay open",
+      "relay contacts fail to close",
+      "relay confirmed 24v contacts open",
+      "relay coil confirmed",
+    ],
+    symptomClues: [
+      "relay", "fan relay", "blower relay", "contacts", "relay coil", "24v at relay",
+      "blower does not start", "blower won't start", "heat call no blower",
+      "no blower heat", "relay contacts", "relay failed", "relay coil voltage",
+      "blower not starting heat call", "fan not starting heat",
+    ],
+    failureStage: "startup",
+    confidenceBase: 92,
+    priority: "high",
+    negativeTriggers: [
+      "blower starts immediately", "fan starts right away", "blower on immediately",
+      "fan before burners", "blower before ignition", "relay stuck closed",
+      "compressor", "suction pressure", "no cool", "subcooling",
+    ],
+    likelyCauses: [
+      "Relay contacts mechanically failed open — coil receives 24VAC and coil resistance is correct, but the contact bridge is seized, corroded, or physically broken and will not transfer motor current",
+      "Contact surface oxidation — thin oxide film builds up on silver contacts from infrequent operation; coil pulls in with insufficient force to break through the oxide layer and make electrical contact",
+      "Incorrect relay coil voltage — relay specifies 24VAC but installed relay is 24VDC (or vice versa); coil appears to respond but insufficient magnetic force to close contacts against spring tension at the wrong supply type",
+      "Relay spring fatigue or mechanical damage — contact spring force has increased beyond what the coil can overcome; contacts will not transfer even with correct coil voltage",
+      "Control board internal relay fault — board relay that drives the external fan relay coil has failed; coil never actually receives commanded 24V even if 24V is measured at nearby test points",
+    ],
+    firstChecks: [
+      "1. Confirm 24VAC is present AT the relay coil terminals (not just upstream at the board output) with the thermostat calling for heat — use a voltmeter directly at the coil lugs; measure R-to-C at the coil, not at the board terminal strip",
+      "2. With power off, test relay contact resistance: with coil de-energized, contacts should read OL (normally open); manually depress the relay plunger by hand — contacts should snap closed and read near-zero Ω. If manual actuation closes contacts but coil energization does not, coil magnetic force is insufficient",
+      "3. Check relay coil resistance: 24VAC relay coils typically read 100–500 Ω; OL = open coil (replace relay); near-zero Ω = shorted coil (replace relay); within spec but contacts not closing = contact failure",
+      "4. Substitute-test: temporarily wire blower motor to a known-good relay powered from a confirmed 24VAC source to confirm blower motor itself is not at fault",
+      "5. Inspect contact surfaces if relay is socketed or removable: dark gray or black pitting, burn deposits, or welding debris between contacts confirms contact failure — the contact assembly has failed mechanically",
+    ],
+    meterChecks: [
+      "Voltmeter at relay coil terminals during heat call: 24VAC confirms coil is receiving drive voltage; 0V means the upstream drive circuit (board relay output) is the fault, not the relay contacts",
+      "Ohmmeter on relay coil with power off: 100–500 Ω is normal for 24VAC coil; OL = open coil; near-zero Ω = shorted coil; replace relay in either case",
+      "Ohmmeter across relay output contacts with power off and manual plunger actuation: should read near-zero Ω (closed) when plunger is depressed; OL even with manual actuation = contacts physically failed — replace relay",
+      "Clamp meter on blower motor lead during a direct-supply test (known-good relay): confirms blower motor draws rated FLA and is not the fault source",
+    ],
+    recommendedAction:
+      "Replace the fan/blower relay. Before installation, verify the replacement coil voltage rating matches the control circuit (24VAC is standard; confirm on the OEM wiring diagram). If the relay coil was receiving 24VAC and contacts were mechanically failed, no upstream circuit repair is required — the relay itself has failed. Verify blower operation on the next heat call after replacement and confirm no stored fault codes from prior high-limit trips caused by the failed relay.",
+    riskNote:
+      "A fan relay that fails open prevents blower operation during heating. Without airflow, the heat exchanger reaches high-limit temperature on every call — repeated high-limit trips become the secondary symptom. Sustained high-limit cycling can crack the heat exchanger. Do not operate the unit with a confirmed failed-open fan relay; tag and lock out until relay is replaced.",
+  },
+
   {
     id: "gas-heat-rollout-trip",
     title: "Gas Furnace — Rollout Switch Tripped",
@@ -2479,6 +2557,9 @@ export const hvacKnowledgeBase: KnowledgeBaseEntry[] = [
       "pressure switch fault", "ps fault", "no pressure switch closure",
       "inducer runs pressure switch open", "draft proving failure", "pressure switch not proving",
       "pressure switch error", "inducer on switch won't close", "draft proving fault",
+      "pressure switch will not close", "switch will not close", "ps will not close",
+      "pressure switch not closing", "switch not closing", "pressure switch cannot close",
+      "proving switch will not close", "inducer on but pressure switch won't close",
     ],
     symptomClues: [
       "pressure switch", "ps", "draft", "inducer", "vent", "blocked flue",
