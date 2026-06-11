@@ -97,7 +97,8 @@ export default function DiagnosticLogDetailPage() {
   const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
 
   useEffect(() => {
-    if (!isLoggedIn || !params.id) return;
+    if (!isLoaded) return;
+    if (!isLoggedIn || !params.id) { setLoading(false); return; }
     fetch(`/api/diagnostic-logs/${params.id}?clientId=${encodeURIComponent(clientId)}`)
       .then((r) => r.json())
       .then((d) => {
@@ -118,7 +119,7 @@ export default function DiagnosticLogDetailPage() {
       })
       .catch(() => setError("Failed to load log"))
       .finally(() => setLoading(false));
-  }, [isLoggedIn, clientId, params.id]);
+  }, [isLoaded, isLoggedIn, clientId, params.id]);
 
   const handleSave = useCallback(async () => {
     if (!log) return;

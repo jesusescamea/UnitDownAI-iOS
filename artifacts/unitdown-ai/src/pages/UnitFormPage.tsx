@@ -114,7 +114,8 @@ export default function UnitFormPage() {
   const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
 
   useEffect(() => {
-    if (!isEdit || !isLoggedIn) return;
+    if (!isLoaded) return;
+    if (!isEdit || !isLoggedIn) { setLoadingUnit(false); return; }
     fetch(`/api/units/${params.id}?clientId=${encodeURIComponent(clientId)}`)
       .then((r) => r.json())
       .then((d) => {
@@ -145,7 +146,7 @@ export default function UnitFormPage() {
       })
       .catch(() => setError("Failed to load unit"))
       .finally(() => setLoadingUnit(false));
-  }, [isEdit, isLoggedIn, clientId, params.id]);
+  }, [isLoaded, isEdit, isLoggedIn, clientId, params.id]);
 
   const handleChange = useCallback((name: keyof UnitFormData, val: string) => {
     setForm((prev) => ({ ...prev, [name]: val }));

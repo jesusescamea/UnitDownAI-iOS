@@ -1988,7 +1988,7 @@ function Home() {
         },
       }
     );
-  }, [clientId, testerEmail, diagnose, refreshUsageStatus]);
+  }, [clientId, testerEmail, diagnose, refreshUsageStatus, selectedUnitId]);
 
   const handleDiagnose = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();

@@ -86,7 +86,8 @@ export default function UnitDetailPage() {
   const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
 
   useEffect(() => {
-    if (!isLoggedIn || !params.id) return;
+    if (!isLoaded) return;
+    if (!isLoggedIn || !params.id) { setLoading(false); return; }
     const cid = encodeURIComponent(clientId);
 
     Promise.all([
@@ -100,7 +101,7 @@ export default function UnitDetailPage() {
       })
       .catch(() => setError("Failed to load unit"))
       .finally(() => setLoading(false));
-  }, [isLoggedIn, clientId, params.id]);
+  }, [isLoaded, isLoggedIn, clientId, params.id]);
 
   const handleArchive = useCallback(async () => {
     if (!unit || !window.confirm("Archive this unit? It will be hidden from your unit list.")) return;
