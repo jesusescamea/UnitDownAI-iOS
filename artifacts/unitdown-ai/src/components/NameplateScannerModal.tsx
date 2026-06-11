@@ -2,127 +2,184 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { X, Camera, Loader2, Upload, Pencil } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const ANALYSIS_W = 160;           // analysis canvas width (px) — small for speed
-const ANALYSIS_SKIP = 6;          // analyze every 6th RAF frame (~10 fps)
-const QUALITY_THRESHOLD = 62;     // 0–100 score to start stability count
-const STABLE_FRAMES_NEEDED = 18;  // ~1.8 s at 10 fps analysis rate
-const TIMEOUT_MS = 12_000;        // fall back to manual mode after 12 s
+const ANALYSIS_W        = 160;   // analysis canvas width (px)
+const ANALYSIS_SKIP     = 6;     // analyse every 6th RAF frame ≈ 10 fps
+const STABLE_NEEDED     = 15;    // consecutive qualifying frames ≈ 1.5 s
+const HINT_MS           = 30_000; // show "still scanning" hint after 30 s, but keep loop running
+
+// Per-metric pass thresholds
+const BRIGHT_MIN   = 50;    // mean luminance floor
+const BRIGHT_MAX   = 215;   // mean luminance ceiling (overexposed)
+const GLARE_MAX    = 0.10;  // fraction of near-white pixels
+const SHARP_MIN    = 40;    // Laplacian variance floor
+const EDGE_MIN     = 0.07;  // Sobel edge-pixel fraction — needs text/lines
+const EDGE_CLOSER  = 0.04;  // below this → "Center the frame", 0.04-0.07 → "Move closer"
+const EDGE_THRESH  = 20;    // per-pixel Sobel magnitude threshold
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Phase = "scanning" | "capturing" | "timeout" | "manual";
+type Phase = "scanning" | "capturing" | "manual";
+
+type Guidance =
+  | "too_dark"
+  | "glare"
+  | "overexposed"
+  | "center_nameplate"
+  | "move_closer"
+  | "too_blurry"
+  | "good";
+
+interface FrameResult {
+  qualifies: boolean;
+  guidance: Guidance;
+  edgeDensity: number;
+}
+
 interface Guide { x: number; y: number; w: number; h: number }
+
 interface Props {
   onCapture: (blob: Blob, previewUrl: string) => void;
   onClose: () => void;
 }
 
-// ─── Frame quality analysis ───────────────────────────────────────────────────
-// Draws the guide-frame region of the video to a small canvas and returns:
-//   score 0–100, and a human-readable issue string when score < threshold.
-function analyzeQuality(
+// ─── Guidance → display maps ──────────────────────────────────────────────────
+const INSTRUCTION: Record<Guidance, string> = {
+  too_dark:         "Too dark — add light",
+  glare:            "Glare detected — tilt slightly",
+  overexposed:      "Too bright — shade the nameplate",
+  center_nameplate: "Center the nameplate inside the frame",
+  move_closer:      "Move closer",
+  too_blurry:       "Too blurry — hold still",
+  good:             "Good — hold steady",
+};
+
+// Guide-frame border colour
+const GUIDE_CLR: Record<Guidance, string> = {
+  too_dark:         "rgba(239,68,68,0.80)",
+  glare:            "rgba(239,68,68,0.80)",
+  overexposed:      "rgba(239,68,68,0.80)",
+  center_nameplate: "rgba(245,158,11,0.80)",
+  move_closer:      "rgba(245,158,11,0.80)",
+  too_blurry:       "rgba(239,68,68,0.80)",
+  good:             "rgba(59,130,246,0.85)",
+};
+
+// Instruction text colour
+const TEXT_CLR: Record<Guidance, string> = {
+  too_dark:         "#fca5a5",
+  glare:            "#fca5a5",
+  overexposed:      "#fca5a5",
+  center_nameplate: "#fcd34d",
+  move_closer:      "#fcd34d",
+  too_blurry:       "#fca5a5",
+  good:             "#93c5fd",
+};
+
+// ─── Frame analysis ───────────────────────────────────────────────────────────
+// Renders the guide-region to a small canvas and measures four independent
+// metrics: brightness, glare ratio, sharpness (Laplacian variance), and
+// edge density (Sobel).  A frame *qualifies* only when ALL four pass.
+function analyzeFrame(
   video: HTMLVideoElement,
   canvas: HTMLCanvasElement,
   guide: Guide,
-): { score: number; issue: string | null } {
+): FrameResult {
   const vW = video.videoWidth;
   const vH = video.videoHeight;
   const dW = video.clientWidth;
   const dH = video.clientHeight;
-  if (!vW || !vH) return { score: 0, issue: null };
 
-  // Map display-coordinate guide frame → intrinsic video coords (object-fit: cover)
+  const BAD: FrameResult = { qualifies: false, guidance: "center_nameplate", edgeDensity: 0 };
+  if (!vW || !vH) return BAD;
+
+  // Map display-coord guide → intrinsic video coords (object-fit: cover)
   const scale = Math.max(dW / vW, dH / vH);
-  const ox = (dW - vW * scale) / 2;
-  const oy = (dH - vH * scale) / 2;
-  const sx = Math.max(0, (guide.x - ox) / scale);
-  const sy = Math.max(0, (guide.y - oy) / scale);
-  const sw = Math.min(guide.w / scale, vW - sx);
-  const sh = Math.min(guide.h / scale, vH - sy);
+  const ox    = (dW - vW * scale) / 2;
+  const oy    = (dH - vH * scale) / 2;
+  const sx    = Math.max(0, (guide.x - ox) / scale);
+  const sy    = Math.max(0, (guide.y - oy) / scale);
+  const sw    = Math.min(guide.w / scale, vW - sx);
+  const sh    = Math.min(guide.h / scale, vH - sy);
 
   const aH = Math.max(1, Math.round(ANALYSIS_W * (sh / sw)));
-  canvas.width = ANALYSIS_W;
+  canvas.width  = ANALYSIS_W;
   canvas.height = aH;
 
   const ctx = canvas.getContext("2d", { willReadFrequently: true });
-  if (!ctx) return { score: 50, issue: null };
+  if (!ctx) return BAD;
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, ANALYSIS_W, aH);
 
   const { data } = ctx.getImageData(0, 0, ANALYSIS_W, aH);
-  const total = ANALYSIS_W * aH;
+  const total    = ANALYSIS_W * aH;
+  const W        = ANALYSIS_W;
+  const H        = aH;
 
-  let brightSum = 0;
-  let glareCount = 0;
-  const gray = new Uint8ClampedArray(total);
+  // ── Pass 1: luminance array + brightness + glare ─────────────────────────
+  const gray      = new Uint8ClampedArray(total);
+  let   brightSum = 0;
+  let   glareCount = 0;
 
   for (let i = 0; i < total; i++) {
     const r = data[i * 4];
     const g = data[i * 4 + 1];
     const b = data[i * 4 + 2];
-    // Fast integer luminance approximation (BT.601)
-    const lum = (r * 77 + g * 150 + b * 29) >> 8;
+    const lum = (r * 77 + g * 150 + b * 29) >> 8; // BT.601 fast int
     gray[i] = lum;
     brightSum += lum;
     if (r > 248 && g > 248 && b > 248) glareCount++;
   }
 
-  const brightness = brightSum / total;      // 0–255 mean
-  const glareRatio = glareCount / total;     // fraction of near-white pixels
+  const brightness = brightSum / total;
+  const glareRatio = glareCount / total;
 
-  // Laplacian variance as a sharpness proxy
-  const W = ANALYSIS_W;
-  const H = aH;
-  let lapSum = 0;
+  // ── Pass 2: Laplacian variance (sharpness) + Sobel edge density ──────────
+  let lapSum   = 0;
   let lapSumSq = 0;
-  let n = 0;
+  let edgePx   = 0;
+  let n        = 0;
+
   for (let row = 1; row < H - 1; row++) {
     for (let col = 1; col < W - 1; col++) {
       const idx = row * W + col;
-      const v =
+
+      // 5-point Laplacian
+      const lap =
         -4 * gray[idx]
         + gray[(row - 1) * W + col]
         + gray[(row + 1) * W + col]
         + gray[row * W + (col - 1)]
         + gray[row * W + (col + 1)];
-      lapSum += v;
-      lapSumSq += v * v;
+      lapSum   += lap;
+      lapSumSq += lap * lap;
+
+      // 3×3 Sobel (horizontal + vertical gradient magnitudes)
+      const gx =
+        (gray[(row - 1) * W + (col + 1)] + 2 * gray[row * W + (col + 1)] + gray[(row + 1) * W + (col + 1)]) -
+        (gray[(row - 1) * W + (col - 1)] + 2 * gray[row * W + (col - 1)] + gray[(row + 1) * W + (col - 1)]);
+      const gy =
+        (gray[(row + 1) * W + (col - 1)] + 2 * gray[(row + 1) * W + col] + gray[(row + 1) * W + (col + 1)]) -
+        (gray[(row - 1) * W + (col - 1)] + 2 * gray[(row - 1) * W + col] + gray[(row - 1) * W + (col + 1)]);
+      if (Math.abs(gx) + Math.abs(gy) > EDGE_THRESH) edgePx++;
+
       n++;
     }
   }
-  const lapMean = lapSum / n;
-  const sharpness = n > 0 ? lapSumSq / n - lapMean * lapMean : 0;
 
-  // Assemble score: start at 100, deduct for detected problems
-  let score = 100;
-  let issue: string | null = null;
+  const lapMean    = lapSum / (n || 1);
+  const sharpness  = n > 0 ? lapSumSq / n - lapMean * lapMean : 0;
+  const edgeDensity = n > 0 ? edgePx / n : 0;
 
-  if (brightness < 45) {
-    score -= 45;
-    issue = "Move to better lighting";
-  } else if (brightness > 220) {
-    score -= 30;
-    issue = "Reduce overexposure — shade the nameplate or step back";
-  }
+  // ── Guidance priority (most critical first) ───────────────────────────────
+  if (brightness < BRIGHT_MIN)   return { qualifies: false, guidance: "too_dark",         edgeDensity };
+  if (glareRatio > GLARE_MAX)    return { qualifies: false, guidance: "glare",             edgeDensity };
+  if (brightness > BRIGHT_MAX)   return { qualifies: false, guidance: "overexposed",       edgeDensity };
+  if (edgeDensity < EDGE_CLOSER) return { qualifies: false, guidance: "center_nameplate",  edgeDensity };
+  if (edgeDensity < EDGE_MIN)    return { qualifies: false, guidance: "move_closer",       edgeDensity };
+  if (sharpness   < SHARP_MIN)   return { qualifies: false, guidance: "too_blurry",        edgeDensity };
 
-  if (glareRatio > 0.12) {
-    score -= 35;
-    if (!issue) issue = "Tilt slightly to reduce glare";
-  } else if (glareRatio > 0.06) {
-    score -= 15;
-    if (!issue) issue = "Adjust angle to reduce glare";
-  }
-
-  if (sharpness < 30) {
-    score -= 45;
-    if (!issue) issue = "Move closer and hold still";
-  } else if (sharpness < 80) {
-    score -= 22;
-    if (!issue) issue = "Hold still to sharpen";
-  }
-
-  return { score: Math.max(0, score), issue };
+  return { qualifies: true, guidance: "good", edgeDensity };
 }
 
-// ─── Capture: crop guide region from live video frame, resize, compress ───────
+// ─── Capture helpers ──────────────────────────────────────────────────────────
 function getCropCoords(video: HTMLVideoElement, guide: Guide) {
   const vW = video.videoWidth;
   const vH = video.videoHeight;
@@ -132,13 +189,9 @@ function getCropCoords(video: HTMLVideoElement, guide: Guide) {
   const scale = Math.max(dW / vW, dH / vH);
   const ox = (dW - vW * scale) / 2;
   const oy = (dH - vH * scale) / 2;
-  const x = Math.max(0, (guide.x - ox) / scale);
-  const y = Math.max(0, (guide.y - oy) / scale);
-  return {
-    x, y,
-    w: Math.min(guide.w / scale, vW - x),
-    h: Math.min(guide.h / scale, vH - y),
-  };
+  const x  = Math.max(0, (guide.x - ox) / scale);
+  const y  = Math.max(0, (guide.y - oy) / scale);
+  return { x, y, w: Math.min(guide.w / scale, vW - x), h: Math.min(guide.h / scale, vH - y) };
 }
 
 async function captureFrame(
@@ -148,26 +201,22 @@ async function captureFrame(
   quality = 0.75,
 ): Promise<{ blob: Blob; previewUrl: string }> {
   const { x, y, w, h } = getCropCoords(video, guide);
-  const s = Math.min(1, maxPx / Math.max(w, h));
-  const canvas = document.createElement("canvas");
-  canvas.width = Math.max(1, Math.round(w * s));
-  canvas.height = Math.max(1, Math.round(h * s));
-  const ctx = canvas.getContext("2d");
+  const s   = Math.min(1, maxPx / Math.max(w, h));
+  const cvs = document.createElement("canvas");
+  cvs.width  = Math.max(1, Math.round(w * s));
+  cvs.height = Math.max(1, Math.round(h * s));
+  const ctx  = cvs.getContext("2d");
   if (!ctx) throw new Error("Canvas unavailable");
-  ctx.drawImage(video, x, y, w, h, 0, 0, canvas.width, canvas.height);
+  ctx.drawImage(video, x, y, w, h, 0, 0, cvs.width, cvs.height);
   return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => {
-        if (!blob) { reject(new Error("Capture failed")); return; }
-        resolve({ blob, previewUrl: URL.createObjectURL(blob) });
-      },
+    cvs.toBlob(
+      (blob) => blob ? resolve({ blob, previewUrl: URL.createObjectURL(blob) }) : reject(new Error("Capture failed")),
       "image/jpeg",
       quality,
     );
   });
 }
 
-// ─── Resize an uploaded File into a compressed Blob ───────────────────────────
 async function resizeFile(
   file: File,
   maxPx = 1200,
@@ -181,17 +230,13 @@ async function resizeFile(
       const s = Math.min(1, maxPx / Math.max(img.width, img.height));
       const w = Math.max(1, Math.round(img.width * s));
       const h = Math.max(1, Math.round(img.height * s));
-      const canvas = document.createElement("canvas");
-      canvas.width = w;
-      canvas.height = h;
-      const ctx = canvas.getContext("2d");
+      const cvs = document.createElement("canvas");
+      cvs.width = w; cvs.height = h;
+      const ctx = cvs.getContext("2d");
       if (!ctx) { reject(new Error("Canvas unavailable")); return; }
       ctx.drawImage(img, 0, 0, w, h);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { reject(new Error("Resize failed")); return; }
-          resolve({ blob, previewUrl: URL.createObjectURL(blob) });
-        },
+      cvs.toBlob(
+        (blob) => blob ? resolve({ blob, previewUrl: URL.createObjectURL(blob) }) : reject(new Error("Resize failed")),
         "image/jpeg",
         quality,
       );
@@ -202,43 +247,42 @@ async function resizeFile(
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
-
 const CORNER = 22;
 
 export default function NameplateScannerModal({ onCapture, onClose }: Props) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
+  const videoRef        = useRef<HTMLVideoElement>(null);
+  const streamRef       = useRef<MediaStream | null>(null);
+  const containerRef    = useRef<HTMLDivElement>(null);
   const analysisCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const rafIdRef = useRef<number | null>(null);
+  const fileInputRef    = useRef<HTMLInputElement>(null);
+  const rafIdRef        = useRef<number | null>(null);
 
-  // Refs used inside the RAF loop to avoid stale closures
-  const phaseRef = useRef<Phase>("scanning");
-  const stableCountRef = useRef(0);
-  const frameCountRef = useRef(0);
-  const startTimeRef = useRef(Date.now());
-  const guideRef = useRef<Guide | null>(null);
+  // Refs for RAF loop (avoid stale closures)
+  const phaseRef        = useRef<Phase>("scanning");
+  const stableCountRef  = useRef(0);
+  const frameCountRef   = useRef(0);
+  const startTimeRef    = useRef(Date.now());
+  const guideRef        = useRef<Guide | null>(null);
+  const showHintRef     = useRef(false);
 
-  // React state (drives the UI)
-  const [phaseState, setPhaseState] = useState<Phase>("scanning");
-  const [instruction, setInstruction] = useState("Center the nameplate inside the frame");
+  // React state (drives UI redraws)
+  const [phaseState, setPhaseState]       = useState<Phase>("scanning");
+  const [guidance, setGuidance]           = useState<Guidance>("center_nameplate");
+  const [instruction, setInstruction]     = useState("Center the nameplate inside the frame");
   const [stableProgress, setStableProgress] = useState(0); // 0–100 %
-  const [cameraError, setCameraError] = useState<string | null>(null);
+  const [showHint, setShowHint]           = useState(false);
+  const [cameraError, setCameraError]     = useState<string | null>(null);
   const [containerSize, setContainerSize] = useState({ w: 0, h: 0 });
 
-  // setPhase keeps ref + state in sync
   const setPhase = useCallback((p: Phase) => {
     phaseRef.current = p;
     setPhaseState(p);
   }, []);
 
-  // Create the persistent off-screen analysis canvas once
-  useEffect(() => {
-    analysisCanvasRef.current = document.createElement("canvas");
-  }, []);
+  // Off-screen analysis canvas (created once)
+  useEffect(() => { analysisCanvasRef.current = document.createElement("canvas"); }, []);
 
-  // Track container dimensions via ResizeObserver
+  // Track container size
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -249,7 +293,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  // Guide frame: landscape nameplate ratio (~16:9), 88 % wide, slightly above centre
+  // Guide frame: landscape nameplate ratio, 88 % wide, slightly above centre
   const guide = useMemo<Guide | null>(() => {
     const { w, h } = containerSize;
     if (!w || !h) return null;
@@ -263,7 +307,6 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
     };
   }, [containerSize]);
 
-  // Keep guide ref in sync with memo
   useEffect(() => { guideRef.current = guide; }, [guide]);
 
   // Start rear camera
@@ -272,11 +315,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
     (async () => {
       try {
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1920 },
-            height: { ideal: 1080 },
-          },
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false,
         });
         if (!active) { stream.getTracks().forEach((t) => t.stop()); return; }
@@ -288,11 +327,9 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
       } catch (err: any) {
         if (!active) return;
         const msg =
-          err?.name === "NotAllowedError"
-            ? "Camera access denied. Allow camera access in your browser settings and try again."
-            : err?.name === "NotFoundError"
-            ? "No camera found on this device."
-            : "Camera unavailable on this device.";
+          err?.name === "NotAllowedError" ? "Camera access denied. Allow camera access in your browser settings and try again." :
+          err?.name === "NotFoundError"   ? "No camera found on this device." :
+                                            "Camera unavailable on this device.";
         setCameraError(msg);
         setPhase("manual");
       }
@@ -304,7 +341,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
     };
   }, [setPhase]);
 
-  // Lock body scroll while open
+  // Lock body scroll
   useEffect(() => {
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -312,52 +349,49 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
   }, []);
 
   // ─── Auto-capture RAF loop ─────────────────────────────────────────────────
-  // Runs once on mount; reads all mutable state through refs, not closures.
+  // All mutable state accessed through refs — no stale closures.
+  // The loop NEVER stops on timeout; it only stops on capture or manual exit.
   useEffect(() => {
     startTimeRef.current = Date.now();
 
     function loop() {
       const phase = phaseRef.current;
-
-      // Stop loop once we have captured or user switched to manual
       if (phase === "capturing" || phase === "manual") return;
 
       rafIdRef.current = requestAnimationFrame(loop);
-
       frameCountRef.current++;
-      // Throttle analysis to every ANALYSIS_SKIP frames (~10 fps)
       if (frameCountRef.current % ANALYSIS_SKIP !== 0) return;
 
-      // Auto-timeout → fall back to manual options
-      if (Date.now() - startTimeRef.current > TIMEOUT_MS) {
-        // Cancel the already-queued RAF (same pattern as auto-capture path)
-        // so the loop does not keep firing indefinitely after timeout.
-        if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-        setPhase("timeout");
-        setInstruction("Couldn't auto-capture. Take a photo manually or enter fields below.");
-        return;
+      // Show "still scanning" hint after HINT_MS — but do NOT stop the loop
+      if (!showHintRef.current && Date.now() - startTimeRef.current > HINT_MS) {
+        showHintRef.current = true;
+        setShowHint(true);
       }
 
-      const video = videoRef.current;
+      const video  = videoRef.current;
       const aCanvas = analysisCanvasRef.current;
-      const g = guideRef.current;
+      const g      = guideRef.current;
 
-      // Camera may still be initialising
       if (!video || video.readyState < 2 || !aCanvas || !g) {
+        setGuidance("center_nameplate");
         setInstruction("Center the nameplate inside the frame");
         return;
       }
 
-      const { score, issue } = analyzeQuality(video, aCanvas, g);
+      const { qualifies, guidance: g_state } = analyzeFrame(video, aCanvas, g);
 
-      if (score >= QUALITY_THRESHOLD) {
+      if (qualifies) {
         stableCountRef.current++;
-        const progress = Math.min(100, Math.round((stableCountRef.current / STABLE_FRAMES_NEEDED) * 100));
+        const progress = Math.min(100, Math.round((stableCountRef.current / STABLE_NEEDED) * 100));
         setStableProgress(progress);
-        setInstruction("Hold steady…");
+        setGuidance("good");
+        setInstruction(
+          stableCountRef.current >= Math.round(STABLE_NEEDED * 0.6)
+            ? "Good — hold steady"
+            : "Hold steady…"
+        );
 
-        if (stableCountRef.current >= STABLE_FRAMES_NEEDED) {
-          // Cancel the RAF before the async capture so it doesn't re-schedule
+        if (stableCountRef.current >= STABLE_NEEDED) {
           if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
           setPhase("capturing");
           doCapture();
@@ -365,20 +399,19 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
       } else {
         stableCountRef.current = 0;
         setStableProgress(0);
-        setInstruction(issue ?? "Center the nameplate inside the frame");
+        setGuidance(g_state);
+        setInstruction(INSTRUCTION[g_state]);
       }
     }
 
     rafIdRef.current = requestAnimationFrame(loop);
-    return () => {
-      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-    };
-  }, []); // intentionally empty — all mutable state accessed via refs
+    return () => { if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current); };
+  }, []); // intentionally empty — all mutable state via refs
 
-  // ─── Capture helpers ──────────────────────────────────────────────────────
+  // ─── Capture helpers ───────────────────────────────────────────────────────
   async function doCapture() {
     const video = videoRef.current;
-    const g = guideRef.current;
+    const g     = guideRef.current;
     if (!video || !g) { setPhase("manual"); return; }
     try {
       const result = await captureFrame(video, g);
@@ -394,7 +427,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     setPhase("capturing");
     const video = videoRef.current;
-    const g = guideRef.current;
+    const g     = guideRef.current;
     if (!video || !g) { setPhase("manual"); return; }
     try {
       const result = await captureFrame(video, g);
@@ -422,22 +455,34 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
     }
   }, [onCapture, setPhase]);
 
-  // ─── Derived render state ─────────────────────────────────────────────────
-  const phase = phaseState;
-  const isCapturing = phase === "capturing";
-  const isManualOrTimeout = phase === "manual" || phase === "timeout";
+  // ─── Derived render values ─────────────────────────────────────────────────
+  const phase        = phaseState;
+  const isCapturing  = phase === "capturing";
+  const isManual     = phase === "manual";
+  const isScanning   = phase === "scanning";
 
-  // Guide border turns solid blue as stability builds up
-  const guideBorder = stableProgress > 0
-    ? `2px solid rgba(59,130,246,${0.6 + stableProgress / 250})`
-    : "1.5px dashed rgba(255,255,255,0.50)";
+  // Guide border: green when > 50 % stable, else guidance colour
+  const guideColor = stableProgress > 50
+    ? "rgba(34,197,94,0.90)"
+    : stableProgress > 0
+    ? GUIDE_CLR.good
+    : GUIDE_CLR[guidance];
+
+  // Corner bracket colour mirrors guide border
+  const cornerClr = stableProgress > 50 ? "#4ade80" : stableProgress > 0 ? "#60a5fa" : (
+    guidance === "center_nameplate" || guidance === "move_closer" ? "#fbbf24" : "#f87171"
+  );
+
+  // Instruction text colour
+  const textClr = stableProgress > 50 ? "#4ade80" : TEXT_CLR[guidance];
+
+  // Progress bar should only show when stable > 0
+  const showBar = stableProgress > 0 && !isCapturing;
 
   return (
-    <div
-      className="fixed inset-0 z-[200] bg-black flex flex-col"
-      style={{ touchAction: "none" }}
-    >
-      {/* ── Camera viewport ─────────────────────────────────────────────── */}
+    <div className="fixed inset-0 z-[200] bg-black flex flex-col" style={{ touchAction: "none" }}>
+
+      {/* ── Camera viewport ────────────────────────────────────────────────── */}
       <div ref={containerRef} className="relative flex-1 overflow-hidden">
         <video
           ref={videoRef}
@@ -447,7 +492,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
           className="absolute inset-0 w-full h-full object-cover"
         />
 
-        {/* Camera permission / availability error */}
+        {/* Camera error */}
         {cameraError && (
           <div className="absolute inset-0 flex items-center justify-center p-8 bg-black/85">
             <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6 text-center max-w-xs">
@@ -460,99 +505,104 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
           </div>
         )}
 
-        {/* Guide frame + overlay (hidden while capturing) */}
+        {/* Guide frame + corners + feedback (hidden while capturing) */}
         {guide && !isCapturing && !cameraError && (
           <>
-            {/* Dark vignette punched through by the guide frame */}
+            {/* Dark vignette with guide-frame window */}
             <div
               style={{
                 position: "absolute",
                 top: guide.y, left: guide.x,
                 width: guide.w, height: guide.h,
                 borderRadius: 10,
-                boxShadow: "0 0 0 9999px rgba(0,0,0,0.60)",
-                border: guideBorder,
+                boxShadow: "0 0 0 9999px rgba(0,0,0,0.62)",
+                border: `2px solid ${guideColor}`,
                 pointerEvents: "none",
-                transition: "border 0.25s",
+                transition: "border-color 0.25s",
               }}
             />
 
-            {/* Blue corner markers */}
-            <div style={{ position: "absolute", top: guide.y - 2, left: guide.x - 2, width: CORNER, height: CORNER, borderTop: "3px solid #3b82f6", borderLeft: "3px solid #3b82f6", pointerEvents: "none" }} />
-            <div style={{ position: "absolute", top: guide.y - 2, left: guide.x + guide.w - CORNER + 2, width: CORNER, height: CORNER, borderTop: "3px solid #3b82f6", borderRight: "3px solid #3b82f6", pointerEvents: "none" }} />
-            <div style={{ position: "absolute", top: guide.y + guide.h - CORNER + 2, left: guide.x - 2, width: CORNER, height: CORNER, borderBottom: "3px solid #3b82f6", borderLeft: "3px solid #3b82f6", pointerEvents: "none" }} />
-            <div style={{ position: "absolute", top: guide.y + guide.h - CORNER + 2, left: guide.x + guide.w - CORNER + 2, width: CORNER, height: CORNER, borderBottom: "3px solid #3b82f6", borderRight: "3px solid #3b82f6", pointerEvents: "none" }} />
-
-            {/* Stability progress bar (slides in above guide frame) */}
-            {stableProgress > 0 && (
+            {/* Animated corner brackets */}
+            {([
+              [guide.y - 2,                  guide.x - 2,                  { borderTop: `3px solid ${cornerClr}`, borderLeft:  `3px solid ${cornerClr}` }],
+              [guide.y - 2,                  guide.x + guide.w - CORNER + 2, { borderTop: `3px solid ${cornerClr}`, borderRight: `3px solid ${cornerClr}` }],
+              [guide.y + guide.h - CORNER + 2, guide.x - 2,                  { borderBottom: `3px solid ${cornerClr}`, borderLeft:  `3px solid ${cornerClr}` }],
+              [guide.y + guide.h - CORNER + 2, guide.x + guide.w - CORNER + 2, { borderBottom: `3px solid ${cornerClr}`, borderRight: `3px solid ${cornerClr}` }],
+            ] as [number, number, React.CSSProperties][]).map(([top, left, bdr], i) => (
               <div
-                style={{
-                  position: "absolute",
-                  top: guide.y - 9,
-                  left: guide.x,
-                  width: guide.w,
-                  height: 4,
-                  background: "rgba(255,255,255,0.18)",
+                key={i}
+                style={{ position: "absolute", top, left, width: CORNER, height: CORNER, pointerEvents: "none", transition: "border-color 0.25s", ...bdr }}
+              />
+            ))}
+
+            {/* Stability progress bar — above guide frame */}
+            {showBar && (
+              <div style={{
+                position: "absolute",
+                top: guide.y - 9, left: guide.x,
+                width: guide.w, height: 4,
+                background: "rgba(255,255,255,0.18)", borderRadius: 2,
+                overflow: "hidden", pointerEvents: "none",
+              }}>
+                <div style={{
+                  height: "100%",
+                  width: `${stableProgress}%`,
+                  background: stableProgress > 50 ? "#4ade80" : "#3b82f6",
                   borderRadius: 2,
-                  overflow: "hidden",
-                  pointerEvents: "none",
-                }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${stableProgress}%`,
-                    background: "#3b82f6",
-                    borderRadius: 2,
-                    transition: "width 0.15s",
-                  }}
-                />
+                  transition: "width 0.15s, background 0.25s",
+                }} />
               </div>
             )}
 
-            {/* Instruction text — below guide frame */}
-            <div
-              style={{
-                position: "absolute",
-                top: guide.y + guide.h + 14,
-                left: 0, right: 0,
-                display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
-                pointerEvents: "none",
-              }}
-            >
+            {/* Primary instruction — below guide frame */}
+            <div style={{
+              position: "absolute",
+              top: guide.y + guide.h + 14,
+              left: 0, right: 0,
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+              pointerEvents: "none",
+            }}>
               <p
-                className="text-sm font-semibold text-center px-6 leading-snug"
-                style={{
-                  color: stableProgress > 0 ? "#93c5fd" : "white",
-                  textShadow: "0 1px 6px rgba(0,0,0,0.9)",
-                  transition: "color 0.3s",
-                }}
+                className="text-sm font-bold text-center px-6 leading-snug"
+                style={{ color: textClr, textShadow: "0 1px 6px rgba(0,0,0,0.95)", transition: "color 0.25s" }}
               >
                 {instruction}
               </p>
-              {stableProgress === 0 && (
+
+              {/* Sub-hint after 30 s — scanner still running */}
+              {showHint && stableProgress === 0 && (
+                <p
+                  className="text-xs text-center px-6 mt-0.5"
+                  style={{ color: "rgba(255,200,100,0.85)", textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
+                >
+                  Still scanning — move closer or use manual capture below
+                </p>
+              )}
+
+              {/* Sub-hint for centering / clarity when no hint yet */}
+              {!showHint && stableProgress === 0 && (
                 <p
                   className="text-xs text-center px-6"
-                  style={{ color: "rgba(255,255,255,0.55)", textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}
+                  style={{ color: "rgba(255,255,255,0.50)", textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}
                 >
-                  Move closer · Fill the frame · Avoid glare · Hold steady
+                  Fill the frame · Avoid glare · Hold steady
                 </p>
               )}
             </div>
           </>
         )}
 
-        {/* Capturing spinner overlay */}
+        {/* Capturing overlay */}
         {isCapturing && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/40">
             <Loader2 className="w-10 h-10 text-white animate-spin" />
-            <p className="text-white text-sm font-semibold" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.9)" }}>
-              Scanning…
+            <p className="text-white text-sm font-bold" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.9)" }}>
+              Capturing…
             </p>
           </div>
         )}
 
-        {/* Close (X) button */}
+        {/* Close button */}
         <button
           onClick={onClose}
           className="absolute top-4 right-4 w-10 h-10 rounded-full flex items-center justify-center text-white transition-colors"
@@ -563,36 +613,60 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
         </button>
       </div>
 
-      {/* ── Bottom bar ──────────────────────────────────────────────────────── */}
+      {/* ── Bottom bar ───────────────────────────────────────────────────────── */}
       <div className="flex-shrink-0" style={{ background: "#000" }}>
 
-        {/* Manual / timeout options */}
-        {isManualOrTimeout && (
-          <div className="px-5 pt-4 pb-7">
-            {phase === "timeout" && (
-              <p className="text-white/60 text-xs text-center mb-3 leading-relaxed">
-                Couldn't auto-capture. Take a photo manually or enter fields below.
-              </p>
-            )}
-            <div className="flex items-center justify-center gap-3 flex-wrap">
+        {/* Scan status row — only while scanning */}
+        {isScanning && !cameraError && (
+          <div className="flex items-center justify-between px-5 pt-3 pb-1">
+            <div className="flex items-center gap-2">
+              {stableProgress > 0 ? (
+                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+              ) : (
+                <div className="w-2 h-2 rounded-full border-2 border-white/30 animate-pulse flex-shrink-0" />
+              )}
+              <span className="text-white/60 text-xs">
+                {stableProgress > 0 ? `Locking… ${stableProgress}%` : "Scanning for nameplate…"}
+              </span>
+            </div>
+            {/* Edge-density debug hint (only shown when very low) */}
+          </div>
+        )}
+
+        {/* ── Always-visible manual controls ────────────────────────────────── */}
+        {/* Visible during scanning (ghost) and during manual mode (prominent) */}
+        {!isCapturing && (
+          <div className="px-4 pt-2 pb-6">
+            <div className="flex gap-2">
+              {/* Take Photo */}
               <button
                 onClick={handleManualCapture}
                 disabled={isCapturing || !!cameraError}
-                className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white font-semibold rounded-xl px-5 py-2.5 text-sm transition-colors"
+                className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-semibold transition-colors disabled:opacity-40 ${
+                  isManual && !cameraError
+                    ? "bg-blue-600 hover:bg-blue-700 text-white"
+                    : "bg-white/10 hover:bg-white/18 text-white/75"
+                }`}
               >
                 <Camera className="w-4 h-4" />
                 Take Photo
               </button>
+
+              {/* Upload Image */}
               <button
                 onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-medium rounded-xl px-4 py-2.5 text-sm transition-colors"
+                disabled={isCapturing}
+                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-semibold bg-white/10 hover:bg-white/18 text-white/75 transition-colors disabled:opacity-40"
               >
                 <Upload className="w-4 h-4" />
-                Upload Image
+                Upload
               </button>
+
+              {/* Enter Manually */}
               <button
                 onClick={onClose}
-                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white font-medium rounded-xl px-4 py-2.5 text-sm transition-colors"
+                disabled={isCapturing}
+                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-semibold bg-white/10 hover:bg-white/18 text-white/75 transition-colors disabled:opacity-40"
               >
                 <Pencil className="w-4 h-4" />
                 Enter Manually
@@ -601,45 +675,9 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
           </div>
         )}
 
-        {/* Auto-scan status bar (scanning / stable phases) */}
-        {!isManualOrTimeout && !isCapturing && (
-          <div className="flex items-center justify-between px-5 pt-3.5 pb-6">
-            {/* Left: scan status pill */}
-            <div className="flex items-center gap-2">
-              {stableProgress > 0 ? (
-                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
-              ) : (
-                <div className="w-2.5 h-2.5 rounded-full border-2 border-white/35 animate-pulse flex-shrink-0" />
-              )}
-              <span className="text-white/65 text-xs">
-                {stableProgress > 0 ? `Scanning… ${stableProgress}%` : "Looking for nameplate…"}
-              </span>
-            </div>
-
-            {/* Right: quick escape buttons */}
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => {
-                  if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
-                  setPhase("manual");
-                }}
-                className="text-white/55 hover:text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
-              >
-                Take Photo
-              </button>
-              <span className="text-white/25 text-xs">·</span>
-              <button
-                onClick={onClose}
-                className="text-white/55 hover:text-white text-xs px-2.5 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
-              >
-                Manual Entry
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
-      {/* Hidden file input — upload fallback */}
+      {/* Hidden file input */}
       <input
         ref={fileInputRef}
         type="file"
