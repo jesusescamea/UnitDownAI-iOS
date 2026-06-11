@@ -240,6 +240,11 @@ export default function UnitFormPage() {
       const data = await res.json();
       const ext = data.extracted ?? {};
 
+      // Model signalled no nameplate was found — surface as an error
+      if (typeof ext.error === "string") {
+        throw new Error(ext.error);
+      }
+
       // Confidence + summary
       const confidence = typeof ext.confidence === "number" ? ext.confidence : null;
       setOcrConfidence(confidence);

@@ -16,12 +16,21 @@ IGNORE COMPLETELY:
 - Background, tools, people, jobsite conditions
 - Any text or markings that are NOT on the nameplate label itself
 
+NO NAMEPLATE FOUND:
+If the image does not contain a clearly visible HVAC equipment data plate / nameplate label, stop immediately and return ONLY this JSON:
+{
+  "error": "No readable HVAC nameplate found",
+  "confidence": 0,
+  "missing_fields": ["manufacturer","modelNumber","serialNumber","equipmentType","systemType","voltage","phase","hertz","mca","mocp","rla","lra","refrigerantType","refrigerantCharge","coolingCapacity","heatingCapacity","capacityTons","gasType","manufactureDate"]
+}
+
 EXTRACTION RULES:
 - Extract exactly what you can read on the nameplate label — nothing more.
 - NEVER guess, infer, or hallucinate values. If a field is absent or unreadable, set it to null.
 - If a field is partially readable, return the partial text as-is.
 - confidence: integer 0–100 reflecting overall image clarity and nameplate legibility.
 - missing_fields: list every key that you set to null.
+- manufacturer: extract ONLY if the manufacturer name or brand is printed as text on the nameplate label itself. Do NOT infer the manufacturer from logos, cabinet color, unit shape, brand appearance, or visual style — even if you recognise the brand. If manufacturer text is not readable on the nameplate, set manufacturer to null.
 
 Return ONLY the following JSON. No markdown. No explanation. No surrounding text.
 
