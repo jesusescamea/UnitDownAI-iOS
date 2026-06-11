@@ -162,8 +162,9 @@ export default function UnitFormPage() {
   }, []);
 
   // Called by NameplateScannerModal after crop + compress.
-  // Receives only the cropped nameplate image — never the full camera frame.
-  const handleCapture = useCallback(async (base64: string, mimeType: string, previewUrl: string) => {
+  // Receives a Blob (already cropped to nameplate region) — sent as multipart/form-data
+  // to avoid the ~33% base64 inflation that causes "entity too large" errors.
+  const handleCapture = useCallback(async (blob: Blob, previewUrl: string) => {
     setScannerOpen(false);
     setOcrLoading(true);
     setOcrError(null);
@@ -172,10 +173,13 @@ export default function UnitFormPage() {
     setOcrFieldCount(null);
 
     try {
+      const fd = new FormData();
+      fd.append("file", blob, "nameplate.jpg");
+
       const res = await fetch("/api/nameplate/ocr", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ imageBase64: base64, mimeType }),
+        body: fd,
+        // No Content-Type header — browser sets it with the multipart boundary
       });
 
       if (!res.ok) {

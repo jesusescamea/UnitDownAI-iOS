@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { X, Camera, Loader2 } from "lucide-react";
 
 interface Props {
-  onCapture: (base64: string, mimeType: string, previewUrl: string) => void;
+  onCapture: (blob: Blob, previewUrl: string) => void;
   onClose: () => void;
 }
 
@@ -31,12 +31,14 @@ function getVideoCropCoords(
   return { x: cropX, y: cropY, w: cropW, h: cropH };
 }
 
+// Crop the video frame to the guide region, resize to maxPx, compress to JPEG.
+// Returns a Blob (not base64) — caller sends it as multipart/form-data.
 async function cropAndCompress(
   video: HTMLVideoElement,
   guide: { x: number; y: number; w: number; h: number },
-  maxPx = 1000,
+  maxPx = 1200,
   quality = 0.75,
-): Promise<{ base64: string; mimeType: string; previewUrl: string }> {
+): Promise<{ blob: Blob; previewUrl: string }> {
   const { x, y, w, h } = getVideoCropCoords(video, guide);
 
   const scale = Math.min(1, maxPx / Math.max(w, h));
@@ -55,15 +57,7 @@ async function cropAndCompress(
     canvas.toBlob(
       (blob) => {
         if (!blob) { reject(new Error("Capture failed")); return; }
-        const previewUrl = URL.createObjectURL(blob);
-        const reader = new FileReader();
-        reader.onload = () => {
-          const b64 = (reader.result as string).split(",")[1];
-          if (b64) resolve({ base64: b64, mimeType: "image/jpeg", previewUrl });
-          else reject(new Error("Encoding failed"));
-        };
-        reader.onerror = () => reject(reader.error);
-        reader.readAsDataURL(blob);
+        resolve({ blob, previewUrl: URL.createObjectURL(blob) });
       },
       "image/jpeg",
       quality,
@@ -155,7 +149,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
       const result = await cropAndCompress(videoRef.current, guide);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
-      onCapture(result.base64, result.mimeType, result.previewUrl);
+      onCapture(result.blob, result.previewUrl);
     } catch (err: any) {
       setCameraError(err.message ?? "Capture failed. Please try again.");
       setCapturing(false);
@@ -209,20 +203,17 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
               }}
             />
 
-            {/* Blue corner markers — top-left */}
+            {/* Blue corner markers */}
             <div style={{ position: "absolute", top: guide.y - 2, left: guide.x - 2, width: CORNER, height: CORNER, borderTop: "3px solid #3b82f6", borderLeft: "3px solid #3b82f6", pointerEvents: "none" }} />
-            {/* top-right */}
             <div style={{ position: "absolute", top: guide.y - 2, left: guide.x + guide.w - CORNER + 2, width: CORNER, height: CORNER, borderTop: "3px solid #3b82f6", borderRight: "3px solid #3b82f6", pointerEvents: "none" }} />
-            {/* bottom-left */}
             <div style={{ position: "absolute", top: guide.y + guide.h - CORNER + 2, left: guide.x - 2, width: CORNER, height: CORNER, borderBottom: "3px solid #3b82f6", borderLeft: "3px solid #3b82f6", pointerEvents: "none" }} />
-            {/* bottom-right */}
             <div style={{ position: "absolute", top: guide.y + guide.h - CORNER + 2, left: guide.x + guide.w - CORNER + 2, width: CORNER, height: CORNER, borderBottom: "3px solid #3b82f6", borderRight: "3px solid #3b82f6", pointerEvents: "none" }} />
 
             {/* Instruction text below guide frame */}
             <div
               style={{
                 position: "absolute",
-                top: guide.y + guide.h + 18,
+                top: guide.y + guide.h + 16,
                 left: 0,
                 right: 0,
                 display: "flex",
@@ -242,7 +233,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
                 className="text-xs text-center px-6"
                 style={{ color: "rgba(255,255,255,0.65)", textShadow: "0 1px 4px rgba(0,0,0,0.8)" }}
               >
-                Straight angle · Close distance · Avoid glare
+                Move closer · Fill the frame · Avoid glare · Retake if blurry
               </p>
             </div>
           </>
@@ -264,7 +255,6 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
         className="flex-shrink-0 flex flex-col items-center justify-center gap-2"
         style={{ background: "#000", paddingTop: 28, paddingBottom: 36 }}
       >
-        {/* Shutter button — same pattern as iOS/Android camera apps */}
         <button
           onClick={handleCapture}
           disabled={disabled}
