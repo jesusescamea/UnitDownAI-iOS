@@ -2,25 +2,30 @@ import { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import { X, Camera, Loader2, Upload, Pencil } from "lucide-react";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const ANALYSIS_W    = 160;    // analysis canvas width (px)
-const ANALYSIS_SKIP = 6;      // analyse every 6th RAF frame ≈ 10 fps
-const STABLE_NEEDED = 15;     // consecutive qualifying frames ≈ 1.5 s
-const HINT_MS       = 30_000; // show hint after 30 s, scanner keeps running
+const ANALYSIS_W      = 160;     // analysis canvas width (px)
+const ANALYSIS_SKIP   = 6;       // analyse every 6th RAF frame ≈ 10 fps
+const STABLE_MS       = 1_000;   // wall-clock ms of continuous stability required
+const MOVE_MAD_THRESH = 10;      // mean-abs-diff in gray levels that counts as "moving"
+const HINT_MS         = 30_000;  // show hint after 30 s; scanner keeps running
 
-// Image-quality pass thresholds
-const BRIGHT_MIN  = 50;   // mean luminance floor
-const BRIGHT_MAX  = 215;  // mean luminance ceiling
-const GLARE_MAX   = 0.10; // fraction of near-white pixels
-const SHARP_MIN   = 40;   // Laplacian variance floor
-const EDGE_MIN    = 0.07; // Sobel edge-pixel fraction (content present)
-const EDGE_CLOSER = 0.04; // below → nothing in frame; 0.04–0.07 → too far
-const EDGE_THRESH = 20;   // per-pixel Sobel magnitude threshold
+// Image-quality thresholds
+const BRIGHT_MIN  = 50;
+const BRIGHT_MAX  = 215;
+const GLARE_MAX   = 0.10;
+const SHARP_MIN   = 40;
+const EDGE_MIN    = 0.07;
+const EDGE_CLOSER = 0.04;
+const EDGE_THRESH = 20;
 
-// Nameplate-pattern detection thresholds
-const BAND_COUNT      = 10;   // vertical bands to slice the frame into
-const BAND_EDGE_FLOOR = 0.05; // fraction of horizontal edges per band to call it "active"
-const BANDS_NEEDED    = 4;    // minimum active bands (= text rows)
-const SPAN_NEEDED     = 5;    // active bands must span this many positions (out of BAND_COUNT)
+// Nameplate-pattern thresholds
+const BAND_COUNT      = 10;
+const BAND_EDGE_FLOOR = 0.05;
+const BANDS_NEEDED    = 4;
+const SPAN_NEEDED     = 5;
+
+// Progress ring geometry
+const RING_R       = 28;
+const RING_CIRCUMF = 2 * Math.PI * RING_R;
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Phase = "scanning" | "capturing" | "manual";
@@ -29,16 +34,18 @@ type Guidance =
   | "too_dark"
   | "glare"
   | "overexposed"
-  | "find_plate"    // nothing / wrong object in frame
-  | "move_closer"   // something present but too far / too few rows
+  | "find_plate"      // nothing / wrong object in frame
+  | "move_closer"     // something present but too far
+  | "center_plate"    // plate partially visible — needs centering
   | "too_blurry"
-  | "good";         // nameplate detected + quality OK → start stability
+  | "good";           // nameplate detected + quality OK → accumulating stable time
 
 interface FrameResult {
   qualifies:          boolean;
   guidance:           Guidance;
   edgeDensity:        number;
   nameplateDetected:  boolean;
+  gray?:              Uint8ClampedArray; // for movement detection between frames
 }
 
 interface Guide { x: number; y: number; w: number; h: number }
@@ -50,49 +57,59 @@ interface Props {
 
 // ─── Guidance → display maps ──────────────────────────────────────────────────
 const INSTRUCTION: Record<Guidance, string> = {
-  too_dark:   "Use more light",
-  glare:      "Reduce glare",
-  overexposed:"Reduce glare",
-  find_plate: "Find the equipment data plate",
-  move_closer:"Move closer",
-  too_blurry: "Hold steady",
-  good:       "Data plate found — hold steady",
+  too_dark:     "Use more light",
+  glare:        "Reduce glare",
+  overexposed:  "Reduce glare",
+  find_plate:   "Find the equipment data plate",
+  move_closer:  "Move closer",
+  center_plate: "Center the data plate",
+  too_blurry:   "Hold steady",
+  good:         "Data plate found — hold steady",
 };
 
-// Guide-frame border colour
 const GUIDE_CLR: Record<Guidance, string> = {
-  too_dark:   "rgba(239,68,68,0.80)",
-  glare:      "rgba(239,68,68,0.80)",
-  overexposed:"rgba(239,68,68,0.80)",
-  find_plate: "rgba(245,158,11,0.80)",
-  move_closer:"rgba(245,158,11,0.80)",
-  too_blurry: "rgba(239,68,68,0.80)",
-  good:       "rgba(59,130,246,0.85)",
+  too_dark:     "rgba(239,68,68,0.80)",
+  glare:        "rgba(239,68,68,0.80)",
+  overexposed:  "rgba(239,68,68,0.80)",
+  find_plate:   "rgba(245,158,11,0.80)",
+  move_closer:  "rgba(245,158,11,0.80)",
+  center_plate: "rgba(245,158,11,0.80)",
+  too_blurry:   "rgba(239,68,68,0.80)",
+  good:         "rgba(59,130,246,0.85)",
 };
 
-// Instruction text colour
 const TEXT_CLR: Record<Guidance, string> = {
-  too_dark:   "#fca5a5",
-  glare:      "#fca5a5",
-  overexposed:"#fca5a5",
-  find_plate: "#fcd34d",
-  move_closer:"#fcd34d",
-  too_blurry: "#fca5a5",
-  good:       "#93c5fd",
+  too_dark:     "#fca5a5",
+  glare:        "#fca5a5",
+  overexposed:  "#fca5a5",
+  find_plate:   "#fcd34d",
+  move_closer:  "#fcd34d",
+  center_plate: "#fcd34d",
+  too_blurry:   "#fca5a5",
+  good:         "#93c5fd",
 };
+
+// ─── Movement detection ────────────────────────────────────────────────────────
+// Mean absolute difference between two gray frames.
+// Returns a value in [0, 255]; anything above MOVE_MAD_THRESH means the camera moved.
+function frameMad(a: Uint8ClampedArray, b: Uint8ClampedArray): number {
+  const len = Math.min(a.length, b.length);
+  if (len === 0) return 0;
+  let sum = 0;
+  for (let i = 0; i < len; i++) sum += Math.abs(a[i] - b[i]);
+  return sum / len;
+}
 
 // ─── Nameplate pattern detection ──────────────────────────────────────────────
-// Divides the gray frame into BAND_COUNT horizontal bands.
-// Each band is "active" when it contains enough horizontal edges (top/bottom
-// edges of text strokes → simplified vertical gradient).
-// A real HVAC nameplate has many labeled rows distributed across the full height;
-// a cabinet panel, blank wall, hand, or warning sticker does not.
+// Divides the gray frame into BAND_COUNT horizontal bands and marks each band
+// "active" when it contains enough horizontal edges (top/bottom of text strokes).
+// Returns detected (full criteria), activeCount, and span for partial-plate hinting.
 function detectNameplateBands(
   gray: Uint8ClampedArray,
   W:    number,
   H:    number,
-): boolean {
-  const bandH     = Math.max(2, Math.floor(H / BAND_COUNT));
+): { detected: boolean; activeCount: number; span: number } {
+  const bandH      = Math.max(2, Math.floor(H / BAND_COUNT));
   const activeMask = new Array<boolean>(BAND_COUNT).fill(false);
 
   for (let b = 0; b < BAND_COUNT; b++) {
@@ -100,53 +117,43 @@ function detectNameplateBands(
     const rEnd   = Math.min((b + 1) * bandH, H - 1);
     if (rEnd <= rStart) continue;
 
-    let edgePx = 0;
-    let total  = 0;
-
+    let edgePx = 0, total = 0;
     for (let row = rStart; row < rEnd; row++) {
       for (let col = 1; col < W - 1; col++) {
-        // Vertical gradient magnitude = horizontal edge strength
-        const gy = Math.abs(gray[(row + 1) * W + col] - gray[(row - 1) * W + col]);
-        if (gy > 18) edgePx++;
+        if (Math.abs(gray[(row + 1) * W + col] - gray[(row - 1) * W + col]) > 18) edgePx++;
         total++;
       }
     }
-
     activeMask[b] = total > 0 && edgePx / total > BAND_EDGE_FLOOR;
   }
 
   const activeCount = activeMask.filter(Boolean).length;
-  if (activeCount < BANDS_NEEDED) return false;
+  if (activeCount === 0) return { detected: false, activeCount: 0, span: 0 };
 
-  // Active bands must be spread across the height, not all clustered together
-  // (a single warning sticker has 1–3 adjacent bands; a nameplate spans the plate)
-  const firstIdx  = activeMask.findIndex(Boolean);
-  const lastIdx   = activeMask.lastIndexOf(true);
-  return lastIdx - firstIdx + 1 >= SPAN_NEEDED;
+  const firstIdx = activeMask.findIndex(Boolean);
+  const lastIdx  = activeMask.lastIndexOf(true);
+  const span     = lastIdx - firstIdx + 1;
+  const detected = activeCount >= BANDS_NEEDED && span >= SPAN_NEEDED;
+  return { detected, activeCount, span };
 }
 
 // ─── Frame quality + nameplate analysis ───────────────────────────────────────
-// Renders the guide region to a small canvas and runs five independent checks:
-//   1. brightness    2. glare    3. sharpness (Laplacian)
-//   4. edge density (Sobel, overall content present)
-//   5. nameplate-band pattern (multi-row text distribution)
-// A frame *qualifies* only when ALL five pass.
+// Runs five independent checks: brightness, glare, sharpness (Laplacian),
+// edge density (Sobel), and nameplate-band pattern.
+// Returns the gray array so the caller can compare consecutive frames for movement.
 function analyzeFrame(
   video:  HTMLVideoElement,
   canvas: HTMLCanvasElement,
   guide:  Guide,
 ): FrameResult {
-  const vW = video.videoWidth;
-  const vH = video.videoHeight;
-  const dW = video.clientWidth;
-  const dH = video.clientHeight;
+  const vW = video.videoWidth,  vH = video.videoHeight;
+  const dW = video.clientWidth, dH = video.clientHeight;
 
   const FAIL = (g: Guidance): FrameResult =>
     ({ qualifies: false, guidance: g, edgeDensity: 0, nameplateDetected: false });
 
   if (!vW || !vH) return FAIL("find_plate");
 
-  // Map display-coord guide → intrinsic video pixels (object-fit: cover)
   const scale = Math.max(dW / vW, dH / vH);
   const ox    = (dW - vW * scale) / 2;
   const oy    = (dH - vH * scale) / 2;
@@ -164,39 +171,31 @@ function analyzeFrame(
   ctx.drawImage(video, sx, sy, sw, sh, 0, 0, ANALYSIS_W, aH);
 
   const { data } = ctx.getImageData(0, 0, ANALYSIS_W, aH);
-  const total    = ANALYSIS_W * aH;
-  const W        = ANALYSIS_W;
-  const H        = aH;
+  const total = ANALYSIS_W * aH;
+  const W     = ANALYSIS_W;
+  const H     = aH;
 
   // ── Pass 1: luminance, brightness, glare ─────────────────────────────────
-  const gray      = new Uint8ClampedArray(total);
-  let   brightSum = 0;
+  const gray       = new Uint8ClampedArray(total);
+  let   brightSum  = 0;
   let   glareCount = 0;
 
   for (let i = 0; i < total; i++) {
-    const r = data[i * 4];
-    const g = data[i * 4 + 1];
-    const b = data[i * 4 + 2];
-    const lum = (r * 77 + g * 150 + b * 29) >> 8; // BT.601 integer approx
+    const lum = (data[i * 4] * 77 + data[i * 4 + 1] * 150 + data[i * 4 + 2] * 29) >> 8;
     gray[i]    = lum;
     brightSum  += lum;
-    if (r > 248 && g > 248 && b > 248) glareCount++;
+    if (data[i * 4] > 248 && data[i * 4 + 1] > 248 && data[i * 4 + 2] > 248) glareCount++;
   }
 
   const brightness = brightSum / total;
   const glareRatio = glareCount / total;
 
   // ── Pass 2: Laplacian variance (sharpness) + Sobel edge density ──────────
-  let lapSum   = 0;
-  let lapSumSq = 0;
-  let edgePx   = 0;
-  let n        = 0;
+  let lapSum = 0, lapSumSq = 0, edgePx = 0, n = 0;
 
   for (let row = 1; row < H - 1; row++) {
     for (let col = 1; col < W - 1; col++) {
       const idx = row * W + col;
-
-      // 5-point Laplacian
       const lap =
         -4 * gray[idx]
         + gray[(row - 1) * W + col]
@@ -206,7 +205,6 @@ function analyzeFrame(
       lapSum   += lap;
       lapSumSq += lap * lap;
 
-      // 3×3 Sobel
       const gx =
         (gray[(row-1)*W+(col+1)] + 2*gray[row*W+(col+1)] + gray[(row+1)*W+(col+1)]) -
         (gray[(row-1)*W+(col-1)] + 2*gray[row*W+(col-1)] + gray[(row+1)*W+(col-1)]);
@@ -214,7 +212,6 @@ function analyzeFrame(
         (gray[(row+1)*W+(col-1)] + 2*gray[(row+1)*W+col] + gray[(row+1)*W+(col+1)]) -
         (gray[(row-1)*W+(col-1)] + 2*gray[(row-1)*W+col] + gray[(row-1)*W+(col+1)]);
       if (Math.abs(gx) + Math.abs(gy) > EDGE_THRESH) edgePx++;
-
       n++;
     }
   }
@@ -223,32 +220,29 @@ function analyzeFrame(
   const sharpness   = n > 0 ? lapSumSq / n - lapMean * lapMean : 0;
   const edgeDensity = n > 0 ? edgePx / n : 0;
 
-  // ── Quality gate (priority: most blocking issue first) ────────────────────
-  if (brightness  < BRIGHT_MIN)  return { qualifies: false, guidance: "too_dark",   edgeDensity, nameplateDetected: false };
-  if (glareRatio  > GLARE_MAX)   return { qualifies: false, guidance: "glare",      edgeDensity, nameplateDetected: false };
-  if (brightness  > BRIGHT_MAX)  return { qualifies: false, guidance: "overexposed",edgeDensity, nameplateDetected: false };
-  if (edgeDensity < EDGE_CLOSER) return { qualifies: false, guidance: "find_plate", edgeDensity, nameplateDetected: false };
-  if (edgeDensity < EDGE_MIN)    return { qualifies: false, guidance: "move_closer",edgeDensity, nameplateDetected: false };
-  if (sharpness   < SHARP_MIN)   return { qualifies: false, guidance: "too_blurry", edgeDensity, nameplateDetected: false };
+  // ── Quality gate ─────────────────────────────────────────────────────────
+  if (brightness  < BRIGHT_MIN)  return { qualifies: false, guidance: "too_dark",    edgeDensity, nameplateDetected: false, gray };
+  if (glareRatio  > GLARE_MAX)   return { qualifies: false, guidance: "glare",       edgeDensity, nameplateDetected: false, gray };
+  if (brightness  > BRIGHT_MAX)  return { qualifies: false, guidance: "overexposed", edgeDensity, nameplateDetected: false, gray };
+  if (edgeDensity < EDGE_CLOSER) return { qualifies: false, guidance: "find_plate",  edgeDensity, nameplateDetected: false };
+  if (edgeDensity < EDGE_MIN)    return { qualifies: false, guidance: "move_closer", edgeDensity, nameplateDetected: false, gray };
+  if (sharpness   < SHARP_MIN)   return { qualifies: false, guidance: "too_blurry",  edgeDensity, nameplateDetected: false, gray };
 
-  // ── Nameplate pattern gate ────────────────────────────────────────────────
-  // Only passes when the frame contains multiple horizontal text-row bands
-  // distributed across the height — the signature of an HVAC data plate.
-  // Cabinet panels, blank metal, wiring, hands, and warning stickers fail here.
-  const nameplateDetected = detectNameplateBands(gray, W, H);
-  if (!nameplateDetected) {
-    return { qualifies: false, guidance: "find_plate", edgeDensity, nameplateDetected: false };
+  // ── Nameplate band gate ───────────────────────────────────────────────────
+  const { detected, activeCount } = detectNameplateBands(gray, W, H);
+  if (!detected) {
+    // 2+ active bands = plate partially in frame → guide to center rather than "find"
+    const guidance: Guidance = activeCount >= 2 ? "center_plate" : "find_plate";
+    return { qualifies: false, guidance, edgeDensity, nameplateDetected: false, gray };
   }
 
-  return { qualifies: true, guidance: "good", edgeDensity, nameplateDetected: true };
+  return { qualifies: true, guidance: "good", edgeDensity, nameplateDetected: true, gray };
 }
 
-// ─── Capture helpers (unchanged) ─────────────────────────────────────────────
+// ─── Capture helpers ──────────────────────────────────────────────────────────
 function getCropCoords(video: HTMLVideoElement, guide: Guide) {
-  const vW = video.videoWidth;
-  const vH = video.videoHeight;
-  const dW = video.clientWidth;
-  const dH = video.clientHeight;
+  const vW = video.videoWidth,  vH = video.videoHeight;
+  const dW = video.clientWidth, dH = video.clientHeight;
   if (!vW || !vH) return { x: 0, y: 0, w: vW, h: vH };
   const scale = Math.max(dW / vW, dH / vH);
   const ox = (dW - vW * scale) / 2;
@@ -326,21 +320,23 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
   const rafIdRef          = useRef<number | null>(null);
 
   // Refs for RAF loop (avoid stale closures)
-  const phaseRef       = useRef<Phase>("scanning");
-  const stableCountRef = useRef(0);
-  const frameCountRef  = useRef(0);
-  const startTimeRef   = useRef(Date.now());
-  const guideRef       = useRef<Guide | null>(null);
-  const showHintRef    = useRef(false);
+  const phaseRef        = useRef<Phase>("scanning");
+  const isCapturingRef  = useRef(false);                      // duplicate-capture lock
+  const stableStartRef  = useRef<number | null>(null);        // wall-clock when stability began
+  const prevGrayRef     = useRef<Uint8ClampedArray | null>(null); // previous frame's gray data
+  const frameCountRef   = useRef(0);
+  const startTimeRef    = useRef(Date.now());
+  const guideRef        = useRef<Guide | null>(null);
+  const showHintRef     = useRef(false);
 
   // React state (drives UI redraws)
-  const [phaseState,      setPhaseState]      = useState<Phase>("scanning");
-  const [guidance,        setGuidance]        = useState<Guidance>("find_plate");
-  const [instruction,     setInstruction]     = useState("Find the equipment data plate");
-  const [stableProgress,  setStableProgress]  = useState(0);
-  const [showHint,        setShowHint]        = useState(false);
-  const [cameraError,     setCameraError]     = useState<string | null>(null);
-  const [containerSize,   setContainerSize]   = useState({ w: 0, h: 0 });
+  const [phaseState,     setPhaseState]     = useState<Phase>("scanning");
+  const [guidance,       setGuidance]       = useState<Guidance>("find_plate");
+  const [instruction,    setInstruction]    = useState("Find the equipment data plate");
+  const [stableProgress, setStableProgress] = useState(0);
+  const [showHint,       setShowHint]       = useState(false);
+  const [cameraError,    setCameraError]    = useState<string | null>(null);
+  const [containerSize,  setContainerSize]  = useState({ w: 0, h: 0 });
 
   const setPhase = useCallback((p: Phase) => {
     phaseRef.current = p;
@@ -350,7 +346,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
   // Off-screen analysis canvas (created once)
   useEffect(() => { analysisCanvasRef.current = document.createElement("canvas"); }, []);
 
-  // Track container size
+  // Track container size for guide computation
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -417,24 +413,31 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
   }, []);
 
   // ─── Auto-capture RAF loop ─────────────────────────────────────────────────
-  // All mutable state read through refs — never stale closures.
-  // Loop keeps running indefinitely; only stops on capture or manual exit.
-  // Capture requires: quality OK  AND  nameplate pattern detected  AND  1.5 s stable.
+  // Stability is measured in wall-clock time, not frame count, so device
+  // performance variation does not affect the required hold duration.
+  //
+  // Capture requires ALL of:
+  //   1. quality checks pass (brightness, glare, sharpness, edge density)
+  //   2. nameplate band pattern detected
+  //   3. camera is not moving (frame-to-frame MAD ≤ MOVE_MAD_THRESH)
+  //   4. all of the above have held continuously for ≥ STABLE_MS (1 second)
+  //
+  // Any single failure resets the stability timer back to zero.
   useEffect(() => {
     startTimeRef.current = Date.now();
 
     function loop() {
-      const phase = phaseRef.current;
-      if (phase === "capturing" || phase === "manual") return;
+      if (phaseRef.current !== "scanning") return;
 
       rafIdRef.current = requestAnimationFrame(loop);
       frameCountRef.current++;
       if (frameCountRef.current % ANALYSIS_SKIP !== 0) return;
 
-      // Show hint after HINT_MS — do NOT stop the loop
+      // Show 30-second hint — loop keeps running
       if (!showHintRef.current && Date.now() - startTimeRef.current > HINT_MS) {
         showHintRef.current = true;
         setShowHint(true);
+        console.log("[Scanner] 30s elapsed — showing manual fallback hint");
       }
 
       const video   = videoRef.current;
@@ -447,28 +450,60 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
         return;
       }
 
-      const { qualifies, guidance: gState } = analyzeFrame(video, aCanvas, g);
+      const { qualifies, guidance: gState, gray } = analyzeFrame(video, aCanvas, g);
 
-      if (qualifies) {
-        // nameplateDetected === true at this point (enforced inside analyzeFrame)
-        stableCountRef.current++;
-        const progress = Math.min(100, Math.round((stableCountRef.current / STABLE_NEEDED) * 100));
+      if (qualifies && gray) {
+        // ── Movement check ─────────────────────────────────────────────────
+        let isMoving = false;
+        if (prevGrayRef.current && prevGrayRef.current.length === gray.length) {
+          const mad = frameMad(prevGrayRef.current, gray);
+          if (mad > MOVE_MAD_THRESH) {
+            isMoving = true;
+            if (stableStartRef.current !== null) {
+              console.log(`[Scanner] Movement detected (MAD=${mad.toFixed(1)}) — resetting stability timer`);
+            }
+          }
+        }
+        prevGrayRef.current = gray;
+
+        if (isMoving) {
+          // Camera still settling — reset timer but keep showing "hold steady"
+          stableStartRef.current = null;
+          setStableProgress(0);
+          setGuidance("good");
+          setInstruction("Hold steady");
+          return;
+        }
+
+        // ── Stability accumulation ──────────────────────────────────────────
+        const now = Date.now();
+        if (stableStartRef.current === null) {
+          stableStartRef.current = now;
+          console.log("[Scanner] Nameplate detected + camera stable — starting 1 s hold timer");
+        }
+
+        const elapsed  = now - stableStartRef.current;
+        const progress = Math.min(100, Math.round((elapsed / STABLE_MS) * 100));
         setStableProgress(progress);
         setGuidance("good");
-        setInstruction(
-          stableCountRef.current >= Math.round(STABLE_NEEDED * 0.6)
-            ? "Data plate found — hold steady"
-            : "Hold steady…",
-        );
+        setInstruction("Data plate found — hold steady");
 
-        if (stableCountRef.current >= STABLE_NEEDED) {
+        if (elapsed >= STABLE_MS && !isCapturingRef.current) {
+          isCapturingRef.current = true;
           if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+          console.log(`[Scanner] Held stable for ${elapsed} ms — triggering auto-capture`);
           setPhase("capturing");
           doCapture();
         }
+
       } else {
-        // Any failed check resets the stability window
-        stableCountRef.current = 0;
+        // ── Quality or band gate failed — reset all stability state ─────────
+        const wasStable = stableStartRef.current !== null;
+        if (wasStable) {
+          console.log(`[Scanner] Stability broken — guidance: ${gState}`);
+        }
+        stableStartRef.current = null;
+        prevGrayRef.current    = gray ?? null; // keep gray for next frame comparison when available
         setStableProgress(0);
         setGuidance(gState);
         setInstruction(INSTRUCTION[gState]);
@@ -477,35 +512,53 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
 
     rafIdRef.current = requestAnimationFrame(loop);
     return () => { if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current); };
-  }, []); // intentionally empty — all mutable state via refs
+  }, []); // intentionally empty — all mutable state accessed via refs
 
-  // ─── Capture helpers ───────────────────────────────────────────────────────
+  // ─── Capture ───────────────────────────────────────────────────────────────
   async function doCapture() {
+    if (!isCapturingRef.current) isCapturingRef.current = true;
     const video = videoRef.current;
     const g     = guideRef.current;
-    if (!video || !g) { setPhase("manual"); return; }
+    if (!video || !g) {
+      console.log("[Scanner] doCapture: no video or guide — falling back to manual");
+      isCapturingRef.current = false;
+      setPhase("manual");
+      return;
+    }
     try {
+      console.log("[Scanner] Capturing frame…");
       const result = await captureFrame(video, g);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      console.log("[Scanner] Capture complete — handing off to OCR");
       onCapture(result.blob, result.previewUrl);
-    } catch {
+    } catch (err) {
+      console.warn("[Scanner] Capture failed:", err);
+      isCapturingRef.current = false;
       setPhase("manual");
     }
   }
 
   const handleManualCapture = useCallback(async () => {
+    if (isCapturingRef.current) return;
+    isCapturingRef.current = true;
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     setPhase("capturing");
     const video = videoRef.current;
     const g     = guideRef.current;
-    if (!video || !g) { setPhase("manual"); return; }
+    if (!video || !g) {
+      isCapturingRef.current = false;
+      setPhase("manual");
+      return;
+    }
     try {
+      console.log("[Scanner] Manual capture triggered");
       const result = await captureFrame(video, g);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       onCapture(result.blob, result.previewUrl);
     } catch {
+      isCapturingRef.current = false;
       setPhase("manual");
     }
   }, [onCapture, setPhase]);
@@ -513,41 +566,51 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (isCapturingRef.current) return;
+    isCapturingRef.current = true;
     if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
     setPhase("capturing");
     try {
+      console.log("[Scanner] File upload — resizing before OCR");
       const result = await resizeFile(file);
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       onCapture(result.blob, result.previewUrl);
     } catch {
+      isCapturingRef.current = false;
       setPhase("manual");
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }, [onCapture, setPhase]);
 
   // ─── Derived render values ─────────────────────────────────────────────────
-  const phase       = phaseState;
-  const isCapturing = phase === "capturing";
-  const isManual    = phase === "manual";
-  const isScanning  = phase === "scanning";
+  const isCapturing = phaseState === "capturing";
+  const isManual    = phaseState === "manual";
+  const isScanning  = phaseState === "scanning";
+  const isStable    = stableProgress > 0 && !isCapturing;
 
-  // Guide border: green when > 50 % stable, blue when holding, else guidance colour
+  // Guide border: green when fully stable, blue while holding, amber/red otherwise
   const guideColor =
-    stableProgress > 50 ? "rgba(34,197,94,0.90)"  :
-    stableProgress > 0  ? GUIDE_CLR.good           :
-                          GUIDE_CLR[guidance];
+    stableProgress >= 100 ? "rgba(34,197,94,0.90)"  :
+    stableProgress > 0    ? GUIDE_CLR.good           :
+                            GUIDE_CLR[guidance];
 
-  // Corner bracket colour mirrors guide
+  // Corner bracket colour
   const cornerClr =
-    stableProgress > 50 ? "#4ade80" :
-    stableProgress > 0  ? "#60a5fa" :
-    (guidance === "find_plate" || guidance === "move_closer") ? "#fbbf24" : "#f87171";
+    stableProgress >= 100 ? "#4ade80" :
+    stableProgress > 0    ? "#60a5fa" :
+    (guidance === "find_plate" || guidance === "move_closer" || guidance === "center_plate")
+      ? "#fbbf24" : "#f87171";
 
   // Instruction text colour
-  const textClr = stableProgress > 50 ? "#4ade80" : TEXT_CLR[guidance];
+  const textClr =
+    stableProgress >= 100 ? "#4ade80" :
+    stableProgress > 0    ? "#93c5fd" :
+    TEXT_CLR[guidance];
 
-  const showBar = stableProgress > 0 && !isCapturing;
+  // Ring arc colour
+  const ringStroke = stableProgress >= 100 ? "#4ade80" : "#3b82f6";
+  const ringOffset = RING_CIRCUMF * (1 - stableProgress / 100);
 
   return (
     <div className="fixed inset-0 z-[200] bg-black flex flex-col" style={{ touchAction: "none" }}>
@@ -604,31 +667,12 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
               }} />
             ))}
 
-            {/* Stability progress bar — above guide frame */}
-            {showBar && (
-              <div style={{
-                position: "absolute",
-                top: guide.y - 9, left: guide.x,
-                width: guide.w, height: 4,
-                background: "rgba(255,255,255,0.18)", borderRadius: 2,
-                overflow: "hidden", pointerEvents: "none",
-              }}>
-                <div style={{
-                  height: "100%",
-                  width: `${stableProgress}%`,
-                  background: stableProgress > 50 ? "#4ade80" : "#3b82f6",
-                  borderRadius: 2,
-                  transition: "width 0.15s, background 0.25s",
-                }} />
-              </div>
-            )}
-
-            {/* Instructions — below guide frame */}
+            {/* Instruction area — below guide frame */}
             <div style={{
               position: "absolute",
               top: guide.y + guide.h + 14,
               left: 0, right: 0,
-              display: "flex", flexDirection: "column", alignItems: "center", gap: 5,
+              display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
               pointerEvents: "none",
             }}>
               {/* Primary instruction */}
@@ -639,8 +683,49 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
                 {instruction}
               </p>
 
-              {/* Contextual sub-hint */}
-              {stableProgress === 0 && (
+              {/* Progress ring — visible during 1-second hold */}
+              {isStable && (
+                <svg
+                  width={72} height={72}
+                  viewBox="0 0 72 72"
+                  aria-label={`Hold steady — ${stableProgress}% stable`}
+                  style={{ display: "block", marginTop: 2 }}
+                >
+                  {/* Track */}
+                  <circle
+                    cx={36} cy={36} r={RING_R}
+                    fill="none"
+                    stroke="rgba(255,255,255,0.15)"
+                    strokeWidth={5}
+                  />
+                  {/* Fill arc */}
+                  <circle
+                    cx={36} cy={36} r={RING_R}
+                    fill="none"
+                    stroke={ringStroke}
+                    strokeWidth={5}
+                    strokeDasharray={RING_CIRCUMF}
+                    strokeDashoffset={ringOffset}
+                    strokeLinecap="round"
+                    transform="rotate(-90 36 36)"
+                    style={{ transition: "stroke-dashoffset 0.12s ease-out, stroke 0.25s" }}
+                  />
+                  {/* Percentage label */}
+                  <text
+                    x={36} y={41}
+                    textAnchor="middle"
+                    fill="white"
+                    fontSize={13}
+                    fontWeight="bold"
+                    fontFamily="system-ui, -apple-system, sans-serif"
+                  >
+                    {stableProgress}%
+                  </text>
+                </svg>
+              )}
+
+              {/* Contextual sub-hint — only when not in stable state */}
+              {!isStable && (
                 <p
                   className="text-xs text-center px-8 leading-relaxed"
                   style={{ color: "rgba(255,255,255,0.48)", textShadow: "0 1px 4px rgba(0,0,0,0.85)" }}
@@ -649,12 +734,14 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
                     ? "Aim at the metal label showing MODEL, SERIAL, VOLTS, and electrical data"
                     : guidance === "move_closer"
                     ? "Get the data plate to fill the guide frame"
+                    : guidance === "center_plate"
+                    ? "Move the plate to fill the guide frame"
                     : "Fill the frame · Avoid glare · Hold steady"}
                 </p>
               )}
 
-              {/* 30 s hint — scanner still running */}
-              {showHint && stableProgress === 0 && (
+              {/* 30 s hint */}
+              {showHint && !isStable && (
                 <p
                   className="text-xs text-center px-6 mt-0.5 font-medium"
                   style={{ color: "rgba(255,200,100,0.90)", textShadow: "0 1px 4px rgba(0,0,0,0.9)" }}
@@ -666,12 +753,12 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
           </>
         )}
 
-        {/* Capturing overlay */}
+        {/* Scanning overlay — shown while capturing */}
         {isCapturing && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/40">
             <Loader2 className="w-10 h-10 text-white animate-spin" />
             <p className="text-white text-sm font-bold" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.9)" }}>
-              Capturing…
+              Scanning…
             </p>
           </div>
         )}
@@ -690,18 +777,18 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
       {/* ── Bottom bar ───────────────────────────────────────────────────────── */}
       <div className="flex-shrink-0" style={{ background: "#000" }}>
 
-        {/* Scan-status row — visible during scanning */}
+        {/* Scan-status row */}
         {isScanning && !cameraError && (
           <div className="flex items-center justify-between px-5 pt-3 pb-1">
             <div className="flex items-center gap-2">
-              {stableProgress > 0 ? (
+              {isStable ? (
                 <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
               ) : (
                 <div className="w-2 h-2 rounded-full border-2 border-white/30 animate-pulse flex-shrink-0" />
               )}
               <span className="text-white/60 text-xs">
-                {stableProgress > 0
-                  ? `Data plate found — locking… ${stableProgress}%`
+                {isStable
+                  ? `Plate found — holding steady… ${stableProgress}%`
                   : "Scanning for data plate…"}
               </span>
             </div>
@@ -713,7 +800,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
           <div className="px-4 pt-2 pb-6">
             <div className="flex gap-2">
 
-              {/* Take Photo — crops + compresses before OCR */}
+              {/* Take Photo */}
               <button
                 onClick={handleManualCapture}
                 disabled={isCapturing || !!cameraError}
