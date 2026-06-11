@@ -215,6 +215,25 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
             <p className="text-center text-xs text-gray-400 mt-2">
               Cancel anytime in Apple Settings
             </p>
+            <div className="flex items-center justify-center gap-3 mt-3">
+              <a
+                href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-blue-500 hover:underline"
+              >
+                Terms of Use
+              </a>
+              <span className="text-[11px] text-gray-300">·</span>
+              <a
+                href="https://unitdown.org/privacy"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-[11px] text-blue-500 hover:underline"
+              >
+                Privacy Policy
+              </a>
+            </div>
           </div>
         </div>
       </div>

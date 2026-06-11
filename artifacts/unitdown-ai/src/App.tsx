@@ -610,6 +610,27 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
                     UnitDown AI Pro is an auto-renewing subscription. Payment will be charged to your Apple ID account at confirmation of purchase. The subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. You can manage and cancel your subscription in your Apple ID Account Settings.
                   </p>
 
+                  {/* Apple-required legal links — Guideline 3.1.2(c) */}
+                  <div className="flex items-center justify-center gap-3 flex-wrap">
+                    <a
+                      href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-blue-500 hover:underline"
+                    >
+                      Terms of Use
+                    </a>
+                    <span className="text-[11px] text-slate-300">·</span>
+                    <a
+                      href="https://unitdown.org/privacy"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[11px] text-blue-500 hover:underline"
+                    >
+                      Privacy Policy
+                    </a>
+                  </div>
+
                   {/* Trust */}
                   <div className="flex items-center justify-center gap-4">
                     {[

@@ -39,7 +39,7 @@ All subscriptions on iOS use Apple StoreKit 2 (In-App Purchase). Stripe is
 
 | Product | ID | Type |
 |---|---|---|
-| Pro Tech (monthly) | `com.unitdown.ai.pro.monthly` | Auto-renewing subscription |
+| Pro Tech (monthly) | `com.unitdown.subscription.monthly` | Auto-renewing subscription |
 
 These product IDs **must be created in App Store Connect** before submission.
 See `APPLE_SUBMISSION_CHECKLIST.md` for the full setup checklist.
@@ -86,5 +86,5 @@ Stripe remains active on the web version (unitdown.org) only.
 1. Create the `review@unitdown.org` Clerk account in the Clerk dashboard
 2. Set the env variable `REVIEW_ACCOUNT_CLERK_ID=<clerk_user_id>` in the
    production API server (the Clerk user ID for review@unitdown.org)
-3. Create IAP product `com.unitdown.ai.pro.monthly` in App Store Connect
+3. Create IAP product `com.unitdown.subscription.monthly` in App Store Connect
 4. Accept the Paid Apps Agreement in App Store Connect

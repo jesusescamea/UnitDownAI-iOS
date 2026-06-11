@@ -23,6 +23,7 @@
  */
 
 import { registerPlugin } from "@capacitor/core";
+import { getPlatform, isNative } from "./platform";
 
 export const IAP_PRODUCT_ID = "com.unitdown.subscription.monthly";
 
@@ -88,28 +89,51 @@ export function setIAPSubscriptionActive(active: boolean): void {
  *  so callers never hang waiting for IAP when the plugin isn't installed or the
  *  App Store is unreachable. */
 export async function fetchProducts(): Promise<IAPProduct[]> {
-  const timeout = new Promise<IAPProduct[]>((resolve) =>
-    setTimeout(() => resolve([]), 6_000)
+  const platform = getPlatform();
+  const native = isNative();
+  console.log(
+    `[UnitDownIAP] fetchProducts — platform:${platform} native:${native} productId:${IAP_PRODUCT_ID}`
   );
+
+  const timeout = new Promise<IAPProduct[]>((resolve) =>
+    setTimeout(() => {
+      console.log("[UnitDownIAP] fetchProducts timed out after 6 s");
+      resolve([]);
+    }, 6_000)
+  );
+
   const fetch = UnitDownIAP.getProducts({ productIds: [IAP_PRODUCT_ID] })
-    .then((result) =>
-      result.products.map((p) => ({
+    .then((result) => {
+      const mapped = result.products.map((p) => ({
         productId: p.productId,
         title: p.title,
         description: p.description,
         price: p.price,
         priceAsDecimal: p.priceAsDecimal,
         currency: p.currencyCode,
-      }))
-    )
-    .catch(() => [] as IAPProduct[]);
+      }));
+      console.log(
+        `[UnitDownIAP] fetchProducts returned ${mapped.length} product(s):`,
+        mapped.map((p) => `${p.productId}=${p.price}`).join(", ") || "(none)"
+      );
+      return mapped;
+    })
+    .catch((err: unknown) => {
+      console.log("[UnitDownIAP] fetchProducts error:", (err as Error)?.message ?? err);
+      return [] as IAPProduct[];
+    });
+
   return Promise.race([fetch, timeout]);
 }
 
 /** Initiate a purchase. Must be called from a user gesture. */
 export async function purchasePro(): Promise<IAPPurchaseResult> {
+  console.log(
+    `[UnitDownIAP] purchasePro — platform:${getPlatform()} native:${isNative()} productId:${IAP_PRODUCT_ID}`
+  );
   try {
     const result = await UnitDownIAP.purchaseProduct({ productId: IAP_PRODUCT_ID });
+    console.log(`[UnitDownIAP] purchaseProduct result — state:${result.state} txId:${result.transactionId}`);
 
     if (result.state === "purchased") {
       await UnitDownIAP.finishTransaction({
@@ -117,22 +141,27 @@ export async function purchasePro(): Promise<IAPPurchaseResult> {
         productId: IAP_PRODUCT_ID,
       }).catch(() => {});
       setIAPSubscriptionActive(true);
+      console.log("[UnitDownIAP] purchasePro SUCCESS");
       return { success: true, productId: IAP_PRODUCT_ID, transactionId: result.transactionId };
     }
 
     // "deferred" = parental approval pending — not a user cancellation or error.
     if (result.state === "deferred") {
+      console.log("[UnitDownIAP] purchasePro DEFERRED (parental approval)");
       return { success: false, error: "Purchase is pending parental approval." };
     }
 
     // "cancelled" = user explicitly dismissed the Apple payment sheet. Silent.
     if (result.state === "cancelled") {
+      console.log("[UnitDownIAP] purchasePro CANCELLED by user");
       return { success: false, cancelled: true };
     }
 
+    console.log(`[UnitDownIAP] purchasePro unknown state: ${result.state}`);
     return { success: false, error: "Purchase did not complete. Please try again." };
   } catch (err: unknown) {
     const e = err as { message?: string; code?: string };
+    console.log(`[UnitDownIAP] purchasePro THREW — code:${e?.code} message:${e?.message}`);
     // Only treat USER_CANCELLED (the explicit Capacitor code) as a silent cancel.
     // Do NOT match on error message strings — that would swallow real errors
     // such as plugin-not-found fallbacks from the web stub.
@@ -147,12 +176,20 @@ export async function purchasePro(): Promise<IAPPurchaseResult> {
  *  explicit "Restore Purchases" user action — never call silently on app start,
  *  as StoreKit may show an authentication prompt. */
 export async function restorePurchases(): Promise<IAPRestoreResult> {
+  console.log(
+    `[UnitDownIAP] restorePurchases — platform:${getPlatform()} native:${isNative()}`
+  );
   try {
     const result = await UnitDownIAP.restoreTransactions();
     const productIds = result.transactions
       .filter((t) => t.state === "purchased" || t.state === "restored")
       .map((t) => t.productId)
       .filter(Boolean);
+
+    console.log(
+      `[UnitDownIAP] restorePurchases — ${result.transactions.length} transaction(s) returned,`,
+      `${productIds.length} active. productIds:`, productIds.join(", ") || "(none)"
+    );
 
     for (const t of result.transactions) {
       if (productIds.includes(t.productId)) {
@@ -165,10 +202,12 @@ export async function restorePurchases(): Promise<IAPRestoreResult> {
 
     const hasProSubscription = productIds.includes(IAP_PRODUCT_ID);
     setIAPSubscriptionActive(hasProSubscription);
+    console.log(`[UnitDownIAP] restorePurchases hasProSubscription:${hasProSubscription}`);
 
     return { success: true, restoredProductIds: [...new Set(productIds)] };
   } catch (err: unknown) {
     const e = err as { message?: string };
+    console.log(`[UnitDownIAP] restorePurchases THREW — message:${e?.message}`);
     return {
       success: false,
       restoredProductIds: [],

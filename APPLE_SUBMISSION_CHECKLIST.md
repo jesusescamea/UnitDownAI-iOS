@@ -7,7 +7,7 @@
 - [ ] Banking information completed and verified
 
 ### In-App Purchases
-- [ ] IAP product created: **`com.unitdown.ai.pro.monthly`**
+- [ ] IAP product created: **`com.unitdown.subscription.monthly`**
   - Type: Auto-Renewable Subscription
   - Subscription Group: "UnitDown AI Pro"
   - Display Name: "UnitDown AI Pro"
@@ -75,7 +75,7 @@
 
 | Plan | Product ID | Type |
 |---|---|---|
-| Pro Tech Monthly | `com.unitdown.ai.pro.monthly` | Auto-Renewable Subscription |
+| Pro Tech Monthly | `com.unitdown.subscription.monthly` | Auto-Renewable Subscription |
 
 > These IDs are defined in `artifacts/unitdown-ai/src/lib/appleIAP.ts` as `IAP_PRODUCT_ID`.
 > The product IDs in App Store Connect **must exactly match** these values.

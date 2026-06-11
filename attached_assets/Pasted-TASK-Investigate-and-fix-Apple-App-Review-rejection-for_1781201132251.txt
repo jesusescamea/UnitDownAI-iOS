@@ -1,0 +1,135 @@
+TASK: Investigate and fix Apple App Review rejection for UnitDown AI In-App Purchase.
+
+Apple rejection:
+Guideline 2.1(b): subscription is not available.
+Guideline 2.1: In-App Purchase products have not been submitted for review.
+Guideline 3.1.2(c): required auto-renewable subscription Terms of Use link missing from App Store metadata.
+
+IMPORTANT:
+Do not modify unrelated features.
+
+Do NOT change:
+- Diagnostic engine
+- Nameplate scanner
+- Equipment records
+- Timeline/history
+- Auth
+- Saved units
+- UI navigation unrelated to subscription/paywall
+- Pricing text unless required for Apple compliance
+
+Focus ONLY on:
+- iOS IAP availability
+- Native UnitDownIAP plugin detection
+- Subscription purchase flow
+- Restore purchases flow
+- Paywall error handling
+- App Store compliance metadata text
+- Product ID consistency
+
+CURRENT USER-FACING ERROR:
+“In-app purchases are not available on this platform. If you are on iOS, the native UnitDownIAP plugin may not be installed in Xcode.”
+
+INVESTIGATE:
+
+1. Confirm the exact App Store Connect product ID used in code.
+   Expected product ID:
+   com.unitdown.subscription.monthly
+
+2. Search the codebase for all product IDs:
+   - com.unitdown.subscription.monthly
+   - com.unitdown.ai.pro.monthly
+   - any old or mismatched subscription IDs
+
+3. Verify the paywall is using the correct product ID everywhere.
+
+4. Verify the native iOS plugin is registered correctly:
+   - UnitDownIAPPlugin.swift exists
+   - UnitDownIAPPlugin.m exists if needed
+   - plugin is included in the Xcode target
+   - Capacitor recognizes the plugin
+   - JavaScript bridge calls the correct plugin name
+   - plugin method names match frontend calls
+
+5. Verify platform detection:
+   - On iOS app build, app should call native IAP plugin
+   - On web/PWA/browser, app should not show Apple IAP unavailable error unless testing iOS native flow
+   - If running in Safari browser, show a clear message that purchases must be made in the iOS app, not browser
+
+6. Verify StoreKit / sandbox behavior:
+   - fetch products from StoreKit
+   - product must return from App Store sandbox
+   - purchase button should be disabled until product loads
+   - restore purchases should call StoreKit restore/sync
+   - all errors should be logged with exact StoreKit error codes
+
+7. Add debug logging only if safe:
+   Log:
+   - detected platform
+   - native plugin available true/false
+   - product ID requested
+   - products returned
+   - purchase attempt result
+   - restore result
+   Do not log Apple ID, personal data, tokens, or payment data.
+
+8. Improve user-facing errors:
+   Replace developer-facing text:
+   “native UnitDownIAP plugin may not be installed in Xcode”
+
+   With Apple-review-safe text:
+   “Subscription is temporarily unavailable. Please try again later.”
+
+9. Verify App Store subscription metadata requirements:
+   The app must display:
+   - subscription title
+   - $7.99/month price
+   - auto-renewable subscription language
+   - cancel anytime language
+   - restore purchases button
+   - privacy policy link
+   - terms of use link
+
+10. Add Terms of Use link in-app if missing:
+   Use Apple Standard EULA:
+   https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+
+   Also confirm app metadata/app description should include:
+   Terms of Use: https://www.apple.com/legal/internet-services/itunes/dev/stdeula/
+   Privacy Policy: https://unitdown.org/privacy or current live privacy URL
+
+11. Confirm App Store Connect checklist:
+   Report whether these are code issues or App Store Connect setup issues:
+   - Paid Apps Agreement accepted
+   - Subscription product created
+   - Subscription product attached to the app version
+   - Subscription submitted for review with the binary
+   - Subscription localization, screenshot, price, duration, and review info complete
+   - New binary uploaded after IAP fixes
+
+DO NOT guess.
+
+OUTPUT REPORT FORMAT:
+
+IAP APP REVIEW FIX REPORT
+
+1. Product ID Found:
+2. Product ID Mismatches:
+3. Native Plugin Status:
+4. Frontend Paywall Status:
+5. Restore Purchases Status:
+6. StoreKit Product Loading Status:
+7. User-Facing Error Fixes:
+8. Terms/EULA Compliance:
+9. App Store Connect Items Jesus Must Complete Manually:
+10. Code Changes Made:
+11. Files Modified:
+12. TypeScript/Xcode Build Status:
+13. Final Recommendation:
+   - SAFE TO UPLOAD NEW BINARY
+   - DO NOT UPLOAD YET
+
+After fixes:
+- Run typecheck
+- Confirm no unrelated files were changed
+- Confirm iOS build/archive instructions if needed
