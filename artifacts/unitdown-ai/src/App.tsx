@@ -196,21 +196,21 @@ function incrementDiagCount(): number {
 // ─── Static data ────────────────────────────────────────────────────────────────
 
 const exampleSymptoms = [
-  "RTU compressor running but no cooling",
-  "24V at contactor but unit won't pull in",
-  "Blower motor hums but won't start",
-  "Low suction pressure after filter change",
-  "Economizer stuck open causing hot air",
-  "Breaker trips 10 minutes after startup",
+  "Single-stage RTU compressor and condenser fan drop out immediately when R is jumped to Y1.",
+  "24V present at thermostat Y call, but no voltage reaches the contactor coil.",
+  "Carrier RTU cools for 15 minutes, then opens low-pressure safety.",
+  "High superheat and low subcooling with clean condenser coil and normal airflow.",
+  "Blower receives G call, but fan relay does not energize.",
+  "Compressor pulls locked-rotor amps and trips breaker within 2 seconds.",
 ];
 
 const exampleSymptomsB = [
-  "High head pressure on hot afternoon",
-  "Furnace lights then shuts off in 5 sec",
-  "Condenser fan running backwards",
-  "Water leaking from RTU drain pan",
-  "Unit dead after thunderstorm",
-  "Capacitor tests good but motor won't start",
+  "Supply fan proves, ignition sequence starts, flame establishes, then drops out after 3 seconds.",
+  "Control voltage drops from 24VAC to 12VAC when contactor coil pulls in.",
+  "Lennox Prodigy economizer alarm with outdoor air damper stuck open.",
+  "Low suction pressure with normal head pressure and evaporator beginning to freeze.",
+  "Condenser fan running backwards after motor replacement.",
+  "Y1 and Y2 energized, but compressor never starts.",
 ];
 
 const trustBadges = [
@@ -932,7 +932,7 @@ function LeadFormModal({ open, onClose, prefillIssue = "", diagnosisCategory, pr
                         id="issueDescription"
                         value={form.issueDescription}
                         onChange={(e) => set("issueDescription")(e.target.value)}
-                        placeholder="Describe what's happening with your unit…"
+                        placeholder="Describe the symptom, readings, sequence of operation, and what you already checked..."
                         className={`min-h-[100px] rounded-xl border-slate-200 font-medium resize-none ${errors.issueDescription ? "border-red-400 focus-visible:ring-red-400" : ""}`}
                         data-testid="input-issue-description"
                       />
@@ -2189,7 +2189,7 @@ function Home() {
                 <Textarea
                   value={symptoms}
                   onChange={(e) => setSymptoms(e.target.value)}
-                  placeholder="Describe the issue… e.g. RTU runs but does not cool, low suction, high superheat, no 24V at contactor."
+                  placeholder="Describe symptoms, sequence of operation, meter readings, pressures, alarms, or control voltage observations..."
                   className="min-h-[120px] sm:min-h-[140px] text-base sm:text-lg p-4 sm:p-6 border-0 focus-visible:ring-0 resize-none bg-transparent placeholder:text-slate-400 font-medium"
                   data-testid="hero-input-symptoms"
                   aria-label="Describe HVAC symptoms"
