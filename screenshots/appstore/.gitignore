@@ -1,0 +1,10 @@
+# Ignore generated screenshots — they are large binary files and are
+# regenerated before each App Store submission via:
+#   pnpm --filter @workspace/scripts run appstore:screenshots
+*.png
+*.jpg
+*.jpeg
+
+# Keep the directory itself tracked
+!.gitkeep
+!.gitignore
