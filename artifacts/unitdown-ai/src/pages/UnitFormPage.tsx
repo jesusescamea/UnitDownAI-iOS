@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import NameplateScannerModal from "@/components/NameplateScannerModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -45,57 +46,6 @@ const emptyForm = (): UnitFormData => ({
 
 function getClientId(): string {
   try { return localStorage.getItem("unitdown_client_id") ?? ""; } catch { return ""; }
-}
-
-// ─── Image resize helper ──────────────────────────────────────────────────────
-// Resizes to at most maxPx on the longest side and converts to JPEG at the
-// given quality. This prevents sending multi-megabyte phone photos to the API
-// and keeps the OCR token count low.
-
-async function resizeImage(
-  file: File,
-  maxPx = 1200,
-  quality = 0.82,
-): Promise<{ base64: string; mimeType: string; previewUrl: string }> {
-  return new Promise((resolve, reject) => {
-    const objectUrl = URL.createObjectURL(file);
-    const img = new Image();
-
-    img.onload = () => {
-      URL.revokeObjectURL(objectUrl);
-      const { width: w, height: h } = img;
-      const scale = Math.min(1, maxPx / Math.max(w, h));
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.round(w * scale);
-      canvas.height = Math.round(h * scale);
-      const ctx = canvas.getContext("2d");
-      if (!ctx) { reject(new Error("Canvas unavailable")); return; }
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-      canvas.toBlob(
-        (blob) => {
-          if (!blob) { reject(new Error("Resize failed")); return; }
-          const previewUrl = URL.createObjectURL(blob);
-          const reader = new FileReader();
-          reader.onload = () => {
-            const result = reader.result as string;
-            const b64 = result.split(",")[1];
-            if (b64) resolve({ base64: b64, mimeType: "image/jpeg", previewUrl });
-            else reject(new Error("Base64 conversion failed"));
-          };
-          reader.onerror = () => reject(reader.error);
-          reader.readAsDataURL(blob);
-        },
-        "image/jpeg",
-        quality,
-      );
-    };
-
-    img.onerror = () => {
-      URL.revokeObjectURL(objectUrl);
-      reject(new Error("Image load failed"));
-    };
-    img.src = objectUrl;
-  });
 }
 
 // ─── Form field component ─────────────────────────────────────────────────────
@@ -161,7 +111,7 @@ export default function UnitFormPage() {
   const [loadingUnit, setLoadingUnit] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
   const clientId = getClientId();
   const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
 
@@ -208,13 +158,13 @@ export default function UnitFormPage() {
   }, [uncertainFields]);
 
   const handleScanNameplate = useCallback(() => {
-    fileInputRef.current?.click();
+    setScannerOpen(true);
   }, []);
 
-  const handleFileChange = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  // Called by NameplateScannerModal after crop + compress.
+  // Receives only the cropped nameplate image — never the full camera frame.
+  const handleCapture = useCallback(async (base64: string, mimeType: string, previewUrl: string) => {
+    setScannerOpen(false);
     setOcrLoading(true);
     setOcrError(null);
     setRawOcrText(null);
@@ -222,10 +172,6 @@ export default function UnitFormPage() {
     setOcrFieldCount(null);
 
     try {
-      // Resize to 1200px max before uploading — prevents token overuse on
-      // large phone photos and avoids "oversized entity" errors.
-      const { base64, mimeType, previewUrl } = await resizeImage(file);
-
       const res = await fetch("/api/nameplate/ocr", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -240,21 +186,17 @@ export default function UnitFormPage() {
       const data = await res.json();
       const ext = data.extracted ?? {};
 
-      // Model signalled no nameplate was found — surface as an error
       if (typeof ext.error === "string") {
         throw new Error(ext.error);
       }
 
-      // Confidence + summary
       const confidence = typeof ext.confidence === "number" ? ext.confidence : null;
       setOcrConfidence(confidence);
       setRawOcrText(ext.rawText ?? data.rawResponse ?? null);
 
-      // Uncertain fields flagging
       const uncertain: Set<string> = new Set(ext.uncertainFields ?? []);
       setUncertainFields(uncertain);
 
-      // Map extracted keys → form fields
       const fieldMap: Record<string, keyof UnitFormData> = {
         manufacturer:    "manufacturer",
         modelNumber:     "modelNumber",
@@ -285,8 +227,6 @@ export default function UnitFormPage() {
       });
       setOcrFieldCount(filled);
 
-      // Fallback: extraction completed but nothing was populated and no
-      // explicit error was returned — prompt the user to retake the photo.
       if (filled === 0) {
         setOcrError(
           "No readable nameplate data could be extracted. Please retake the photo closer to the data plate."
@@ -296,7 +236,6 @@ export default function UnitFormPage() {
       setOcrError(err.message ?? "OCR failed — please enter fields manually");
     } finally {
       setOcrLoading(false);
-      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }, []);
 
@@ -463,14 +402,12 @@ export default function UnitFormPage() {
           )}
         </div>
 
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          className="hidden"
-          onChange={handleFileChange}
-        />
+        {scannerOpen && (
+          <NameplateScannerModal
+            onCapture={handleCapture}
+            onClose={() => setScannerOpen(false)}
+          />
+        )}
 
         {/* Nameplate image preview */}
         {form.nameplateImageUrl && (

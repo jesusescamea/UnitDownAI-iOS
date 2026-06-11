@@ -85,6 +85,12 @@ nameplateRouter.post("/nameplate/ocr", async (req: Request, res: Response) => {
     return;
   }
 
+  const imageSizeKB = Math.round(imageBase64.length * 0.75 / 1024);
+  if (imageSizeKB > 500) {
+    res.status(400).json({ error: "Scan image is too large. Move closer and scan only the nameplate." });
+    return;
+  }
+
   const validTypes = ["image/jpeg", "image/png", "image/webp", "image/jpg"];
   const mime = validTypes.includes(mimeType) ? mimeType : "image/jpeg";
 
