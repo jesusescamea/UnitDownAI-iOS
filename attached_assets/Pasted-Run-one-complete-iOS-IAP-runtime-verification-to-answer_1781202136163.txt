@@ -1,0 +1,111 @@
+Run one complete iOS IAP runtime verification to answer all remaining Apple App Review questions at once.
+
+Do NOT modify code unless a blocking issue is found and the fix is clearly required.
+
+Goal:
+Confirm whether UnitDown AI’s installed iOS app can load and purchase the subscription product:
+com.unitdown.subscription.monthly
+
+Test only the installed iOS app build, not Safari/browser.
+
+Verify and report:
+
+1. Runtime Platform
+- Capacitor.isNativePlatform()
+- Capacitor.getPlatform()
+- window.Capacitor exists true/false
+- current URL / origin
+- confirm whether running in installed app or browser
+
+Expected:
+isNativePlatform = true
+platform = ios
+window.Capacitor = true
+
+2. Native Plugin Availability
+- Is UnitDownIAP plugin registered?
+- Is UnitDownIAP available from JavaScript bridge?
+- Are these methods available:
+  - getProducts
+  - purchaseProduct
+  - restoreTransactions
+  - finishTransaction
+
+Expected:
+UnitDownIAP plugin available = true
+
+3. StoreKit Product Loading
+Request product:
+com.unitdown.subscription.monthly
+
+Report:
+- product requested
+- products returned
+- product title
+- product price
+- product ID returned
+- any StoreKit error codes
+
+Expected:
+StoreKit returns the subscription product.
+
+4. Purchase Sheet
+Tap Subscribe and verify:
+- Apple purchase sheet appears
+- product name is UnitDown AI Pro
+- price is $7.99/month
+- no “subscription unavailable” message appears
+- no web stub message appears
+- no developer-facing error appears
+
+Do not complete a real purchase unless using sandbox.
+
+5. Restore Purchases
+Tap Restore Purchases and report:
+- restore method called
+- result returned
+- any error code
+- user-facing message shown
+
+6. Web Stub Check
+Confirm whether appleIAPWebStub.ts is being used.
+
+Expected for installed iOS app:
+web stub should NOT be used.
+
+If web stub is used, report exactly why:
+- browser/Safari
+- Capacitor native false
+- plugin missing
+- method missing
+- product unavailable
+
+7. App Store Connect Dependency Check
+Identify which remaining issues are code vs manual App Store Connect configuration.
+
+Specifically confirm:
+- product ID in code is com.unitdown.subscription.monthly
+- if StoreKit returns no products, explain whether this likely means the IAP product is missing/not submitted/not attached in App Store Connect
+- confirm Paid Apps Agreement status cannot be verified from code and must be checked manually
+
+Output exactly:
+
+IAP RUNTIME VERIFICATION REPORT
+
+1. Runtime Platform:
+2. Native Plugin Status:
+3. StoreKit Product Loading:
+4. Purchase Sheet Result:
+5. Restore Purchases Result:
+6. Web Stub Used?:
+7. Errors Found:
+8. Code Issue or App Store Connect Issue?:
+9. Files Modified:
+10. Final Recommendation:
+   SAFE TO BUILD/UPLOAD
+   or
+   DO NOT UPLOAD YET
+
+Important:
+If the product does not load, do not assume the plugin is broken until platform and plugin availability are confirmed.
+If platform is native and plugin is available but products returned is empty, this is most likely App Store Connect setup/product submission, not code.
