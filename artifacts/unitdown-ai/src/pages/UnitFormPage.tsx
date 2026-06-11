@@ -198,7 +198,10 @@ export default function UnitFormPage() {
       setOcrConfidence(confidence);
       setRawOcrText(ext.rawText ?? data.rawResponse ?? null);
 
-      const uncertain: Set<string> = new Set(ext.uncertainFields ?? []);
+      // Accept either key: prompt returns missing_fields; future versions may return uncertainFields.
+      const uncertain: Set<string> = new Set(
+        (ext.uncertainFields ?? ext.missing_fields ?? []) as string[],
+      );
       setUncertainFields(uncertain);
 
       const fieldMap: Record<string, keyof UnitFormData> = {
