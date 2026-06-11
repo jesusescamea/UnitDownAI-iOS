@@ -125,6 +125,20 @@ hvacRouter.post("/hvac/diagnose", async (req: Request, res: Response) => {
     { id: kbResult.primary.id, confidence: kbResult.primary.confidencePercent, title: kbResult.primary.title },
     "KB scoring complete"
   );
+  if (kbResult._debug) {
+    req.log.info(
+      {
+        faultDomain: kbResult._debug.faultDomain,
+        controlDropoutSignals: kbResult._debug.controlDropoutSignals,
+        pressureCyclingSignals: kbResult._debug.pressureCyclingSignals,
+        shortCycleBroadWords: kbResult._debug.shortCycleBroadWords,
+        top5: kbResult._debug.top5,
+        penaltiesApplied: kbResult._debug.penaltiesApplied,
+        normalizedInput: kbResult._debug.normalizedInput,
+      },
+      "KB scoring debug"
+    );
+  }
 
   // Strong KB match — return immediately without AI call.
   if (kbResult.primary.confidencePercent >= KB_INSTANT_THRESHOLD) {

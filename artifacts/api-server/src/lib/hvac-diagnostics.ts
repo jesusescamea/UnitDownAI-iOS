@@ -19,6 +19,17 @@ export interface DiagnosisEntry {
 export interface DiagnosisResult {
   primary: DiagnosisEntry;
   alternatives: DiagnosisEntry[];
+  _debug?: DiagnosisDebug;
+}
+
+export interface DiagnosisDebug {
+  normalizedInput: string;
+  faultDomain: string;
+  controlDropoutSignals: string[];
+  pressureCyclingSignals: string[];
+  shortCycleBroadWords: string[];
+  top5: Array<{ id: string; title: string; score: number }>;
+  penaltiesApplied: string[];
 }
 
 // ─── Scoring weights ──────────────────────────────────────────────────────────
@@ -145,6 +156,62 @@ const BLOWER_HUM_TERMS = [
 // Penalty applied to the general blower-failure entry when specific hum terms
 // are detected — routes the complaint to the more specific hum/capacitor entry.
 const BLOWER_HUM_GENERAL_PENALTY = 35;
+
+// ─── Control-circuit dropout detection ───────────────────────────────────────
+// When the user describes a cooling call that drops out immediately — especially
+// when jumping R to Y1, observing control voltage collapse, or suspecting Y-circuit
+// wiring — the fault is in the low-voltage control circuit, NOT the refrigerant
+// circuit. These signals override broad cycling language.
+const CONTROL_DROPOUT_SIGNALS = [
+  // R-to-Y1 jumper tests
+  "r to y1", "r jumped to y1", "r is jumped to y1",
+  "jumping r to y", "jumped r to y", "jump r to y",
+  // Immediate dropout behavior
+  "drops out immediately", "drop out immediately",
+  "drops out instantly", "drop out instantly",
+  "drops out when", "drops out right away",
+  "controls drop out", "compressor drops out",
+  "condenser fan drops out", "both drop out",
+  // Control voltage failure
+  "control voltage collapses", "control voltage drops",
+  "24v collapses", "24vac collapses", "voltage collapses",
+  // Wiring and circuit suspicion
+  "contactor coil not energized", "no voltage at contactor coil",
+  "no voltage reaching contactor", "thermostat wiring suspect",
+  "wiring suspect", "miswired", "y1 y2 miswire",
+  "board output", "relay does not energize", "relay not energizing",
+  // Y-stage terminology
+  "y1 call", "y1 and y2", "y2 wiring",
+];
+
+// Pressure/refrigerant evidence required for cycling words to legitimately route
+// to a low-pressure-lockout diagnosis. Without these, cycling language alone is
+// insufficient to overcome a strong electrical/control signal.
+const PRESSURE_CYCLING_EVIDENCE = [
+  "low suction", "suction pressure", "suction drops",
+  "low pressure switch", "low pressure safety",
+  "refrigerant", "charge", "frozen coil",
+  "evaporator freezing", "coil freezing", "freeze",
+  "txv", "metering device", "restriction", "filter drier", "psig",
+];
+
+// Broad cycling words that, alone (without pressure evidence), are insufficient
+// to override a strong electrical/control signal.
+const SHORT_CYCLE_BROAD_WORDS = [
+  "short cycle", "short cycling", "cycles", "cycling",
+];
+
+// Penalty on low-pressure-lockout when control dropout signals are present but
+// no refrigerant/pressure evidence supports the refrigerant-side fault.
+const CONTROL_DROPOUT_LP_PENALTY = 55;
+
+// Penalty on low-pressure-lockout when cycling language appears without any
+// corroborating pressure/refrigerant evidence.
+const SHORT_CYCLE_NO_PRESSURE_PENALTY = 40;
+
+// Boost applied to the dedicated control-dropout KB entry when dropout signals
+// are detected — equivalent to 3 extra trigger phrase matches.
+const CONTROL_DROPOUT_BOOST = SCORE_TRIGGER * 3;
 
 // ─── Flame-proven contradiction detection ──────────────────────────────────────
 // When the user confirms the burners/flame DID light and THEN dropped out,
@@ -375,6 +442,13 @@ const LV_CONTROLS_SIGNALS = [
   "float switch", "condensate switch", "condensate safety",
   "open safety chain", "safety chain open", "safety lockout",
   "thermostat call lost", "lost thermostat signal",
+  // Control-circuit dropout patterns (R-to-Y1 jumper, immediate dropout, wiring)
+  "r to y1", "r jumped to y1", "jumping r to y",
+  "drops out immediately", "drop out immediately",
+  "controls drop out", "control voltage collapses",
+  "control voltage drops when", "no voltage at contactor coil",
+  "no voltage reaching contactor", "wiring suspect", "miswired",
+  "relay does not energize", "contactor coil not energized",
 ];
 
 // Refrigeration: the user is working with gauge readings or measured pressures.
@@ -470,7 +544,7 @@ function detectFaultDomain(text: string): DomainResult {
 // Entries in an in-domain category receive a scoring boost when the domain is detected.
 const DOMAIN_AFFINITY: Record<FaultDomain, string[]> = {
   "high-voltage-electrical":   ["Trips Breaker"],
-  "low-voltage-controls":      ["Reset Helps Then Fails Again"],
+  "low-voltage-controls":      ["No Cool", "Reset Helps Then Fails Again"],
   "refrigeration":             ["No Cool", "Refrigerant Imbalance", "Weak Cooling", "High Head Pressure"],
   "airflow":                   ["Weak Cooling"],
   "combustion-heating":        ["No Heat"],
@@ -655,6 +729,7 @@ const DISCIPLINE_BY_ID_PREFIX: Record<string, string> = {
   "low-voltage-path-fault":          "Electrical Controls — Y-Circuit Continuity / Safeties in Series / Board Y-Output",
   "low-delta-t-weak-cooling":        "Cooling Capacity — Airflow / Economizer / Condenser Before Refrigerant Work",
   "main-fuse-overcurrent":           "High-Voltage Electrical — Overcurrent / Ground Fault / Dead Short (Line-Voltage Level)",
+  "cooling-call-dropout-control-fault": "Electrical Controls — Low-Voltage Control Dropout / Y-Circuit / Transformer Load",
 };
 
 const SEQ_STOP_BY_ID_PREFIX: Record<string, string> = {
@@ -682,6 +757,7 @@ const SEQ_STOP_BY_ID_PREFIX: Record<string, string> = {
   "low-voltage-path-fault":         "Control voltage at thermostat but not at contactor coil — the Y-circuit has an open. Walk: Y signal at thermostat sub-base → condensate float switch continuity → Y signal at air handler terminal block → board Y-output → series pressure/safety switches → Y signal at outdoor unit terminal. The break is at the first measurement point that reads 0V.",
   "low-delta-t-weak-cooling":       "Low temperature split — system is running but capacity is reduced. NOT automatically a low-charge fault. Walk the full checklist before gauges: blower speed/CFM vs. design (400 CFM/ton) → measurement location (supply plenum, not register) → economizer damper position → condenser coil condition → then refrigerant pressures only after these are confirmed.",
   "main-fuse-overcurrent":          "Line-voltage overcurrent event — the fuse is protecting against a real fault. DO NOT replace the fuse and restore power without first isolating the cause. Walk the isolation sequence: (1) disconnect compressor contactor load-side leads → restore power → if fuse holds, fault is downstream of contactor; (2) megger compressor windings to ground (500V, must read >1 MΩ); (3) inspect contactor for welded contacts; (4) test run capacitor (>6% low = replace before LRA test); (5) trace all conductors for rodent damage, pinched insulation, or burn marks.",
+  "cooling-call-dropout-control-fault": "Sequence stopped at Y-call — compressor and condenser fan start and drop out immediately, OR do not start at all. This is a control-circuit behavior, NOT a refrigerant or mechanical fault. Walk: transformer secondary voltage under load (R to C during Y call) → Y-to-C at each junction (stat sub-base → board Y-in → board Y-out → outdoor Y terminal → contactor coil) → Y1/Y2 termination check against OEM wiring diagram → series safeties (LP switch, HP switch, float, freeze stat). The first 0V measurement locates the break.",
 };
 
 const ASSUMPTION_BY_ID_PREFIX: Record<string, string> = {
@@ -709,6 +785,7 @@ const ASSUMPTION_BY_ID_PREFIX: Record<string, string> = {
   "low-voltage-path-fault":        "Do not condemn the thermostat, control board, or contactor until the full Y-circuit path is traced with a voltmeter. Check the condensate float switch first — it is the most commonly overlooked series device in this fault pattern and takes 30 seconds to test.",
   "low-delta-t-weak-cooling":      "Do not add refrigerant based on a low delta-T reading alone. Confirm airflow is within design range, the economizer is at minimum position, and the condenser coil is clean before connecting gauges. Adding refrigerant to a high-airflow or economizer problem overcharges the system when the actual fault is later corrected.",
   "main-fuse-overcurrent":         "Do not upsize or bypass the fuse — a fuse blowing on main power is protecting against a real overcurrent or ground fault. Do not megger the compressor with leads still connected to the contactor; disconnect completely first. Do not condemn the compressor before replacing the run capacitor and retesting — a failed capacitor is the most common cause of preventable locked-rotor LRA events.",
+  "cooling-call-dropout-control-fault": "Do not connect manifold gauges or add refrigerant until the control circuit is confirmed intact. A cooling call that drops out within 2 seconds of compressor start is almost never a refrigerant fault — do not treat cycling language or a brief startup as evidence of low charge. Verify Y1/Y2 wiring against the OEM diagram before replacing any component; a miswired Y2 lead costs nothing to fix and is the most easily overlooked cause of immediate dropout.",
 };
 
 /** Finds the most specific ID-prefix override for a given entry ID. */
@@ -928,6 +1005,18 @@ export function diagnoseByKnowledgeBase(symptoms: string): DiagnosisResult {
   // blower-failure entry so it appears as an alternative, not the primary.
   const blowerHumDetected = containsAnyWord(text, BLOWER_HUM_TERMS).length > 0;
 
+  // ── Control-circuit dropout detection ────────────────────────────────────
+  // R-to-Y1 jumper tests, immediate dropout, control voltage collapse, wiring
+  // suspicion — these are priority signals for the LV control circuit domain.
+  // When detected, boost the dropout entry and penalize low-pressure-lockout
+  // unless refrigerant/pressure evidence is also present.
+  const controlDropoutSignalsFound = containsAnyWord(text, CONTROL_DROPOUT_SIGNALS);
+  const controlDropoutDetected = controlDropoutSignalsFound.length > 0;
+  const pressureCyclingSignalsFound = containsAnyWord(text, PRESSURE_CYCLING_EVIDENCE);
+  const pressureCyclingEvidenceDetected = pressureCyclingSignalsFound.length > 0;
+  const shortCycleBroadFound = containsAnyWord(text, SHORT_CYCLE_BROAD_WORDS);
+  const shortCycleBroadDetected = shortCycleBroadFound.length > 0;
+
   // ── Sequence-of-operation context ─────────────────────────────────────────
   const ctx = detectSequenceContext(text);
 
@@ -1040,6 +1129,30 @@ export function diagnoseByKnowledgeBase(symptoms: string): DiagnosisResult {
       adjustedScore += SCORE_TRIGGER * 3;
     }
 
+    // ── Control-circuit dropout boost / LP-lockout penalty ────────────────
+    // R-to-Y1 jumper dropout, immediate dropout on Y call, control voltage
+    // collapse, wiring suspect → these are exclusive control-circuit signals.
+    // Boost the dropout entry; penalize LP-lockout unless refrigerant/pressure
+    // evidence is also present in the description.
+    if (controlDropoutDetected) {
+      if (entry.id === "cooling-call-dropout-control-fault") {
+        adjustedScore += CONTROL_DROPOUT_BOOST;
+      }
+      if (entry.id === "low-voltage-path-fault") {
+        adjustedScore += SCORE_TRIGGER * 2;
+      }
+      if (entry.id === "low-pressure-lockout" && !pressureCyclingEvidenceDetected) {
+        adjustedScore -= CONTROL_DROPOUT_LP_PENALTY;
+      }
+    }
+    // Short-cycle words without any refrigerant/pressure context → LP-lockout
+    // should not rank as primary; a control-dropout entry should win instead.
+    if (shortCycleBroadDetected && !pressureCyclingEvidenceDetected && !controlDropoutDetected) {
+      if (entry.id === "low-pressure-lockout") {
+        adjustedScore -= SHORT_CYCLE_NO_PRESSURE_PENALTY;
+      }
+    }
+
     // ── Heating-mode-active contradiction ─────────────────────────────────
     // User is in HEATING mode with no cooling context → cooling-circuit faults
     // (refrigerant leak, high head pressure, weak cooling, no cool) are
@@ -1104,7 +1217,22 @@ export function diagnoseByKnowledgeBase(symptoms: string): DiagnosisResult {
   if (second) alternatives.push(entryToResult(second.entry, second.reasons, second.score, 1));
   if (third) alternatives.push(entryToResult(third.entry, third.reasons, third.score, 2));
 
-  return { primary, alternatives };
+  const penaltiesApplied: string[] = [];
+  if (controlDropoutDetected) penaltiesApplied.push(`controlDropout: signals=[${controlDropoutSignalsFound.join(",")}]`);
+  if (pressureCyclingEvidenceDetected) penaltiesApplied.push(`pressureCycling: signals=[${pressureCyclingSignalsFound.join(",")}]`);
+  if (shortCycleBroadDetected) penaltiesApplied.push(`shortCycleBroad: words=[${shortCycleBroadFound.join(",")}]`);
+
+  const _debug: DiagnosisDebug = {
+    normalizedInput: text.slice(0, 200),
+    faultDomain: faultDomain.domain,
+    controlDropoutSignals: controlDropoutSignalsFound,
+    pressureCyclingSignals: pressureCyclingSignalsFound,
+    shortCycleBroadWords: shortCycleBroadFound,
+    top5: scored.slice(0, 5).map((s) => ({ id: s.entry.id, title: s.entry.title, score: s.score })),
+    penaltiesApplied,
+  };
+
+  return { primary, alternatives, _debug };
 }
 
 // ─── Legacy wrapper (not used by routes but kept for safety) ──────────────────

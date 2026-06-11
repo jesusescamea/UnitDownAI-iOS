@@ -64,8 +64,8 @@ export const hvacKnowledgeBase: KnowledgeBaseEntry[] = [
     category: "No Cool",
     equipment: ["split system", "rooftop", "rtu", "heat pump", "packaged unit"],
     brands: ["carrier", "trane", "york", "lennox", "copeland", "bristol", "goodman"],
-    triggers: ["compressor hums", "compressor won't start", "hums then shuts off", "hard start", "locked rotor", "compressor seized", "compressor locks up", "lra spike", "locked rotor amperage"],
-    symptomClues: ["hum", "buzz", "click", "compressor", "hard start kit", "immediately trips", "instant trip", "trips right away", "trips on startup"],
+    triggers: ["compressor hums", "compressor won't start", "hums then shuts off", "hard start", "locked rotor", "compressor seized", "compressor locks up", "lra spike", "locked rotor amperage", "breaker trips within seconds", "trips within 2 seconds", "trips within seconds when compressor", "breaker trips on compressor start", "trips instantly when compressor"],
+    symptomClues: ["hum", "buzz", "click", "compressor", "hard start kit", "immediately trips", "instant trip", "trips right away", "trips on startup", "trips within seconds", "within 2 seconds", "breaker trips compressor"],
     negativeTriggers: [
       // Time-delayed trip — locked rotor trips instantly, not minutes after startup
       "after running", "after startup", "minutes after", "10 minutes", "15 minutes",
@@ -850,6 +850,13 @@ export const hvacKnowledgeBase: KnowledgeBaseEntry[] = [
       "stat has 24v nothing at coil",
       "24v at stat not reaching contactor",
       "24v leaving thermostat not arriving at unit",
+      "no voltage reaches contactor coil",
+      "no voltage reaching contactor coil",
+      "24v present at thermostat no voltage at contactor",
+      "24v present y call no voltage contactor coil",
+      "voltage present at thermostat not reaching contactor",
+      "y call no voltage at contactor coil",
+      "24v present at y call no voltage reaches contactor",
     ],
     symptomClues: [
       "24v at thermostat", "voltage at stat", "thermostat has power",
@@ -892,6 +899,89 @@ export const hvacKnowledgeBase: KnowledgeBaseEntry[] = [
       "Trace the Y-circuit path from thermostat sub-base output → air handler terminal block → control board Y-out → series safeties (float switch, pressure switches) → outdoor unit Y terminal. Each point must read 24VAC during a call. Check the condensate float switch first — it is the most commonly overlooked break in this circuit and is free to test.",
     riskNote:
       "Do not condemn the thermostat, control board, or contactor until the full Y-circuit is traced with a voltmeter. A tripped condensate float switch, an open wire, or an active pressure safety trip are far more common than a failed board. Always trace the signal path before replacing parts.",
+  },
+
+  // ─── COOLING CALL DROPS OUT IMMEDIATELY — LOW-VOLTAGE CONTROL FAULT ──────────
+  // For "compressor and condenser fan start and drop out immediately", R-to-Y1
+  // jumper tests that cause instant dropout, control voltage collapse, and
+  // Y1/Y2 wiring suspects. This fault is ALWAYS a control-circuit issue, never
+  // a refrigerant issue — low-pressure switches do not open within 2 seconds of
+  // a Y call on a charged system.
+
+  {
+    id: "cooling-call-dropout-control-fault",
+    title: "Cooling Call Drops Out Immediately — Low-Voltage Control Circuit Fault",
+    category: "No Cool",
+    equipment: ["rooftop", "rtu", "split system", "heat pump", "packaged unit"],
+    brands: ["carrier", "trane", "york", "lennox", "goodman", "rheem", "ruud", "american standard", "daikin", "aaon", "bryant"],
+    triggers: [
+      "r to y1 drops out",
+      "jump r to y1 drops out",
+      "r jumped to y1 drops out",
+      "jumping r to y compressor drops out",
+      "compressor drops out immediately",
+      "condenser fan drops out immediately",
+      "drops out immediately on y1 call",
+      "control voltage collapses on y call",
+      "control voltage drops when contactor pulls",
+      "24v collapses on cooling call",
+      "y1 call drops out",
+      "cooling call drops out",
+      "compressor starts then drops out",
+      "fan drops out immediately",
+      "controls drop out on cooling call",
+      "y1 y2 wiring suspected",
+      "y1 miswired",
+      "y2 miswired",
+      "relay does not energize on y call",
+      "compressor and condenser fan drop out immediately",
+      "condenser fan drop out immediately",
+      "r is jumped to y1 drops out",
+    ],
+    symptomClues: [
+      "r to y1", "y1", "y2", "drops out", "drop out", "drops out immediately",
+      "control voltage", "control voltage collapses", "control voltage drops",
+      "contactor coil", "wiring suspect", "miswired", "board output",
+      "relay does not energize", "24v collapses", "cooling call",
+      "immediately", "instantly", "right away", "compressor drops",
+      "condenser fan drops", "both drop out", "drop out when",
+    ],
+    negativeTriggers: [
+      "short cycling", "suction pressure drops", "low pressure switch opened",
+      "runs for minutes", "after 10 minutes", "after 15 minutes",
+      "runs for", "suction pressure low", "low refrigerant",
+    ],
+    failureStage: "startup",
+    confidenceBase: 93,
+    priority: "high",
+    likelyCauses: [
+      "Y1/Y2 miswired or crossed leads at thermostat, control board, or outdoor unit terminal strip — staging calls producing unexpected load or conflicting stage signals",
+      "Contactor coil shorted or drawing excessive VA — coil inrush pulls transformer secondary voltage below hold-in threshold immediately",
+      "Weak or overloaded 24VAC transformer — control voltage collapses when contactor coil load is added to existing secondary loading",
+      "Loose or broken common (C) wire — C connection fails under current draw when cooling call is placed",
+      "Control board relay/output dropping out under load — Y-output relay on the board opens immediately when contactor coil inrush begins",
+      "Safety circuit wired in series with Y opening immediately after call — low-pressure, high-pressure, or freeze switch that was already tripped before the call",
+    ],
+    firstChecks: [
+      "1. MEASURE CONTROL VOLTAGE UNDER LOAD: measure R to C (transformer secondary) during the Y call with a voltmeter set to AC. Voltage must hold at 24 ±2VAC when the contactor coil energizes. A collapse below 20VAC during pull-in = transformer overloaded or C-wire fault.",
+      "2. MEASURE Y TO C AT EACH JUNCTION: with a cooling call active, measure Y to C at: (a) thermostat sub-base, (b) indoor board Y-in, (c) indoor board Y-out, (d) outdoor unit Y terminal, (e) contactor coil input. The first point that reads 0V locates the break.",
+      "3. VERIFY Y1/Y2 TERMINATIONS: with power off, pull the thermostat and compare Y1/Y2 connections against the OEM low-voltage wiring diagram. Check at the thermostat, control board, and outdoor unit terminal strip. A Y1/Y2 swap creates a staging conflict that causes immediate dropout.",
+      "4. OHM THE CONTACTOR COIL: with power off and one coil lead lifted, measure coil resistance. Normal 24VAC coil: 20–100 Ω. Near-zero = coil shorted (drawing excessive VA, loading transformer). OL = coil open (different fault).",
+      "5. ISOLATE SERIES SAFETIES: identify every safety wired in series with the Y circuit (low-pressure switch, high-pressure switch, freeze stat, float switch). Measure across each device during a call — 24VAC drop across a switch = that switch is already open before the call.",
+      "6. TRANSFORMER VA LOAD TEST: with all loads energized, measure transformer secondary voltage during the Y call. More than 2VAC sag = transformer is at VA capacity — replace with a higher VA unit.",
+    ],
+    meterChecks: [
+      "Voltmeter R to C at transformer secondary during Y call: must hold at 24 ±2VAC; collapse below 20VAC = transformer overloaded or C wire fault",
+      "Voltmeter Y to C at thermostat sub-base during call: 24VAC = stat generating call; 0VAC = no Y output from thermostat",
+      "Voltmeter Y to C at each junction in sequence (board Y-in, board Y-out, outdoor Y terminal, contactor coil input): first 0VAC reading = location of the open or dropout",
+      "Ohmmeter on contactor coil (power off, one lead lifted): 20–100 Ω = normal; near-zero = coil shorted; OL = coil open",
+      "Ohmmeter Y1 and Y2 conductor continuity from thermostat to board and board to unit terminal strip: confirm correct wire landed on correct terminal at every point",
+      "Voltmeter across each series safety (low-pressure, high-pressure, freeze stat, float switch) during Y call: 24VAC drop across any device = that safety was already open when the call was placed",
+    ],
+    recommendedAction:
+      "Trace the control circuit with a voltmeter — start at transformer secondary (R to C under load) and measure Y to C at each junction toward the contactor coil. The first point that reads 0V during a Y call is where the break or overload is. Verify Y1/Y2 wiring against the OEM diagram before replacing any component. Do not connect manifold gauges or add refrigerant until the control circuit is confirmed intact.",
+    riskNote:
+      "A cooling call that drops out within 2 seconds of compressor start is almost never a refrigerant fault. Low-pressure switches do not trip this fast on a charged system unless the switch was already open before the call. Misdiagnosing a control circuit fault as low refrigerant leads to refrigerant added to a functional sealed system and the original fault left unresolved.",
   },
 
   {
@@ -1248,8 +1338,16 @@ export const hvacKnowledgeBase: KnowledgeBaseEntry[] = [
     category: "Reset Helps Then Fails Again",
     equipment: ["split system", "rooftop", "rtu", "heat pump", "packaged unit"],
     brands: ["carrier", "trane", "york", "lennox", "goodman", "rheem", "ruud", "american standard"],
-    triggers: ["low pressure lockout", "low side pressure", "short cycling", "cycles on off frequently", "cycles rapidly", "suction pressure low"],
+    triggers: ["low pressure lockout", "low side pressure", "short cycling", "cycles on off frequently", "cycles rapidly", "suction pressure low", "low pressure safety opens", "opens low pressure safety", "low pressure safety", "trips on low pressure safety", "trips on low pressure", "suction pressure drops below", "suction pressure drops low"],
     symptomClues: ["low pressure", "suction", "short cycle", "rapid cycling", "on off", "cycles every few minutes", "low refrigerant"],
+    negativeTriggers: [
+      "r to y1", "jumping r to y", "jumped r to y",
+      "drops out immediately", "drop out immediately",
+      "drops out instantly", "control voltage collapses",
+      "control voltage drops when", "wiring suspect", "miswired",
+      "relay does not energize", "contactor coil not energized",
+      "no voltage at contactor coil", "thermostat wiring suspect",
+    ],
     failureStage: "cycling",
     confidenceBase: 83,
     priority: "high",
@@ -2033,11 +2131,18 @@ export const hvacKnowledgeBase: KnowledgeBaseEntry[] = [
       "dirty evap coil low suction",
       "low suction poor airflow",
       "low suction blower issue",
+      "low suction pressure normal head pressure",
+      "low suction pressure with normal head",
+      "suction pressure dropping evaporator freezing",
+      "evaporator beginning to freeze low suction",
+      "low suction evaporator freezing",
+      "suction low evaporator beginning to freeze",
     ],
     symptomClues: [
       "filter", "new filter", "changed filter", "replaced filter", "airflow",
       "static pressure", "low airflow", "dirty coil", "evap coil", "blower",
       "restriction", "plugged", "low suction", "merv",
+      "evaporator", "beginning to freeze", "freeze", "suction pressure",
     ],
     negativeTriggers: [
       "overcharge", "txv fault", "subcooling high", "no heat", "furnace", "burner",
