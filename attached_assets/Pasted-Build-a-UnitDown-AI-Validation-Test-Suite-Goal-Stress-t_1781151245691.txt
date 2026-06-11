@@ -1,0 +1,117 @@
+Build a UnitDown AI Validation Test Suite.
+
+Goal:
+Stress-test the diagnostic engine against 15 common HVAC issues with known expected outcomes.
+
+Do not modify the diagnostic engine yet.
+
+For each test:
+
+* Submit the symptom
+* Record the diagnosis
+* Record confidence
+* Record likely causes
+* Compare to expected result
+* Mark PASS / PARTIAL PASS / FAIL
+
+TEST CASES
+
+1. Low suction pressure + high superheat + low subcooling
+   Expected:
+   Undercharge / refrigerant leak
+
+2. Low suction pressure + low superheat
+   Expected:
+   Airflow issue, low load, overfeeding TXV, floodback risk
+
+3. High head pressure + high subcooling
+   Expected:
+   Overcharge or liquid-line restriction
+
+4. High head pressure + low subcooling
+   Expected:
+   Condenser airflow issue or non-condensables
+
+5. Evaporator coil freezing with dirty filter
+   Expected:
+   Airflow restriction
+
+6. Compressor pulls LRA and breaker trips immediately
+   Expected:
+   Locked rotor, failed compressor, capacitor issue
+
+7. 24V at thermostat Y call but no voltage at contactor coil
+   Expected:
+   Open control circuit, safety, relay, wiring issue
+
+8. Jumping R to Y1 causes controls to drop out immediately
+   Expected:
+   Low-voltage control fault, transformer loading, wiring fault
+
+9. Flame lights then drops out after a few seconds
+   Expected:
+   Flame sensor issue
+
+10. Inducer runs but ignition never occurs
+    Expected:
+    Pressure switch, ignition module, safety chain issue
+
+11. Condenser fan running backwards after motor replacement
+    Expected:
+    Motor wiring/phasing issue
+
+12. Economizer stuck open bringing in hot air
+    Expected:
+    Economizer actuator/control fault
+
+13. Capacitor tests good but motor hums and won't start
+    Expected:
+    Motor winding/mechanical failure
+
+14. Unit cools for 15 minutes then trips low-pressure switch
+    Expected:
+    Low charge, icing, airflow, restriction investigation
+
+15. Blower receives G call but relay never energizes
+    Expected:
+    Control board, relay, wiring fault
+
+SCORING
+
+PASS:
+Primary diagnosis matches expected fault family.
+
+PARTIAL PASS:
+Expected fault appears in top 3 likely causes.
+
+FAIL:
+Expected fault does not appear or diagnosis is unrelated.
+
+OUTPUT
+
+Create a report table:
+
+Test #
+Input
+Expected Diagnosis
+Actual Diagnosis
+Confidence
+Pass/Partial/Fail
+Notes
+
+Then summarize:
+
+* Overall accuracy %
+* Electrical/control accuracy %
+* Refrigeration accuracy %
+* Airflow accuracy %
+* Combustion accuracy %
+
+List:
+
+* Most common false positives
+* Most common false negatives
+* Patterns where the matcher is choosing the wrong tree
+
+Do not modify code during testing.
+Only generate the validation report first.
