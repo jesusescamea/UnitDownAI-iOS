@@ -10,6 +10,7 @@ import demoRouter from "./demo"; // APPLE REVIEW — demo-account bypass
 import unitsRouter from "./units";
 import diagnosticLogsRouter from "./diagnosticLogs";
 import nameplateRouter from "./nameplate";
+import timelineRouter from "./timeline";
 
 const router: IRouter = Router();
 
@@ -24,5 +25,6 @@ router.use(demoRouter); // APPLE REVIEW — demo sign-in token endpoint
 router.use(unitsRouter);
 router.use(diagnosticLogsRouter);
 router.use(nameplateRouter);
+router.use(timelineRouter);
 
 export default router;

@@ -1,1 +1,2 @@
 - [Diagnostic engine scoring lessons](diagnostic-engine-scoring.md) — false-positive triggers in FLAME_PROVEN_TERMS and broad-word triggers on general entries cascade into wrong primaries.
+- [Equipment Timeline architecture](equipment-timeline.md) — diagnostic events are virtual (synthesized from diagnostic_logs at query time), not stored in equipment_timeline; avoids dual-write sync issues.

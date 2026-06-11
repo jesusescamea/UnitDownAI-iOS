@@ -1,13 +1,16 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation, useParams } from "wouter";
 import { useUser } from "@clerk/clerk-react";
 import {
   ChevronRight, Wrench, ThermometerSnowflake, Edit2, Trash2,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
-  Zap, Thermometer, Hash, MapPin, Building2, Activity, Loader2,
+  MapPin, Activity, Loader2, FileText, Settings, Camera, Search,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import TimelineAddModal from "@/components/TimelineAddModal";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface UnitRecord {
   id: string;
@@ -34,16 +37,24 @@ interface UnitRecord {
   updatedAt: string;
 }
 
-interface DiagnosticLog {
+interface TimelineEvent {
   id: string;
-  unitId: string | null;
-  symptoms: string;
-  diagnosisTitle: string | null;
-  confidencePercent: number | null;
-  status: string;
-  timestamp: number;
+  unitId: string;
+  eventType: string;
+  title: string;
+  description: string | null;
+  status: string | null;
   technicianNotes: string | null;
+  cost: string | null;
+  parts: string | null;
+  linkedDiagnosticLogId: string | null;
+  eventDate: number;
+  createdAt: string;
+  confidencePercent: number | null;
+  source: "log" | "manual";
 }
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function getClientId(): string {
   try { return localStorage.getItem("unitdown_client_id") ?? ""; } catch { return ""; }
@@ -54,6 +65,17 @@ function statusConfig(status: string) {
     case "resolved":   return { label: "Resolved",   Icon: CheckCircle2, className: "bg-emerald-100 text-emerald-800 border-emerald-200" };
     case "monitoring": return { label: "Monitoring", Icon: CircleDot,    className: "bg-blue-100 text-blue-800 border-blue-200" };
     default:           return { label: "Unresolved", Icon: AlertCircle,  className: "bg-amber-100 text-amber-800 border-amber-200" };
+  }
+}
+
+function eventTypeConfig(type: string) {
+  switch (type) {
+    case "diagnostic":   return { label: "Diagnostic",    Icon: Activity,  bg: "bg-blue-50",    color: "text-blue-600" };
+    case "repair":       return { label: "Repair",        Icon: Wrench,    bg: "bg-orange-50",  color: "text-orange-600" };
+    case "maintenance":  return { label: "Maintenance",   Icon: Settings,  bg: "bg-emerald-50", color: "text-emerald-600" };
+    case "note":         return { label: "Note",          Icon: FileText,  bg: "bg-slate-50",   color: "text-slate-500" };
+    case "scan":         return { label: "Nameplate Scan",Icon: Camera,    bg: "bg-purple-50",  color: "text-purple-600" };
+    default:             return { label: "Event",         Icon: Clock,     bg: "bg-slate-50",   color: "text-slate-500" };
   }
 }
 
@@ -71,20 +93,168 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
   );
 }
 
+// ─── Timeline card ────────────────────────────────────────────────────────────
+
+function TimelineCard({
+  event,
+  expanded,
+  onToggle,
+  onNavigate,
+  onDelete,
+}: {
+  event: TimelineEvent;
+  expanded: boolean;
+  onToggle: () => void;
+  onNavigate: (path: string) => void;
+  onDelete: (id: string) => void;
+}) {
+  const typeCfg = eventTypeConfig(event.eventType);
+  const stCfg = event.status ? statusConfig(event.status) : null;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+      {/* Collapsed header — always visible, tappable */}
+      <button
+        onClick={onToggle}
+        className="w-full text-left p-4 active:bg-slate-50 transition-colors"
+      >
+        <div className="flex items-center gap-3">
+          {/* Type icon */}
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${typeCfg.bg}`}>
+            <typeCfg.Icon className={`w-4 h-4 ${typeCfg.color}`} />
+          </div>
+
+          {/* Title + meta */}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-sm font-bold text-slate-900 line-clamp-1 flex-1 min-w-0">
+                {event.title}
+              </span>
+              {stCfg && (
+                <Badge className={`text-xs border flex-shrink-0 flex items-center gap-1 ${stCfg.className}`}>
+                  <stCfg.Icon className="w-3 h-3" />
+                  {stCfg.label}
+                </Badge>
+              )}
+            </div>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className={`text-xs font-semibold ${typeCfg.color}`}>{typeCfg.label}</span>
+              <span className="text-slate-300 text-xs">·</span>
+              <span className="text-xs text-slate-400 flex items-center gap-1">
+                <Clock className="w-3 h-3" />
+                {formatDate(event.eventDate)}
+              </span>
+              {event.confidencePercent != null && (
+                <>
+                  <span className="text-slate-300 text-xs">·</span>
+                  <span className="text-xs text-slate-400">{event.confidencePercent}% match</span>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Chevron */}
+          <ChevronRight
+            className={`w-4 h-4 text-slate-300 flex-shrink-0 transition-transform duration-200 ${expanded ? "rotate-90" : ""}`}
+          />
+        </div>
+      </button>
+
+      {/* Expanded detail */}
+      {expanded && (
+        <div className="px-4 pb-4 border-t border-slate-100 pt-3 space-y-3">
+
+          {event.description && (
+            <p className="text-sm text-slate-600 leading-relaxed">{event.description}</p>
+          )}
+
+          {event.technicianNotes && (
+            <div className="bg-slate-50 rounded-xl px-3 py-2.5">
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Technician Notes</p>
+              <p className="text-sm text-slate-700 leading-relaxed">{event.technicianNotes}</p>
+            </div>
+          )}
+
+          {(event.cost || event.parts) && (
+            <div className="flex gap-4">
+              {event.cost && (
+                <div>
+                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Cost</p>
+                  <p className="text-sm font-bold text-slate-700 mt-0.5">{event.cost}</p>
+                </div>
+              )}
+              {event.parts && (
+                <div className="min-w-0">
+                  <p className="text-xs text-slate-400 font-semibold uppercase tracking-wide">Parts</p>
+                  <p className="text-sm font-medium text-slate-700 mt-0.5 leading-snug">{event.parts}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Footer actions */}
+          <div className="flex items-center justify-between gap-2 pt-1">
+            {event.linkedDiagnosticLogId ? (
+              <button
+                onClick={() => onNavigate(`/logs/${event.linkedDiagnosticLogId}`)}
+                className="text-xs text-blue-600 font-semibold hover:underline"
+              >
+                View Full Diagnosis →
+              </button>
+            ) : (
+              <span />
+            )}
+            {event.source === "manual" && (
+              <button
+                onClick={() => onDelete(event.id)}
+                className="text-xs text-slate-400 hover:text-red-500 flex items-center gap-1 transition-colors"
+              >
+                <Trash2 className="w-3 h-3" />
+                Remove
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Filter tabs config ────────────────────────────────────────────────────────
+
+const FILTER_TABS = [
+  { id: "all",         label: "All" },
+  { id: "diagnostic",  label: "Diagnostics" },
+  { id: "repair",      label: "Repairs" },
+  { id: "maintenance", label: "Maintenance" },
+  { id: "note",        label: "Notes" },
+  { id: "scan",        label: "Scans" },
+];
+
+// ─── Main component ────────────────────────────────────────────────────────────
+
 export default function UnitDetailPage() {
   const [, navigate] = useLocation();
   const params = useParams<{ id: string }>();
   const { user: clerkUser, isLoaded } = useUser();
 
   const [unit, setUnit] = useState<UnitRecord | null>(null);
-  const [logs, setLogs] = useState<DiagnosticLog[]>([]);
+  const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [archiving, setArchiving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Timeline UI state
+  const [activeFilter, setActiveFilter] = useState("all");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addDefaultType, setAddDefaultType] = useState<"note" | "repair" | "maintenance">("note");
+
   const clientId = getClientId();
   const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
 
+  // Fetch unit + timeline
   useEffect(() => {
     if (!isLoaded) return;
     if (!isLoggedIn || !params.id) { setLoading(false); return; }
@@ -92,17 +262,40 @@ export default function UnitDetailPage() {
 
     Promise.all([
       fetch(`/api/units/${params.id}?clientId=${cid}`).then((r) => r.json()),
-      fetch(`/api/diagnostic-logs?clientId=${cid}&unitId=${encodeURIComponent(params.id)}`).then((r) => r.json()),
+      fetch(`/api/units/${params.id}/timeline?clientId=${cid}`).then((r) => r.json()),
     ])
-      .then(([uData, lData]) => {
+      .then(([uData, tlData]) => {
         if (uData.unit) setUnit(uData.unit);
         else setError("Unit not found");
-        setLogs(lData.logs ?? []);
+        setEvents(tlData.events ?? []);
       })
       .catch(() => setError("Failed to load unit"))
       .finally(() => setLoading(false));
   }, [isLoaded, isLoggedIn, clientId, params.id]);
 
+  // Derived: filtered + searched events
+  const filteredEvents = useMemo(() => {
+    let evts = events;
+    if (activeFilter !== "all") evts = evts.filter((e) => e.eventType === activeFilter);
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      evts = evts.filter((e) =>
+        [e.title, e.description, e.technicianNotes].some((f) => f?.toLowerCase().includes(q))
+      );
+    }
+    return evts;
+  }, [events, activeFilter, searchQuery]);
+
+  // Derived: count per type (from full unfiltered list, for tab badges)
+  const typeCounts = useMemo(() => {
+    const counts: Record<string, number> = { all: events.length };
+    for (const e of events) {
+      counts[e.eventType] = (counts[e.eventType] ?? 0) + 1;
+    }
+    return counts;
+  }, [events]);
+
+  // Handlers
   const handleArchive = useCallback(async () => {
     if (!unit || !window.confirm("Archive this unit? It will be hidden from your unit list.")) return;
     setArchiving(true);
@@ -123,6 +316,40 @@ export default function UnitDetailPage() {
     navigate("/");
   }, [params.id, unit, navigate]);
 
+  const toggleExpand = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  }, []);
+
+  const handleAddEvent = useCallback((newEvent: TimelineEvent) => {
+    setEvents((prev) =>
+      [newEvent, ...prev].sort((a, b) => b.eventDate - a.eventDate)
+    );
+    setShowAddModal(false);
+  }, []);
+
+  const handleDeleteEvent = useCallback(async (id: string) => {
+    if (!window.confirm("Remove this timeline entry?")) return;
+    try {
+      const res = await fetch(`/api/timeline/${id}?clientId=${encodeURIComponent(clientId)}`, {
+        method: "DELETE",
+      });
+      if (res.ok) setEvents((prev) => prev.filter((e) => e.id !== id));
+    } catch {
+      // silent — entry stays in list on failure
+    }
+  }, [clientId]);
+
+  const openAddModal = useCallback((type: "note" | "repair" | "maintenance") => {
+    setAddDefaultType(type);
+    setShowAddModal(true);
+  }, []);
+
+  // ─── Render ────────────────────────────────────────────────────────────────
+
   if (!isLoaded || loading) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -141,8 +368,13 @@ export default function UnitDetailPage() {
     );
   }
 
+  const hasEquipment = unit.manufacturer || unit.modelNumber || unit.serialNumber ||
+    unit.equipmentType || unit.systemType || unit.refrigerantType || unit.capacityTons || unit.manufactureDate;
+  const hasElectrical = unit.voltage || unit.phase || unit.mca || unit.mocp || unit.rla || unit.lra;
+
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
+
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -159,7 +391,7 @@ export default function UnitDetailPage() {
               </span>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
             <button
               onClick={() => navigate(`/records/${unit.id}/edit`)}
               className="text-slate-500 hover:text-slate-800 p-1.5 rounded-xl hover:bg-slate-100"
@@ -199,8 +431,6 @@ export default function UnitDetailPage() {
               )}
             </div>
           </div>
-
-          {/* Diagnosis CTA */}
           <Button
             onClick={handleDiagnoseThis}
             className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-10 text-sm"
@@ -223,7 +453,7 @@ export default function UnitDetailPage() {
         )}
 
         {/* Equipment info */}
-        {(unit.manufacturer || unit.modelNumber || unit.serialNumber || unit.equipmentType || unit.systemType || unit.refrigerantType || unit.capacityTons || unit.manufactureDate) && (
+        {hasEquipment && (
           <div className="bg-white rounded-2xl border border-slate-200 p-4">
             <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mb-1">Equipment</p>
             <InfoRow label="Manufacturer" value={unit.manufacturer} />
@@ -238,7 +468,7 @@ export default function UnitDetailPage() {
         )}
 
         {/* Electrical data */}
-        {(unit.voltage || unit.phase || unit.mca || unit.mocp || unit.rla || unit.lra) && (
+        {hasElectrical && (
           <div className="bg-white rounded-2xl border border-slate-200 p-4">
             <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mb-1">Electrical</p>
             <InfoRow label="Voltage" value={unit.voltage} />
@@ -258,55 +488,125 @@ export default function UnitDetailPage() {
           </div>
         )}
 
-        {/* Diagnostic History for this unit */}
+        {/* ── Equipment Timeline ───────────────────────────────────────── */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Diagnostic History</p>
-            <span className="text-xs text-slate-400">{logs.length} log{logs.length !== 1 ? "s" : ""}</span>
+          {/* Section header */}
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Equipment Timeline</p>
+              <p className="text-xs text-slate-400 mt-0.5">{events.length} event{events.length !== 1 ? "s" : ""}</p>
+            </div>
+            <button
+              onClick={() => openAddModal("note")}
+              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-3 py-1.5 text-xs transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Add Entry
+            </button>
           </div>
-          {logs.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center">
+
+          {/* Quick-add shortcuts */}
+          <div className="flex gap-2 mb-3">
+            {(
+              [
+                { type: "note" as const,        Icon: FileText,  label: "Note" },
+                { type: "repair" as const,       Icon: Wrench,    label: "Repair" },
+                { type: "maintenance" as const,  Icon: Settings,  label: "PM" },
+              ] as const
+            ).map(({ type, Icon, label }) => (
+              <button
+                key={type}
+                onClick={() => openAddModal(type)}
+                className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors"
+              >
+                <Icon className="w-3.5 h-3.5" />
+                {label}
+              </button>
+            ))}
+          </div>
+
+          {/* Filter tabs */}
+          <div
+            className="flex gap-1.5 mb-3 overflow-x-auto pb-1"
+            style={{ scrollbarWidth: "none" }}
+          >
+            {FILTER_TABS.map(({ id, label }) => {
+              const count = typeCounts[id] ?? 0;
+              const active = activeFilter === id;
+              return (
+                <button
+                  key={id}
+                  onClick={() => setActiveFilter(id)}
+                  className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    active
+                      ? "bg-blue-600 text-white"
+                      : "bg-white border border-slate-200 text-slate-600 hover:border-blue-300"
+                  }`}
+                >
+                  {label}
+                  <span className={`text-xs ${active ? "opacity-70" : "text-slate-400"}`}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Search bar */}
+          <div className="relative mb-3">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Search timeline…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full h-9 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300"
+            />
+          </div>
+
+          {/* Event cards */}
+          {filteredEvents.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
               <History className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm text-slate-400 font-medium">No diagnoses linked to this unit yet.</p>
-              <p className="text-xs text-slate-400 mt-1">Select this unit when running a diagnosis to track history here.</p>
+              <p className="text-sm text-slate-400 font-medium">
+                {(searchQuery || activeFilter !== "all")
+                  ? "No matching events found."
+                  : "No timeline events yet."}
+              </p>
+              {!searchQuery && activeFilter === "all" && (
+                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                  Run a diagnosis or tap <strong>Add Entry</strong> to start tracking this unit's history.
+                </p>
+              )}
             </div>
           ) : (
-            <div className="space-y-3">
-              {logs.map((log) => {
-                const cfg = statusConfig(log.status);
-                return (
-                  <button
-                    key={log.id}
-                    onClick={() => navigate(`/logs/${log.id}`)}
-                    className="w-full text-left bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-blue-300 hover:shadow-md transition-all active:scale-[0.98]"
-                  >
-                    <div className="flex items-start justify-between gap-2 mb-1.5">
-                      <span className="text-sm font-bold text-slate-900 line-clamp-1 flex-1">
-                        {log.diagnosisTitle ?? "Diagnosis"}
-                      </span>
-                      <Badge className={`text-xs border flex-shrink-0 flex items-center gap-1 ${cfg.className}`}>
-                        <cfg.Icon className="w-3 h-3" />
-                        {cfg.label}
-                      </Badge>
-                    </div>
-                    <p className="text-xs text-slate-500 line-clamp-2 mb-1.5">{log.symptoms}</p>
-                    <div className="flex items-center justify-between">
-                      {log.confidencePercent != null && (
-                        <span className="text-xs text-slate-400">{log.confidencePercent}% match</span>
-                      )}
-                      <span className="text-xs text-slate-400 flex items-center gap-1 ml-auto">
-                        <Clock className="w-3 h-3" />
-                        {formatDate(log.timestamp)}
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
+            <div className="space-y-2">
+              {filteredEvents.map((event) => (
+                <TimelineCard
+                  key={event.id}
+                  event={event}
+                  expanded={expandedIds.has(event.id)}
+                  onToggle={() => toggleExpand(event.id)}
+                  onNavigate={navigate}
+                  onDelete={handleDeleteEvent}
+                />
+              ))}
             </div>
           )}
         </div>
 
       </div>
+
+      {/* Add Entry modal */}
+      {showAddModal && (
+        <TimelineAddModal
+          unitId={unit.id}
+          clientId={clientId}
+          defaultType={addDefaultType}
+          onSave={handleAddEvent}
+          onClose={() => setShowAddModal(false)}
+        />
+      )}
     </div>
   );
 }
