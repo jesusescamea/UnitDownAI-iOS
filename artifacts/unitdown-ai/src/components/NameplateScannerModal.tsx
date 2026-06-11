@@ -27,6 +27,13 @@ const SPAN_NEEDED     = 5;
 const RING_R       = 28;
 const RING_CIRCUMF = 2 * Math.PI * RING_R;
 
+// Readability thresholds
+const COVERAGE_MIN    = 0.40;              // plate must fill ≥ 40 % of guide frame height
+const TEXT_HEIGHT_MIN = 4;                 // min estimated char height in analysis canvas px (≈30 px in capture)
+const SKEW_MAX_DEG    = 15;               // max tilt angle before "Straighten camera"
+const OCR_CONF_MIN    = 50;               // min heuristic OCR confidence score (0–100)
+const CAPTURE_SCALE   = 1200 / ANALYSIS_W; // ≈7.5× — convert analysis-canvas px → capture-image px
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 type Phase = "scanning" | "capturing" | "manual";
 
@@ -35,17 +42,20 @@ type Guidance =
   | "glare"
   | "overexposed"
   | "find_plate"      // nothing / wrong object in frame
-  | "move_closer"     // something present but too far
+  | "move_closer"     // something present but too far / text too small
   | "center_plate"    // plate partially visible — needs centering
   | "too_blurry"
-  | "good";           // nameplate detected + quality OK → accumulating stable time
+  | "straighten"      // skew angle too high
+  | "unreadable"      // nameplate found but text not legible enough — move closer
+  | "good";           // nameplate detected + readable + quality OK
 
 interface FrameResult {
-  qualifies:          boolean;
-  guidance:           Guidance;
-  edgeDensity:        number;
-  nameplateDetected:  boolean;
-  gray?:              Uint8ClampedArray; // for movement detection between frames
+  qualifies:            boolean;
+  guidance:             Guidance;
+  edgeDensity:          number;
+  nameplateDetected:    boolean;
+  readabilityDetected:  boolean;
+  gray?:                Uint8ClampedArray; // for movement detection between frames
 }
 
 interface Guide { x: number; y: number; w: number; h: number }
@@ -57,36 +67,42 @@ interface Props {
 
 // ─── Guidance → display maps ──────────────────────────────────────────────────
 const INSTRUCTION: Record<Guidance, string> = {
-  too_dark:     "Use more light",
-  glare:        "Reduce glare",
-  overexposed:  "Reduce glare",
-  find_plate:   "Find the equipment data plate",
-  move_closer:  "Move closer",
-  center_plate: "Center the data plate",
-  too_blurry:   "Hold steady",
-  good:         "Data plate found — hold steady",
+  too_dark:    "Use more light",
+  glare:       "Reduce glare",
+  overexposed: "Reduce glare",
+  find_plate:  "Find the equipment data plate",
+  move_closer: "Move closer",
+  center_plate:"Center the data plate",
+  too_blurry:  "Hold steady",
+  straighten:  "Straighten camera",
+  unreadable:  "Move closer until text becomes readable",
+  good:        "Data plate found — hold steady",
 };
 
 const GUIDE_CLR: Record<Guidance, string> = {
-  too_dark:     "rgba(239,68,68,0.80)",
-  glare:        "rgba(239,68,68,0.80)",
-  overexposed:  "rgba(239,68,68,0.80)",
-  find_plate:   "rgba(245,158,11,0.80)",
-  move_closer:  "rgba(245,158,11,0.80)",
-  center_plate: "rgba(245,158,11,0.80)",
-  too_blurry:   "rgba(239,68,68,0.80)",
-  good:         "rgba(59,130,246,0.85)",
+  too_dark:    "rgba(239,68,68,0.80)",
+  glare:       "rgba(239,68,68,0.80)",
+  overexposed: "rgba(239,68,68,0.80)",
+  find_plate:  "rgba(245,158,11,0.80)",
+  move_closer: "rgba(245,158,11,0.80)",
+  center_plate:"rgba(245,158,11,0.80)",
+  too_blurry:  "rgba(239,68,68,0.80)",
+  straighten:  "rgba(245,158,11,0.80)",
+  unreadable:  "rgba(245,158,11,0.80)",
+  good:        "rgba(59,130,246,0.85)",
 };
 
 const TEXT_CLR: Record<Guidance, string> = {
-  too_dark:     "#fca5a5",
-  glare:        "#fca5a5",
-  overexposed:  "#fca5a5",
-  find_plate:   "#fcd34d",
-  move_closer:  "#fcd34d",
-  center_plate: "#fcd34d",
-  too_blurry:   "#fca5a5",
-  good:         "#93c5fd",
+  too_dark:    "#fca5a5",
+  glare:       "#fca5a5",
+  overexposed: "#fca5a5",
+  find_plate:  "#fcd34d",
+  move_closer: "#fcd34d",
+  center_plate:"#fcd34d",
+  too_blurry:  "#fca5a5",
+  straighten:  "#fcd34d",
+  unreadable:  "#fcd34d",
+  good:        "#93c5fd",
 };
 
 // ─── Movement detection ────────────────────────────────────────────────────────
@@ -103,12 +119,12 @@ function frameMad(a: Uint8ClampedArray, b: Uint8ClampedArray): number {
 // ─── Nameplate pattern detection ──────────────────────────────────────────────
 // Divides the gray frame into BAND_COUNT horizontal bands and marks each band
 // "active" when it contains enough horizontal edges (top/bottom of text strokes).
-// Returns detected (full criteria), activeCount, and span for partial-plate hinting.
+// Returns detected, activeCount, span, firstIdx, and bandH for readability estimation.
 function detectNameplateBands(
   gray: Uint8ClampedArray,
   W:    number,
   H:    number,
-): { detected: boolean; activeCount: number; span: number } {
+): { detected: boolean; activeCount: number; span: number; firstIdx: number; bandH: number } {
   const bandH      = Math.max(2, Math.floor(H / BAND_COUNT));
   const activeMask = new Array<boolean>(BAND_COUNT).fill(false);
 
@@ -128,13 +144,118 @@ function detectNameplateBands(
   }
 
   const activeCount = activeMask.filter(Boolean).length;
-  if (activeCount === 0) return { detected: false, activeCount: 0, span: 0 };
+  if (activeCount === 0) return { detected: false, activeCount: 0, span: 0, firstIdx: 0, bandH };
 
   const firstIdx = activeMask.findIndex(Boolean);
   const lastIdx  = activeMask.lastIndexOf(true);
   const span     = lastIdx - firstIdx + 1;
   const detected = activeCount >= BANDS_NEEDED && span >= SPAN_NEEDED;
-  return { detected, activeCount, span };
+  return { detected, activeCount, span, firstIdx, bandH };
+}
+
+// ─── Readability estimation ────────────────────────────────────────────────────
+// Called only after the nameplate band gate passes (nameplateDetected = true).
+// Estimates whether the text in the active region is large enough, straight enough,
+// and clear enough for OCR to succeed.
+//
+// Metrics:
+//   coverage    — fraction of guide frame height occupied by the active band region
+//   textCharH   — estimated character height in analysis-canvas pixels
+//   skewDeg     — tilt angle derived from top-half vs bottom-half edge centroid shift
+//   charDensity — Sobel edge density inside the active region (text pixel richness)
+//   ocrConfidence — weighted heuristic (0–100)
+//
+// Returns a guidance string if the check fails, null if everything passes.
+interface ReadabilityResult {
+  readable:      boolean;
+  guidance:      Guidance | null;
+  textCharH:     number;    // analysis-canvas px
+  coveragePct:   number;    // 0–1
+  skewDeg:       number;    // absolute degrees
+  charDensity:   number;
+  ocrConfidence: number;    // 0–100
+}
+
+function estimateReadability(
+  gray:        Uint8ClampedArray,
+  W:           number,
+  H:           number,
+  bandH:       number,
+  activeCount: number,
+  span:        number,
+  firstIdx:    number,
+  sharpness:   number,
+): ReadabilityResult {
+  const FAIL = (g: Guidance, rest: Partial<ReadabilityResult> = {}): ReadabilityResult =>
+    ({ readable: false, guidance: g, textCharH: 0, coveragePct: 0, skewDeg: 0, charDensity: 0, ocrConfidence: 0, ...rest });
+
+  // 1. Frame coverage — does the plate fill enough of the guide frame?
+  const coveragePct = span / BAND_COUNT;
+  if (coveragePct < COVERAGE_MIN) return FAIL("move_closer", { coveragePct });
+
+  // 2. Estimated character height
+  //    Active region spans (span × bandH) canvas-pixels vertically, containing activeCount text rows.
+  //    Characters are roughly 60 % of row pitch.
+  const textRowH  = (span * bandH) / Math.max(1, activeCount);
+  const textCharH = textRowH * 0.6;
+  if (textCharH < TEXT_HEIGHT_MIN) return FAIL("move_closer", { textCharH, coveragePct });
+
+  // 3. Skew estimation
+  //    Split the active region into top and bottom halves.
+  //    Compute the horizontal centre-of-mass of horizontal edges in each half.
+  //    The centroid shift per half-height gives the tilt angle.
+  const activeStart = firstIdx * bandH;
+  const activeEnd   = Math.min((firstIdx + span) * bandH, H - 1);
+  const midY        = (activeStart + activeEnd) / 2;
+
+  let topSumX = 0, topN = 0, botSumX = 0, botN = 0;
+  for (let row = Math.max(1, activeStart); row < Math.min(activeEnd, H - 1); row++) {
+    for (let col = 0; col < W; col++) {
+      const gy = Math.abs(gray[(row + 1) * W + col] - gray[(row - 1) * W + col]);
+      if (gy > 18) {
+        if (row < midY) { topSumX += col; topN++; }
+        else             { botSumX += col; botN++; }
+      }
+    }
+  }
+  let skewDeg = 0;
+  if (topN >= 5 && botN >= 5) {
+    const topCx  = topSumX / topN;
+    const botCx  = botSumX / botN;
+    const halfH  = (activeEnd - activeStart) / 2;
+    skewDeg = Math.abs(Math.atan2(botCx - topCx, halfH) * (180 / Math.PI));
+  }
+  if (skewDeg > SKEW_MAX_DEG) return FAIL("straighten", { textCharH, coveragePct, skewDeg });
+
+  // 4. Character density — Sobel edge density within the active region
+  let activeEdge = 0, activeTotal = 0;
+  for (let row = Math.max(1, activeStart); row < Math.min(activeEnd, H - 1); row++) {
+    for (let col = 1; col < W - 1; col++) {
+      const gx =
+        (gray[(row-1)*W+(col+1)] + 2*gray[row*W+(col+1)] + gray[(row+1)*W+(col+1)]) -
+        (gray[(row-1)*W+(col-1)] + 2*gray[row*W+(col-1)] + gray[(row+1)*W+(col-1)]);
+      const gy =
+        (gray[(row+1)*W+(col-1)] + 2*gray[(row+1)*W+col] + gray[(row+1)*W+(col+1)]) -
+        (gray[(row-1)*W+(col-1)] + 2*gray[(row-1)*W+col] + gray[(row-1)*W+(col+1)]);
+      if (Math.abs(gx) + Math.abs(gy) > EDGE_THRESH) activeEdge++;
+      activeTotal++;
+    }
+  }
+  const charDensity = activeTotal > 0 ? activeEdge / activeTotal : 0;
+
+  // 5. Heuristic OCR confidence (0–100)
+  //    Weights: text height 40 %, character density 35 %, sharpness 25 %
+  //    Each component saturates at a "good" reference value.
+  const heightScore  = Math.min(1, textCharH / 8) * 40;
+  const densityScore = Math.min(1, charDensity / 0.15) * 35;
+  const sharpScore   = Math.min(1, sharpness / 200) * 25;
+  const ocrConfidence = Math.min(100, Math.round(heightScore + densityScore + sharpScore));
+
+  if (ocrConfidence < OCR_CONF_MIN) {
+    return FAIL("unreadable", { textCharH, coveragePct, skewDeg, charDensity, ocrConfidence });
+  }
+
+  return { readable: true, guidance: null, textCharH, coveragePct, skewDeg, charDensity, ocrConfidence };
 }
 
 // ─── Frame quality + nameplate analysis ───────────────────────────────────────
@@ -150,7 +271,7 @@ function analyzeFrame(
   const dW = video.clientWidth, dH = video.clientHeight;
 
   const FAIL = (g: Guidance): FrameResult =>
-    ({ qualifies: false, guidance: g, edgeDensity: 0, nameplateDetected: false });
+    ({ qualifies: false, guidance: g, edgeDensity: 0, nameplateDetected: false, readabilityDetected: false });
 
   if (!vW || !vH) return FAIL("find_plate");
 
@@ -221,22 +342,46 @@ function analyzeFrame(
   const edgeDensity = n > 0 ? edgePx / n : 0;
 
   // ── Quality gate ─────────────────────────────────────────────────────────
-  if (brightness  < BRIGHT_MIN)  return { qualifies: false, guidance: "too_dark",    edgeDensity, nameplateDetected: false, gray };
-  if (glareRatio  > GLARE_MAX)   return { qualifies: false, guidance: "glare",       edgeDensity, nameplateDetected: false, gray };
-  if (brightness  > BRIGHT_MAX)  return { qualifies: false, guidance: "overexposed", edgeDensity, nameplateDetected: false, gray };
-  if (edgeDensity < EDGE_CLOSER) return { qualifies: false, guidance: "find_plate",  edgeDensity, nameplateDetected: false };
-  if (edgeDensity < EDGE_MIN)    return { qualifies: false, guidance: "move_closer", edgeDensity, nameplateDetected: false, gray };
-  if (sharpness   < SHARP_MIN)   return { qualifies: false, guidance: "too_blurry",  edgeDensity, nameplateDetected: false, gray };
+  if (brightness  < BRIGHT_MIN)  return { qualifies: false, guidance: "too_dark",    edgeDensity, nameplateDetected: false, readabilityDetected: false, gray };
+  if (glareRatio  > GLARE_MAX)   return { qualifies: false, guidance: "glare",       edgeDensity, nameplateDetected: false, readabilityDetected: false, gray };
+  if (brightness  > BRIGHT_MAX)  return { qualifies: false, guidance: "overexposed", edgeDensity, nameplateDetected: false, readabilityDetected: false, gray };
+  if (edgeDensity < EDGE_CLOSER) return { qualifies: false, guidance: "find_plate",  edgeDensity, nameplateDetected: false, readabilityDetected: false };
+  if (edgeDensity < EDGE_MIN)    return { qualifies: false, guidance: "move_closer", edgeDensity, nameplateDetected: false, readabilityDetected: false, gray };
+  if (sharpness   < SHARP_MIN)   return { qualifies: false, guidance: "too_blurry",  edgeDensity, nameplateDetected: false, readabilityDetected: false, gray };
 
   // ── Nameplate band gate ───────────────────────────────────────────────────
-  const { detected, activeCount } = detectNameplateBands(gray, W, H);
+  const { detected, activeCount, span, firstIdx, bandH } = detectNameplateBands(gray, W, H);
   if (!detected) {
-    // 2+ active bands = plate partially in frame → guide to center rather than "find"
     const guidance: Guidance = activeCount >= 2 ? "center_plate" : "find_plate";
-    return { qualifies: false, guidance, edgeDensity, nameplateDetected: false, gray };
+    return { qualifies: false, guidance, edgeDensity, nameplateDetected: false, readabilityDetected: false, gray };
   }
 
-  return { qualifies: true, guidance: "good", edgeDensity, nameplateDetected: true, gray };
+  // ── Readability gate ──────────────────────────────────────────────────────
+  // Nameplate pattern is confirmed. Now estimate whether the text is large enough,
+  // straight enough, and clear enough for OCR to succeed reliably.
+  const readability = estimateReadability(gray, W, H, bandH, activeCount, span, firstIdx, sharpness);
+
+  console.log(
+    `[Scanner] Readability: charH=${readability.textCharH.toFixed(1)}px(≈${(readability.textCharH * CAPTURE_SCALE).toFixed(0)}px capture)` +
+    ` cov=${(readability.coveragePct * 100).toFixed(0)}%` +
+    ` skew=${readability.skewDeg.toFixed(1)}°` +
+    ` density=${readability.charDensity.toFixed(3)}` +
+    ` ocrConf=${readability.ocrConfidence}` +
+    ` → ${readability.readable ? "PASS" : "FAIL:" + readability.guidance}`
+  );
+
+  if (!readability.readable) {
+    return {
+      qualifies:           false,
+      guidance:            readability.guidance!,
+      edgeDensity,
+      nameplateDetected:   true,   // plate IS there — readability blocks capture
+      readabilityDetected: false,
+      gray,
+    };
+  }
+
+  return { qualifies: true, guidance: "good", edgeDensity, nameplateDetected: true, readabilityDetected: true, gray };
 }
 
 // ─── Capture helpers ──────────────────────────────────────────────────────────
@@ -599,7 +744,8 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
   const cornerClr =
     stableProgress >= 100 ? "#4ade80" :
     stableProgress > 0    ? "#60a5fa" :
-    (guidance === "find_plate" || guidance === "move_closer" || guidance === "center_plate")
+    (guidance === "find_plate" || guidance === "move_closer" || guidance === "center_plate" ||
+     guidance === "straighten" || guidance === "unreadable")
       ? "#fbbf24" : "#f87171";
 
   // Instruction text colour
@@ -733,9 +879,13 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
                   {guidance === "find_plate"
                     ? "Aim at the metal label showing MODEL, SERIAL, VOLTS, and electrical data"
                     : guidance === "move_closer"
-                    ? "Get the data plate to fill the guide frame"
+                    ? "Fill the guide frame with the data plate — text must be large enough to read"
                     : guidance === "center_plate"
                     ? "Move the plate to fill the guide frame"
+                    : guidance === "straighten"
+                    ? "Rotate phone so the plate sits level in the frame"
+                    : guidance === "unreadable"
+                    ? "Text is too small for OCR — move closer until each character is clearly visible"
                     : "Fill the frame · Avoid glare · Hold steady"}
                 </p>
               )}
