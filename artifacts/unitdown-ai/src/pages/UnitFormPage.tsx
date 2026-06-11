@@ -284,6 +284,14 @@ export default function UnitFormPage() {
         return updated;
       });
       setOcrFieldCount(filled);
+
+      // Fallback: extraction completed but nothing was populated and no
+      // explicit error was returned — prompt the user to retake the photo.
+      if (filled === 0) {
+        setOcrError(
+          "No readable nameplate data could be extracted. Please retake the photo closer to the data plate."
+        );
+      }
     } catch (err: any) {
       setOcrError(err.message ?? "OCR failed — please enter fields manually");
     } finally {

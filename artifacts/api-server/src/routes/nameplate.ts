@@ -98,10 +98,11 @@ nameplateRouter.post("/nameplate/ocr", async (req: Request, res: Response) => {
   try {
     const completion = await openai.chat.completions.create({
       model: "gpt-5.4",
-      // 700 tokens is sufficient for the structured JSON output (<2 KB).
+      // 900 tokens gives the no-nameplate early-exit path (19-field array) and
+      // a full extraction enough headroom to complete without truncation.
       // detail:"auto" lets the model pick tile strategy after the frontend has
       // already resized the image — avoids excessive tiling on large originals.
-      max_tokens: 700,
+      max_tokens: 900,
       messages: [
         {
           role: "user",
