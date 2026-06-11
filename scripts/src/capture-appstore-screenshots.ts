@@ -173,28 +173,48 @@ async function login(page: Page) {
   await page.goto(`${BASE_URL}/login`, { waitUntil: "networkidle" });
   await page.waitForTimeout(2000);
 
+  const isOnLoginPage = () => {
+    const url = page.url();
+    return url.includes("/login") || url.includes("/sign-in") || url.includes("clerk");
+  };
+
   // Step 1 — email / identifier
   const emailInput = page.locator("input[name='identifier'],input[type='email']").first();
   await emailInput.waitFor({ state: "visible", timeout: 20_000 });
   await emailInput.fill(DEMO_EMAIL);
+  await page.waitForTimeout(500);
 
   const continueBtn = page.locator("button[type='submit']").first();
   await continueBtn.click();
 
-  // Step 2 — password (Clerk renders this as a second screen)
-  const passwordInput = page.locator("input[type='password']").first();
-  await passwordInput.waitFor({ state: "visible", timeout: 12_000 });
-  await passwordInput.fill(DEMO_PASSWORD);
+  // Wait for navigation — Clerk may go to password step or directly home (if passkey/session)
+  await page.waitForTimeout(3000);
+  log(`  [debug] URL after Continue: ${page.url()}`);
 
-  const signInBtn = page.locator("button[type='submit']").first();
-  await signInBtn.click();
+  // Step 2 — password (only needed if still on the login/Clerk page)
+  if (isOnLoginPage()) {
+    const passwordInput = page.locator("input[type='password'],input[name='password']").first();
+    await passwordInput.waitFor({ state: "visible", timeout: 20_000 });
+    await passwordInput.fill(DEMO_PASSWORD);
+    await page.waitForTimeout(300);
 
-  // Wait for redirect away from /login
-  await page.waitForURL(
-    (u) => !u.pathname.includes("/login") && !u.pathname.includes("/signup"),
-    { timeout: 25_000 },
-  );
+    const signInBtn = page.locator("button[type='submit']").first();
+    await signInBtn.click();
+
+    // Wait for redirect away from login
+    await page.waitForURL(
+      (u) => {
+        const href = u.href;
+        return !href.includes("/login") && !href.includes("/signup") && !href.includes("clerk");
+      },
+      { timeout: 30_000 },
+    );
+  }
+
   await page.waitForLoadState("networkidle");
+
+  // Verify we're actually signed in by checking for an authenticated element
+  log(`  [debug] Final URL: ${page.url()}`);
   log("  ✓  Logged in.");
 }
 

@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "eeLA1KtjgPdBDxX9lGfZ6"
+uri = "file://screenshots/appstore/unitdown-appstore-screenshots.zip"
+type = "unspecified"
+title = "UnitDown AI — App Store Screenshots (iPhone 16 Pro Max)"
