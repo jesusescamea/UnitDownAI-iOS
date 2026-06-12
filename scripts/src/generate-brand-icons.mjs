@@ -117,6 +117,18 @@ console.log("✓ public/icon-512.png");
 writeFileSync(`${PUBLIC}/icon-maskable.png`, renderPng(maskableSvg, 512));
 console.log("✓ public/icon-maskable.png");
 
+// ── iOS App Store icon (1024×1024, no corner radius — Apple applies mask) ────
+// Apple guidelines: submit a square icon; App Store Connect adds the rounded
+// corners automatically. Pre-rounded icons are accepted but square is preferred.
+
+const IOS_APPICON = resolve(
+  __dir,
+  "../../artifacts/unitdown-ai/ios/App/App/Assets.xcassets/AppIcon.appiconset/AppIcon-512@2x.png"
+);
+const iosIconSvg = makeIconSvg(0);   // rx=0 → square corners for App Store
+writeFileSync(IOS_APPICON, renderPng(iosIconSvg, 1024));
+console.log("✓ ios AppIcon-512@2x.png (1024×1024, no corner radius)");
+
 // ── Android icons ─────────────────────────────────────────────────────────────
 
 const fgSvg = makeForegroundSvg();
