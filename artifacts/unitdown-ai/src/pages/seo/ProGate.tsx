@@ -205,34 +205,40 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
               </button>
             </div>
 
-            <p className="text-center text-xs text-gray-400 mt-4">
+            {/* Subscription disclosure */}
+            <div className="mt-4 rounded-xl bg-slate-50 border border-slate-100 px-4 py-3 text-center space-y-1">
+              <p className="text-[11px] font-bold text-slate-700">UnitDown AI Pro — 1-Month Subscription</p>
+              <p className="text-[11px] text-slate-500">$7.99/month · Auto-renewing · Cancel anytime in Apple ID Settings</p>
+              <p className="text-[11px] text-slate-400 leading-relaxed">
+                Payment charged to your Apple ID at purchase confirmation. Renews automatically unless cancelled at least 24 hours before the end of the period.
+              </p>
+            </div>
+
+            <p className="text-center text-xs text-gray-400 mt-3">
               Already subscribed?{" "}
               <Link href="/" className="text-blue-600 hover:underline">
                 Return to UnitDown AI
               </Link>{" "}
               and tap Restore Purchases.
             </p>
-            <p className="text-center text-xs text-gray-400 mt-2">
-              Cancel anytime in Apple Settings
-            </p>
-            <div className="flex items-center justify-center gap-3 mt-3">
-              <a
-                href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-blue-500 hover:underline"
+
+            {/* Apple-required legal links — onClick + window.open for reliable
+                opening inside Capacitor WKWebView on iOS (target="_blank" alone
+                is not guaranteed to open Safari in a WKWebView context). */}
+            <div className="flex items-center justify-center gap-4 mt-3 flex-wrap">
+              <button
+                onClick={() => window.open("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/", "_blank")}
+                className="text-[12px] font-semibold text-blue-500 underline underline-offset-2 px-2 py-1 rounded active:opacity-60"
               >
                 Terms of Use
-              </a>
-              <span className="text-[11px] text-gray-300">·</span>
-              <a
-                href="https://unitdown.org/privacy"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-[11px] text-blue-500 hover:underline"
+              </button>
+              <span className="text-[12px] text-gray-300">·</span>
+              <button
+                onClick={() => window.open("https://unitdown.org/privacy", "_blank")}
+                className="text-[12px] font-semibold text-blue-500 underline underline-offset-2 px-2 py-1 rounded active:opacity-60"
               >
                 Privacy Policy
-              </a>
+              </button>
             </div>
           </div>
         </div>

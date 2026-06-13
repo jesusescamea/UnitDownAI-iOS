@@ -543,12 +543,15 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
                 <>
                   {/* Pricing */}
                   <div className="rounded-2xl bg-slate-900 px-5 py-4 text-center">
+                    <p className="text-[11px] font-bold text-blue-400 uppercase tracking-widest mb-1.5">
+                      UnitDown AI Pro · 1-Month Subscription
+                    </p>
                     <div className="flex items-end justify-center gap-1">
                       <span className="text-4xl font-black text-white">{productPrice}</span>
                       <span className="text-slate-400 font-semibold pb-1">/month</span>
                     </div>
                     <p className="text-xs text-slate-400 font-medium mt-1">
-                      Auto-renewable subscription · Cancel anytime in Settings
+                      Auto-renewing · Billed monthly · Cancel anytime in Apple ID Settings
                     </p>
                   </div>
 
@@ -618,25 +621,23 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
                     UnitDown AI Pro is an auto-renewing subscription. Payment will be charged to your Apple ID account at confirmation of purchase. The subscription automatically renews unless it is canceled at least 24 hours before the end of the current period. You can manage and cancel your subscription in your Apple ID Account Settings.
                   </p>
 
-                  {/* Apple-required legal links — Guideline 3.1.2(c) */}
-                  <div className="flex items-center justify-center gap-3 flex-wrap">
-                    <a
-                      href="https://www.apple.com/legal/internet-services/itunes/dev/stdeula/"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] text-blue-500 hover:underline"
+                  {/* Apple-required legal links — Guideline 3.1.2(c)
+                      Using onClick + window.open instead of <a target="_blank">
+                      so links open correctly inside Capacitor WKWebView on iOS. */}
+                  <div className="flex items-center justify-center gap-4 flex-wrap py-1">
+                    <button
+                      onClick={() => window.open("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/", "_blank")}
+                      className="text-[12px] font-semibold text-blue-500 underline underline-offset-2 px-2 py-1 rounded active:opacity-60"
                     >
                       Terms of Use
-                    </a>
-                    <span className="text-[11px] text-slate-300">·</span>
-                    <a
-                      href="https://unitdown.org/privacy"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-[11px] text-blue-500 hover:underline"
+                    </button>
+                    <span className="text-[12px] text-slate-300">·</span>
+                    <button
+                      onClick={() => window.open("https://unitdown.org/privacy", "_blank")}
+                      className="text-[12px] font-semibold text-blue-500 underline underline-offset-2 px-2 py-1 rounded active:opacity-60"
                     >
                       Privacy Policy
-                    </a>
+                    </button>
                   </div>
 
                   {/* Trust */}
