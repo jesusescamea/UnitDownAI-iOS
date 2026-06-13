@@ -1,13 +1,17 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "com.median.ios.abmwydj",
+  appId: "co.median.ios.abmwydj",
   appName: "UnitDown AI",
   webDir: "dist/public",
   server: {
-    // The app loads the production site in a full-screen WebView.
-    // All auth and navigation stay within the unitdown.org origin.
-    url: "https://unitdown.org",
+    // server.url is intentionally NOT set for iOS so the archive bundles the
+    // current JS assets from dist/public (copied by `npx cap sync`).  Bundled
+    // assets guarantee that the exact code at archive time runs on-device —
+    // no runtime dependency on the live production site, no stale-code issues.
+    //
+    // Android-only note: if you need the Android build to load from a remote
+    // URL, add `url` back conditionally or via a separate capacitor config.
     cleartext: false,
     androidScheme: "https",
     iosScheme: "https",
@@ -22,9 +26,7 @@ const config: CapacitorConfig = {
   },
   ios: {
     backgroundColor: "#1e3a5f",
-    // Keyboard behavior: push content up so inputs stay visible.
     scrollEnabled: true,
-    // Prevent bounce when scrolling past content edges.
     contentInset: "safe",
   },
   plugins: {
@@ -37,10 +39,7 @@ const config: CapacitorConfig = {
       spinnerColor: "#ffffff",
       showSpinner: false,
     },
-    Browser: {
-      // @capacitor/browser handles links that open outside the WebView origin.
-      // Google OAuth opens via the system browser.
-    },
+    Browser: {},
   },
 };
 
