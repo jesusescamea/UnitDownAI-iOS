@@ -30,3 +30,9 @@ id = "AUomAMooIOop7NuoAcsuv"
 uri = "file://UnitDownAI-iOS-Build40-Fixed.zip"
 type = "unspecified"
 title = "UnitDownAI iOS — Build 40 Fixed (CapApp-SPM resolved)"
+
+[[outputs]]
+id = "YSRN1vEfrljw0nN__4JOB"
+uri = "file://UnitDownAI-iOS-Build41.zip"
+type = "unspecified"
+title = "UnitDownAI iOS — Build 41 (debug.xcconfig + SPM fixed)"
