@@ -1,0 +1,38 @@
+{
+  "identifier": "com.unitdown.ai.storekit",
+  "nonConsumableProducts": [],
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "subscriptionGroups": [
+    {
+      "id": "7A4B9C1D-E2F3-4A5B-8C6D-9E0F1A2B3C4D",
+      "localizations": [],
+      "name": "UnitDown AI Pro",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "displayPrice": "7.99",
+          "familyShareable": false,
+          "groupLevel": 1,
+          "introductoryOffer": null,
+          "localizations": [
+            {
+              "description": "Unlimited HVAC diagnostics, SEO guides, and all Pro features.",
+              "displayName": "UnitDown AI Pro",
+              "locale": "en_US"
+            }
+          ],
+          "productID": "com.unitdown.subscription.monthly",
+          "promotionalOffers": [],
+          "referenceName": "UnitDown AI Pro Monthly",
+          "subscriptionPeriod": "P1M",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 2,
+    "minor": 0
+  }
+}
