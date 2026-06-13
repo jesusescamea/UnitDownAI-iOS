@@ -6,3 +6,9 @@ id = "eeLA1KtjgPdBDxX9lGfZ6"
 uri = "file://screenshots/appstore/unitdown-appstore-screenshots.zip"
 type = "unspecified"
 title = "UnitDown AI — App Store Screenshots (iPhone 16 Pro Max)"
+
+[[outputs]]
+id = "RA7bS3ufyV4GhPUw3CuAS"
+uri = "file://UnitDownAI-iOS-Build38.zip"
+type = "unspecified"
+title = "UnitDownAI iOS — Build 38 Xcode Project"

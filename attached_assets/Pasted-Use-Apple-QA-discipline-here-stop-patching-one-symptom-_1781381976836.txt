@@ -1,0 +1,76 @@
+Use Apple QA discipline here: stop patching one symptom at a time. Perform a clean iOS release reset for UnitDown AI.
+
+Current goal:
+Make Build 38 ready for Apple Review with working native StoreKit IAP.
+
+Known correct values:
+Bundle ID: co.median.ios.abmwydj
+Version: 1.0.1
+Build: 38
+Subscription Product ID: com.unitdown.subscribtion.monthly
+Important: “subscribtion” is intentionally misspelled because that is the permanent App Store Connect product ID.
+
+Main problems:
+
+1. Mac local build cannot rebuild web assets because optional native dependencies keep failing.
+2. Xcode simulator may be running stale bundled web assets.
+3. The app previously requested the wrong product ID: com.unitdown.subscription.monthly.
+4. We need a clean artifact/project that can be downloaded/opened without chasing Mac dependency issues.
+
+Required Replit actions:
+
+1. Run a fresh production build in Replit.
+2. Confirm built JS contains:
+   com.unitdown.subscribtion.monthly
+3. Confirm built JS does NOT contain:
+   com.unitdown.subscription.monthly
+4. Run:
+   npx cap sync ios
+5. Confirm ios/App/App/public contains the fresh built web assets.
+6. Confirm capacitor.config.ts has no server.url.
+7. Confirm iOS uses bundled web assets only.
+8. Confirm Bundle ID is exactly:
+   co.median.ios.abmwydj
+9. Confirm IAP plugin wiring:
+
+   * UnitDownIAPPlugin.swift is in App target sources
+   * UnitDownIAPPlugin.m is in App target sources
+   * ViewController.swift registers UnitDownIAPPlugin
+   * JS uses registerPlugin("UnitDownIAP")
+   * Native jsName is "UnitDownIAP"
+10. Confirm no invalid Apple Pay setup:
+
+* no App.entitlements
+* no com.apple.developer.in-app-payments
+* no Merchant IDs
+* only In-App Purchase capability
+
+11. Confirm AppIcon uses final UnitDown blue HVAC icon, not placeholder.
+12. Create a clean downloadable ZIP artifact of the full updated Xcode project after build + cap sync.
+
+Do not change:
+
+* auth
+* diagnostics
+* pricing
+* demo account
+* subscription product ID spelling
+* bundle ID
+
+Return:
+
+* exact files changed
+* build command output summary
+* cap sync output summary
+* grep proof for correct and incorrect product IDs
+* downloadable ZIP artifact path
+* exact Mac steps to unzip, open Xcode, archive, and upload
+
+Apple QA acceptance criteria:
+
+* App launches without loading unitdown.org
+* Subscribe calls native StoreKit
+* StoreKit requests com.unitdown.subscribtion.monthly
+* No stale product ID exists in bundled assets
+* Archive appears under co.median.ios.abmwydj
+* Build number is 38
