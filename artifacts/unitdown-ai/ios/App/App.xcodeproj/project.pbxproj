@@ -35,6 +35,7 @@
                 9ADCC003AA00000000EA8C5F /* UnitDownIAPPlugin.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = UnitDownIAPPlugin.m; sourceTree = "<group>"; };
                 9ADCC006AA00000000EA8C5F /* ViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
                 9ADCC007AA00000000EA8C5F /* UnitDown.storekit */ = {isa = PBXFileReference; lastKnownFileType = text; path = UnitDown.storekit; sourceTree = "<group>"; };
+                9BDCC001BB00000000EA8C5F /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -69,6 +70,7 @@
                 504EC3061FED79650016851F /* App */ = {
                         isa = PBXGroup;
                         children = (
+                                9BDCC001BB00000000EA8C5F /* App.entitlements */,
                                 50379B222058CBB4000EE86E /* capacitor.config.json */,
                                 504EC3071FED79650016851F /* AppDelegate.swift */,
                                 9ADCC006AA00000000EA8C5F /* ViewController.swift */,
@@ -121,6 +123,11 @@
                                                 CreatedOnToolsVersion = 9.2;
                                                 LastSwiftMigration = 1100;
                                                 ProvisioningStyle = Automatic;
+                                                SystemCapabilities = {
+                                                        com.apple.InAppPurchase = {
+                                                                enabled = 1;
+                                                        };
+                                                };
                                         };
                                 };
                         };
@@ -311,6 +318,7 @@
                         baseConfigurationReference = 958DCC722DB07C7200EA8C5F /* debug.xcconfig */;
                         buildSettings = {
                                 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+                                CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
                                 CODE_SIGN_STYLE = Automatic;
                                 CURRENT_PROJECT_VERSION = 32;
                                 DEVELOPMENT_TEAM = 6YFBRTRJ28;
@@ -334,6 +342,7 @@
                         isa = XCBuildConfiguration;
                         buildSettings = {
                                 ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+                                CODE_SIGN_ENTITLEMENTS = App/App.entitlements;
                                 CODE_SIGN_STYLE = Automatic;
                                 CURRENT_PROJECT_VERSION = 32;
                                 DEVELOPMENT_TEAM = 6YFBRTRJ28;
