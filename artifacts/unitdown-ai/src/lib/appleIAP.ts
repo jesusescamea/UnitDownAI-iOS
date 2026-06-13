@@ -84,6 +84,32 @@ export function setIAPSubscriptionActive(active: boolean): void {
 
 // ── API ───────────────────────────────────────────────────────────────────────
 
+/**
+ * Logs whether the native UnitDownIAP plugin is visible in Capacitor.Plugins.
+ * Call this before opening the paywall to confirm native registration.
+ *
+ * Expected output on iOS (after the ViewController.swift fix):
+ *   [UnitDownIAP] plugin status — platform:ios  native:true  Capacitor.Plugins.UnitDownIAP: REGISTERED ✅
+ *
+ * If you still see MISSING ❌ on a real device/simulator build:
+ *   1. Confirm ViewController.swift compiled (check Xcode build log for "ViewController.swift")
+ *   2. Confirm Main.storyboard uses customClass="ViewController" (not CAPBridgeViewController)
+ *   3. Clean build folder (Cmd+Shift+K) and rebuild
+ */
+export function logIAPPluginStatus(): void {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const cap = (window as any).Capacitor;
+  const platform: string = cap?.getPlatform?.() ?? "unknown";
+  const native: boolean = cap?.isNativePlatform?.() ?? false;
+  const registered: boolean = Object.prototype.hasOwnProperty.call(
+    cap?.Plugins ?? {},
+    "UnitDownIAP"
+  );
+  console.log(
+    `[UnitDownIAP] plugin status — platform:${platform}  native:${native}  Capacitor.Plugins.UnitDownIAP: ${registered ? "REGISTERED ✅" : "MISSING ❌"}`
+  );
+}
+
 /** Fetch available products from the App Store.
  *  Resolves to [] on any error or if StoreKit doesn't respond within 6 seconds,
  *  so callers never hang waiting for IAP when the plugin isn't installed or the
@@ -91,6 +117,7 @@ export function setIAPSubscriptionActive(active: boolean): void {
 export async function fetchProducts(): Promise<IAPProduct[]> {
   const platform = getPlatform();
   const native = isNative();
+  logIAPPluginStatus();
   console.log(
     `[UnitDownIAP] fetchProducts — platform:${platform} native:${native} productId:${IAP_PRODUCT_ID}`
   );
