@@ -1,7 +1,7 @@
 import type { CapacitorConfig } from "@capacitor/cli";
 
 const config: CapacitorConfig = {
-  appId: "com.unitdown.ai",
+  appId: "com.median.ios.abmwydj",
   appName: "UnitDown AI",
   webDir: "dist/public",
   server: {
