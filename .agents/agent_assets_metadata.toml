@@ -12,3 +12,9 @@ id = "RA7bS3ufyV4GhPUw3CuAS"
 uri = "file://UnitDownAI-iOS-Build38.zip"
 type = "unspecified"
 title = "UnitDownAI iOS — Build 38 Xcode Project"
+
+[[outputs]]
+id = "urEowMu_4t5Nw9PFPLD8-"
+uri = "file://UnitDownAI-iOS-Build39.zip"
+type = "unspecified"
+title = "UnitDownAI iOS — Build 39 Xcode Project"

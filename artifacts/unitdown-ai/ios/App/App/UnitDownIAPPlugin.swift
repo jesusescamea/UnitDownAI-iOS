@@ -18,9 +18,8 @@
  * Xcode setup (once, outside Replit):
  *   1. Both this file AND UnitDownIAPPlugin.m must be in the App target.
  *   2. Enable "In-App Purchase" capability on the App target.
- *   3. Create product com.unitdown.subscribtion.monthly in App Store Connect
+ *   3. Create product com.unitdown.subscription.monthly in App Store Connect
  *      as an Auto-Renewable Subscription in a subscription group.
- *      NOTE: "subscribtion" is the exact ID registered — do not "fix" the spelling.
  *   4. Attach the subscription to app version 1.0.1 under
  *      "In-App Purchases and Subscriptions" in App Store Connect.
  *   5. Run: npx cap sync
