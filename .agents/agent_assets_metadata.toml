@@ -24,3 +24,9 @@ id = "4HBQmOrSWBh3UwOFKHMi9"
 uri = "file://UnitDownAI-iOS-Build40.zip"
 type = "unspecified"
 title = "UnitDownAI iOS — Build 40 Xcode Project"
+
+[[outputs]]
+id = "AUomAMooIOop7NuoAcsuv"
+uri = "file://UnitDownAI-iOS-Build40-Fixed.zip"
+type = "unspecified"
+title = "UnitDownAI iOS — Build 40 Fixed (CapApp-SPM resolved)"
