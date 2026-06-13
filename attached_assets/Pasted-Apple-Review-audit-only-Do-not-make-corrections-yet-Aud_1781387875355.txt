@@ -1,0 +1,95 @@
+Apple Review audit only. Do not make corrections yet.
+
+Audit the current iOS project against Apple’s latest rejection summary.
+
+Apple reviewed:
+Version: 1.0.1 (27)
+Device: iPad Air 11-inch (M3)
+OS: iPadOS 26.5
+
+Apple identified 3 issues:
+
+1. Guideline 2.3.8 — Accurate Metadata
+   Issue:
+   App icons appear to be placeholder icons.
+
+Audit only:
+
+* Inspect AppIcon.appiconset.
+* Inspect all app icon files.
+* Inspect splash assets.
+* Inspect app header/logo assets.
+* Confirm whether icons are final blue UnitDown HVAC branding or placeholder/default assets.
+* Confirm whether icons are consistent enough across App Store metadata, device home screen, splash, and in-app header.
+* Report exact files/assets that appear placeholder or inconsistent.
+* Do not replace anything.
+
+2. Guideline 2.1(b) — App Completeness / IAP
+   Issue:
+   Tapping Subscribe showed an error.
+
+Audit only:
+
+* Inspect StoreKit product ID used in JS and native Swift.
+* Confirm whether product ID is exactly:
+  com.unitdown.subscription.monthly
+* Confirm typo product ID is absent:
+  com.unitdown.subscribtion.monthly
+* Inspect UnitDownIAPPlugin.swift.
+* Inspect appleIAP.ts.
+* Inspect paywall product loading and timeout behavior.
+* Determine whether the app can show reviewer-facing errors such as:
+  Product not found
+  Subscription temporarily unavailable
+  fetchProducts timed out
+  In-app purchases are not available
+* Confirm whether the app waits long enough for StoreKit product fetch.
+* Confirm whether the app handles empty StoreKit products gracefully.
+* Confirm whether UnitDown.storekit uses the correct product ID.
+* Confirm whether the native plugin is registered correctly.
+* Confirm whether any code path can still show IAP errors to Apple Review.
+* Do not change code.
+
+3. Guideline 3.1.2(c) — Auto-renewable Subscription Required Information
+   Issue:
+   The app must include functional Privacy Policy and Terms of Use/EULA links inside the app purchase flow.
+   Metadata must also include Terms/EULA.
+
+Audit only:
+
+* Inspect the subscription/paywall UI.
+* Confirm whether it visibly includes:
+
+  * subscription title
+  * subscription length
+  * price
+  * auto-renewal language
+  * cancellation/manage subscription language
+  * functional Privacy Policy link
+  * functional Terms of Use/EULA link
+* Confirm exact URLs used.
+* Confirm whether links use safe iOS external opening behavior such as Capacitor Browser.open or valid anchor behavior.
+* Confirm whether App Store metadata description text includes Terms of Use/EULA and Privacy Policy links if available in repo/config.
+* Do not change code.
+
+Packaging audit:
+
+* Confirm current build number.
+* Confirm bundle ID:
+  co.median.ios.abmwydj
+* Confirm no server.url is set.
+* Confirm iOS uses bundled assets.
+* Confirm debug.xcconfig is packaged correctly.
+* Confirm CapApp-SPM/package references are portable.
+* Confirm no absolute /Users/ or Replit-only paths exist.
+* Do not change anything.
+
+Return:
+
+1. Pass/fail table for each Apple issue.
+2. Exact evidence with file paths and line references where possible.
+3. Risk level for each issue.
+4. Whether a new build is required.
+5. Exact list of corrections that would be needed later, but do not apply them.
+6. Exact App Store Connect metadata items that must be manually checked.
+7. Screenshots or manual test steps needed to prove compliance to Apple.
