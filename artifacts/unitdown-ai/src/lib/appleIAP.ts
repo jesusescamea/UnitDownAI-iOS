@@ -190,10 +190,15 @@ export async function purchasePro(): Promise<IAPPurchaseResult> {
     const e = err as { message?: string; code?: string };
     console.log(`[UnitDownIAP] purchasePro THREW — code:${e?.code} message:${e?.message}`);
     // Only treat USER_CANCELLED (the explicit Capacitor code) as a silent cancel.
-    // Do NOT match on error message strings — that would swallow real errors
-    // such as plugin-not-found fallbacks from the web stub.
     if (e?.code === "USER_CANCELLED") {
       return { success: false, cancelled: true };
+    }
+    // "Product not found: <id>" is a StoreKit signal that the product isn't
+    // available in this environment yet (App Store Connect not yet attached to
+    // this app version, or subscription still under review). Map to a
+    // review-safe user-facing message — do NOT expose the raw internal string.
+    if (e?.message?.startsWith("Product not found:")) {
+      return { success: false, error: "Subscription is temporarily unavailable. Please try again later." };
     }
     return { success: false, error: e?.message ?? "Purchase failed. Please try again." };
   }

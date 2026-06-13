@@ -385,6 +385,8 @@ interface AppleIAPUpgradeModalProps {
 function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpgradeModalProps) {
   const [productPrice, setProductPrice] = useState("$7.99");
   const [productsLoading, setProductsLoading] = useState(false);
+  // null = loading/unknown, true = StoreKit confirmed product, false = StoreKit returned 0
+  const [productAvailable, setProductAvailable] = useState<boolean | null>(null);
   const [buying, setBuying] = useState(false);
   const [restoring, setRestoring] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -398,25 +400,24 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
     setSuccess(false);
     setBuying(false);
     setRestoring(false);
+    setProductAvailable(null);
     setProductsLoading(true);
     fetchProducts()
       .then((products) => {
         const match = products.find((p) => p.productId === IAP_PRODUCT_ID);
         if (match) {
-          // StoreKit confirmed the product — show the live App Store price.
           setProductPrice(match.price);
+          setProductAvailable(true);
+        } else {
+          // StoreKit returned 0 products — subscription not yet available in
+          // this environment (App Store Connect version not yet linked, or
+          // subscription still under review). Disable the buy button and show
+          // a review-safe message so Apple reviewers never see internal errors.
+          setProductAvailable(false);
         }
-        // If StoreKit returned no products (plugin warming up, simulator,
-        // sandbox environment, or Median WebView without the Capacitor bridge),
-        // keep the default $7.99 price and stay silent. The purchase attempt
-        // itself will surface a meaningful error if StoreKit is truly
-        // unavailable. Showing a pre-emptive error before any user action
-        // violates Apple's HIG and breaks the UX in simulators.
       })
       .catch(() => {
-        // fetchProducts() never rejects (it catches internally and resolves []),
-        // but guard against unexpected rejections — fall back to default price
-        // without showing an error.
+        setProductAvailable(false);
       })
       .finally(() => setProductsLoading(false));
   }, [open]);
@@ -563,16 +564,23 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
                     ))}
                   </ul>
 
+                  {/* Unavailable notice — shown when StoreKit returns 0 products */}
+                  {productAvailable === false && !error && (
+                    <p className="text-xs text-amber-700 font-semibold bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
+                      Subscription is temporarily unavailable. Please try again later.
+                    </p>
+                  )}
+
                   {error && (
                     <p className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 rounded-xl px-4 py-3">
                       {error}
                     </p>
                   )}
 
-                  {/* Purchase button */}
+                  {/* Purchase button — disabled when StoreKit hasn't confirmed the product */}
                   <Button
                     onClick={handleBuy}
-                    disabled={buying || restoring || productsLoading}
+                    disabled={buying || restoring || productsLoading || productAvailable === false}
                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-extrabold h-12 rounded-xl text-sm transition-all"
                     data-testid="btn-apple-iap-buy"
                   >

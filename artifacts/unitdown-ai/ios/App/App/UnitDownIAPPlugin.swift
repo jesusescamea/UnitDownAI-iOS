@@ -20,7 +20,9 @@
  *   2. Enable "In-App Purchase" capability on the App target.
  *   3. Create product com.unitdown.subscription.monthly in App Store Connect
  *      as an Auto-Renewable Subscription in a subscription group.
- *   4. Run: npx cap sync
+ *   4. Attach the subscription to app version 1.0.1 under
+ *      "In-App Purchases and Subscriptions" in App Store Connect.
+ *   5. Run: npx cap sync
  */
 
 import Capacitor
@@ -40,6 +42,19 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "finishTransaction", returnType: "promise"),
     ]
 
+    // MARK: - Helpers
+
+    private var environment: String {
+        let isSimulator = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil
+        if isSimulator { return "simulator" }
+        let isSandbox = Bundle.main.appStoreReceiptURL?.lastPathComponent == "sandboxReceipt"
+        return isSandbox ? "sandbox/TestFlight" : "production"
+    }
+
+    private var bundleId: String {
+        return Bundle.main.bundleIdentifier ?? "unknown"
+    }
+
     // MARK: - getProducts
 
     @objc func getProducts(_ call: CAPPluginCall) {
@@ -48,9 +63,25 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
+        let env = environment
+        let bid = bundleId
+        print("⚡️ [UnitDownIAP] getProducts — env:\(env)  bundleId:\(bid)  requesting:\(productIds)")
+
         Task {
             do {
                 let products = try await Product.products(for: Set(productIds))
+
+                if products.isEmpty {
+                    print("⚡️ [UnitDownIAP] getProducts — StoreKit returned 0 products.")
+                    print("⚡️ [UnitDownIAP]   Checklist:")
+                    print("⚡️ [UnitDownIAP]   1. App Store Connect → your app → version 1.0.1 → 'In-App Purchases and Subscriptions' → is '\(productIds.first ?? "?")' listed?")
+                    print("⚡️ [UnitDownIAP]   2. Bundle ID in App Store Connect matches '\(bid)'?")
+                    print("⚡️ [UnitDownIAP]   3. Subscription status is 'Waiting for Review', 'Ready to Submit', or 'Approved'?")
+                    print("⚡️ [UnitDownIAP]   4. Sandbox Apple ID is configured in Settings → App Store → Sandbox Account?")
+                    call.resolve(["products": [] as [[String: Any]]])
+                    return
+                }
+
                 let mapped = products.map { p -> [String: Any] in
                     return [
                         "productId": p.id,
@@ -61,8 +92,10 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
                         "currencyCode": p.priceFormatStyle.currencyCode
                     ]
                 }
+                print("⚡️ [UnitDownIAP] getProducts — StoreKit returned \(products.count) product(s): \(products.map { "\($0.id)=\($0.displayPrice)" }.joined(separator: ", "))")
                 call.resolve(["products": mapped])
             } catch {
+                print("⚡️ [UnitDownIAP] getProducts — error: \(error.localizedDescription)")
                 call.reject("Failed to fetch products: \(error.localizedDescription)")
             }
         }
@@ -76,10 +109,16 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
 
+        let env = environment
+        let bid = bundleId
+        print("⚡️ [UnitDownIAP] purchaseProduct — env:\(env)  bundleId:\(bid)  productId:\(productId)")
+
         Task {
             do {
                 let products = try await Product.products(for: [productId])
+                print("⚡️ [UnitDownIAP] purchaseProduct — StoreKit lookup returned \(products.count) product(s) for '\(productId)'")
                 guard let product = products.first else {
+                    print("⚡️ [UnitDownIAP] purchaseProduct — product '\(productId)' not found in StoreKit. See getProducts checklist above.")
                     call.reject("Product not found: \(productId)")
                     return
                 }
@@ -90,21 +129,25 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
                 case .success(let verification):
                     switch verification {
                     case .verified(let transaction):
+                        print("⚡️ [UnitDownIAP] purchaseProduct — SUCCESS txId:\(transaction.id) state:purchased")
                         call.resolve([
                             "transactionId": String(transaction.id),
                             "productId": transaction.productID,
                             "state": "purchased"
                         ])
                     case .unverified(_, let error):
+                        print("⚡️ [UnitDownIAP] purchaseProduct — unverified: \(error.localizedDescription)")
                         call.reject("Purchase unverified: \(error.localizedDescription)")
                     }
                 case .userCancelled:
+                    print("⚡️ [UnitDownIAP] purchaseProduct — user cancelled")
                     call.resolve([
                         "transactionId": "",
                         "productId": productId,
                         "state": "cancelled"
                     ])
                 case .pending:
+                    print("⚡️ [UnitDownIAP] purchaseProduct — deferred (parental approval pending)")
                     call.resolve([
                         "transactionId": "",
                         "productId": productId,
@@ -114,6 +157,7 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
                     call.reject("Unknown purchase result")
                 }
             } catch {
+                print("⚡️ [UnitDownIAP] purchaseProduct — threw: \(error.localizedDescription)")
                 call.reject("Purchase failed: \(error.localizedDescription)", "PURCHASE_ERROR", error)
             }
         }
@@ -122,6 +166,7 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: - restoreTransactions
 
     @objc func restoreTransactions(_ call: CAPPluginCall) {
+        print("⚡️ [UnitDownIAP] restoreTransactions — env:\(environment)  bundleId:\(bundleId)")
         Task {
             var transactions: [[String: Any]] = []
 
@@ -138,6 +183,7 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
                 }
             }
 
+            print("⚡️ [UnitDownIAP] restoreTransactions — found \(transactions.count) entitlement(s): \(transactions.map { $0["productId"] as? String ?? "?" }.joined(separator: ", "))")
             call.resolve(["transactions": transactions])
         }
     }
@@ -155,6 +201,7 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
             for await verification in Transaction.all {
                 if case .verified(let transaction) = verification, transaction.id == transactionId {
                     await transaction.finish()
+                    print("⚡️ [UnitDownIAP] finishTransaction — finished txId:\(transactionId)")
                     break
                 }
             }

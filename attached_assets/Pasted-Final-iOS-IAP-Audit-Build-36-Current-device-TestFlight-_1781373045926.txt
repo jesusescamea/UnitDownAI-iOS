@@ -1,0 +1,96 @@
+Final iOS IAP Audit — Build 36
+
+Current device/TestFlight behavior:
+
+The paywall now says:
+
+“Product not found: com.unitdown.subscription.monthly”
+
+This means the native UnitDownIAP plugin is loading and StoreKit is being called. Do NOT keep changing plugin registration unless the audit proves it is broken.
+
+Known correct values:
+
+Bundle ID:
+co.median.ios.abmwydj
+
+Subscription Product ID:
+com.unitdown.subscription.monthly
+
+App Store Connect subscription status:
+Waiting for Review
+
+Main task:
+
+Audit why StoreKit returns zero products for:
+com.unitdown.subscription.monthly
+
+Audit all code and config for:
+
+1. Exact product ID used in:
+
+   * appleIAP.ts
+   * UnitDownIAPPlugin.swift
+   * App.tsx
+   * any purchase/paywall helpers
+   * any fallback/stub code
+
+2. Exact bundle ID used in:
+
+   * capacitor.config.ts
+   * capacitor.config.json
+   * project.pbxproj Debug/Release
+   * Info.plist
+   * any Median config
+
+3. Confirm Capacitor no longer uses:
+   server.url = https://unitdown.org
+
+The iOS app must load bundled JS, not stale web JS from unitdown.org.
+
+4. Confirm native plugin status:
+
+   * UnitDownIAPPlugin.swift is in Sources
+   * UnitDownIAPPlugin.m is in Sources
+   * ViewController.swift registers UnitDownIAPPlugin
+   * JS registerPlugin name exactly matches native jsName: UnitDownIAP
+
+5. Confirm no invalid Apple Pay configuration:
+
+   * no App.entitlements file
+   * no com.apple.developer.in-app-payments
+   * no Merchant IDs
+   * only SystemCapabilities com.apple.InAppPurchase enabled
+
+6. Add stronger runtime logging around StoreKit:
+
+   * log bundle identifier
+   * log requested product IDs
+   * log returned product count
+   * log returned product IDs
+   * log whether running simulator/TestFlight/device
+
+7. If StoreKit returns zero products, show a review-safe message:
+   “Subscription is temporarily unavailable. Please try again later.”
+   Do NOT show raw internal plugin/install error messages to Apple Review.
+
+Do not change:
+
+* pricing
+* product ID
+* subscription UI
+* demo account behavior
+* auth flow
+* diagnostic logic
+
+Return:
+
+* exact root cause if found
+* exact files changed
+* exact test steps
+* exact Xcode/archive steps
+* whether App Store Connect still needs manual action: attach subscription to version 1.0.1 under “In-App Purchases and Subscriptions”
+
+Build target:
+Version 1.0.1
+Build 36
+Bundle ID co.median.ios.abmwydj
