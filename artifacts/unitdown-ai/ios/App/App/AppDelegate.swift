@@ -7,10 +7,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
-        // Delegate to Capacitor's ApplicationDelegateProxy so the bridge
-        // initialises correctly (push notifications, URL handling, plugin
-        // lifecycle hooks all depend on this call).
-        return ApplicationDelegateProxy.shared.application(application, didFinishLaunchingWithOptions: launchOptions)
+        return true
     }
 
     func applicationWillResignActive(_ application: UIApplication) {
