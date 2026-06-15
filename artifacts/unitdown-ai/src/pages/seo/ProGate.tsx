@@ -227,10 +227,10 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
                 is not guaranteed to open Safari in a WKWebView context). */}
             <div className="flex items-center justify-center gap-4 mt-3 flex-wrap">
               <button
-                onClick={() => Browser.open({ url: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" })}
+                onClick={() => Browser.open({ url: "https://www.apple.com/legal/macapps/stdeula/" })}
                 className="text-[12px] font-semibold text-blue-500 underline underline-offset-2 px-2 py-1 rounded active:opacity-60"
               >
-                Terms of Use
+                Terms of Use (EULA)
               </button>
               <span className="text-[12px] text-gray-300">·</span>
               <button

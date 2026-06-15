@@ -613,10 +613,10 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
                       so links open correctly inside Capacitor WKWebView on iOS. */}
                   <div className="flex items-center justify-center gap-4 flex-wrap py-1">
                     <button
-                      onClick={() => Browser.open({ url: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" })}
+                      onClick={() => Browser.open({ url: "https://www.apple.com/legal/macapps/stdeula/" })}
                       className="text-[12px] font-semibold text-blue-500 underline underline-offset-2 px-2 py-1 rounded active:opacity-60"
                     >
-                      Terms of Use
+                      Terms of Use (EULA)
                     </button>
                     <span className="text-[12px] text-slate-300">·</span>
                     <button
