@@ -502,15 +502,37 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  // Guide frame: landscape nameplate ratio (~16:9), 88 % wide, slightly above centre
+  // Guide frame — adapts to container orientation:
+  //   Portrait  (h ≥ w): vertical 3:4 box — taller than wide — to frame tall data plates
+  //   Landscape (w > h): compact centred block (42 % wide × 62 % tall) instead of a
+  //                      wall-to-wall strip that doesn't fit horizontal nameplates well
+  //
+  // Instruction text is anchored to guide.y + guide.h so it always sits directly
+  // below the bottom edge of the box in both orientations — no extra changes needed there.
   const guide = useMemo<Guide | null>(() => {
     const { w, h } = containerSize;
     if (!w || !h) return null;
-    const gW = Math.round(w * 0.88);
-    const gH = Math.min(Math.round(gW * 0.54), Math.round(h * 0.50));
+
+    const isPortrait = h >= w;
+
+    let gW: number, gH: number;
+    if (isPortrait) {
+      // 75 % of container width; 3:4 aspect (taller than wide)
+      // Capped so the box never exceeds 45 % of container height
+      gW = Math.round(w * 0.75);
+      gH = Math.min(Math.round(gW * (4 / 3)), Math.round(h * 0.45));
+    } else {
+      // 42 % wide × up to 62 % tall; also capped at 1.4× width so the box
+      // stays roughly square/rectangular and never becomes a tall sliver
+      gW = Math.round(w * 0.42);
+      gH = Math.min(Math.round(h * 0.62), Math.round(gW * 1.4));
+    }
+
     return {
       x: Math.round((w - gW) / 2),
-      y: Math.round((h - gH) / 2) - Math.round(h * 0.05),
+      // Portrait: nudge 5 % above true centre for comfortable one-handed framing
+      // Landscape: true centre (less vertical room to spare)
+      y: Math.round((h - gH) / 2) - (isPortrait ? Math.round(h * 0.05) : 0),
       w: gW,
       h: gH,
     };
