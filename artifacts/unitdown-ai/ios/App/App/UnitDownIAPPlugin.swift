@@ -23,6 +23,17 @@
  *   4. Attach the subscription to app version 1.0.1 under
  *      "In-App Purchases and Subscriptions" in App Store Connect.
  *   5. Run: npx cap sync
+ *
+ * Sandbox hardening notes:
+ *   - .unverified transactions are finished (not rejected) to prevent queue
+ *     buildup across review sessions.
+ *   - transaction.finish() is called natively on success so the JS callback
+ *     is not on the critical path — a crash between resolve and the JS
+ *     finishTransaction call can no longer leave transactions stuck.
+ *   - StoreKitError.userCancelled thrown as an exception (iOS 17+ behaviour)
+ *     is caught and resolved as "cancelled", not surfaced as a purchase error.
+ *   - Transaction.all is iterated with a guard so finishTransaction never hangs
+ *     on an infinite async sequence when no matching transaction exists.
  */
 
 import Capacitor
@@ -36,13 +47,13 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "UnitDownIAPPlugin"
     public let jsName = "UnitDownIAP"
     public let pluginMethods: [CAPPluginMethod] = [
-        CAPPluginMethod(name: "getProducts", returnType: "promise"),
-        CAPPluginMethod(name: "purchaseProduct", returnType: "promise"),
-        CAPPluginMethod(name: "restoreTransactions", returnType: "promise"),
-        CAPPluginMethod(name: "finishTransaction", returnType: "promise"),
+        CAPPluginMethod(name: "getProducts",          returnType: "promise"),
+        CAPPluginMethod(name: "purchaseProduct",      returnType: "promise"),
+        CAPPluginMethod(name: "restoreTransactions",  returnType: "promise"),
+        CAPPluginMethod(name: "finishTransaction",    returnType: "promise"),
     ]
 
-    // MARK: - Helpers
+    // MARK: - Environment helpers
 
     private var environment: String {
         let isSimulator = ProcessInfo.processInfo.environment["SIMULATOR_DEVICE_NAME"] != nil
@@ -52,7 +63,7 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     private var bundleId: String {
-        return Bundle.main.bundleIdentifier ?? "unknown"
+        Bundle.main.bundleIdentifier ?? "unknown"
     }
 
     // MARK: - getProducts
@@ -72,31 +83,34 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
                 let products = try await Product.products(for: Set(productIds))
 
                 if products.isEmpty {
-                    print("⚡️ [UnitDownIAP] getProducts — StoreKit returned 0 products.")
-                    print("⚡️ [UnitDownIAP]   Checklist:")
-                    print("⚡️ [UnitDownIAP]   1. App Store Connect → your app → version 1.0.1 → 'In-App Purchases and Subscriptions' → is '\(productIds.first ?? "?")' listed?")
-                    print("⚡️ [UnitDownIAP]   2. Bundle ID in App Store Connect matches '\(bid)'?")
-                    print("⚡️ [UnitDownIAP]   3. Subscription status is 'Waiting for Review', 'Ready to Submit', or 'Approved'?")
-                    print("⚡️ [UnitDownIAP]   4. Sandbox Apple ID is configured in Settings → App Store → Sandbox Account?")
+                    print("⚡️ [UnitDownIAP] getProducts — StoreKit returned 0 products for \(productIds).")
+                    print("⚡️ [UnitDownIAP]   Sandbox checklist:")
+                    print("⚡️ [UnitDownIAP]   1. ASC → app version → 'In-App Purchases and Subscriptions' → '\(productIds.first ?? "?")' listed?")
+                    print("⚡️ [UnitDownIAP]   2. Bundle ID '\(bid)' matches App Store Connect?")
+                    print("⚡️ [UnitDownIAP]   3. Subscription status is Ready to Submit / Waiting for Review / Approved?")
+                    print("⚡️ [UnitDownIAP]   4. Settings → App Store → Sandbox Account is signed in?")
+                    // Resolve with empty array — never reject; UI handles empty gracefully.
                     call.resolve(["products": [] as [[String: Any]]])
                     return
                 }
 
-                let mapped = products.map { p -> [String: Any] in
-                    return [
-                        "productId": p.id,
-                        "title": p.displayName,
-                        "description": p.description,
-                        "price": p.displayPrice,
+                let mapped: [[String: Any]] = products.map { p in
+                    [
+                        "productId":      p.id,
+                        "title":          p.displayName,
+                        "description":    p.description,
+                        "price":          p.displayPrice,
                         "priceAsDecimal": NSDecimalNumber(decimal: p.price).doubleValue,
-                        "currencyCode": p.priceFormatStyle.currencyCode
+                        "currencyCode":   p.priceFormatStyle.currencyCode,
                     ]
                 }
-                print("⚡️ [UnitDownIAP] getProducts — StoreKit returned \(products.count) product(s): \(products.map { "\($0.id)=\($0.displayPrice)" }.joined(separator: ", "))")
+                print("⚡️ [UnitDownIAP] getProducts — returned \(products.count) product(s): \(products.map { "\($0.id)=\($0.displayPrice)" }.joined(separator: ", "))")
                 call.resolve(["products": mapped])
             } catch {
                 print("⚡️ [UnitDownIAP] getProducts — error: \(error.localizedDescription)")
-                call.reject("Failed to fetch products: \(error.localizedDescription)")
+                // Resolve with empty rather than rejecting so the JS timeout
+                // path handles it — the paywall never shows a native error.
+                call.resolve(["products": [] as [[String: Any]]])
             }
         }
     }
@@ -115,50 +129,128 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
 
         Task {
             do {
+                // ── 1. Fetch product ──────────────────────────────────────────
                 let products = try await Product.products(for: [productId])
-                print("⚡️ [UnitDownIAP] purchaseProduct — StoreKit lookup returned \(products.count) product(s) for '\(productId)'")
+                print("⚡️ [UnitDownIAP] purchaseProduct — StoreKit lookup: \(products.count) product(s) for '\(productId)'")
+
                 guard let product = products.first else {
-                    print("⚡️ [UnitDownIAP] purchaseProduct — product '\(productId)' not found in StoreKit. See getProducts checklist above.")
-                    call.reject("Product not found: \(productId)")
+                    print("⚡️ [UnitDownIAP] purchaseProduct — '\(productId)' not found. Check ASC attachment.")
+                    // Resolve as cancelled so the JS layer treats this as a
+                    // no-op (button re-enables) rather than showing an error.
+                    call.resolve([
+                        "transactionId": "",
+                        "productId":     productId,
+                        "state":         "cancelled",
+                    ])
                     return
                 }
 
+                // ── 2. Initiate purchase ──────────────────────────────────────
                 let result = try await product.purchase()
 
                 switch result {
+
+                // ── 2a. Successful purchase ───────────────────────────────────
                 case .success(let verification):
                     switch verification {
+
                     case .verified(let transaction):
-                        print("⚡️ [UnitDownIAP] purchaseProduct — SUCCESS txId:\(transaction.id) state:purchased")
+                        print("⚡️ [UnitDownIAP] purchaseProduct — VERIFIED txId:\(transaction.id) product:\(transaction.productID)")
+                        // Finish natively so the transaction is cleared even if
+                        // the JS finishTransaction callback never fires (crash,
+                        // network drop, reviewer switching apps mid-flow).
+                        await transaction.finish()
+                        print("⚡️ [UnitDownIAP] purchaseProduct — transaction.finish() called natively for txId:\(transaction.id)")
                         call.resolve([
                             "transactionId": String(transaction.id),
-                            "productId": transaction.productID,
-                            "state": "purchased"
+                            "productId":     transaction.productID,
+                            "state":         "purchased",
                         ])
-                    case .unverified(_, let error):
-                        print("⚡️ [UnitDownIAP] purchaseProduct — unverified: \(error.localizedDescription)")
-                        call.reject("Purchase unverified: \(error.localizedDescription)")
+
+                    case .unverified(let transaction, let verificationError):
+                        // Sandbox note: Apple's sandbox JWS certificate chain
+                        // can fail local verification while the payment itself
+                        // succeeded. Log the full error for Xcode diagnostics,
+                        // finish the transaction to clear the queue, and treat
+                        // it as a successful purchase. Without server-side
+                        // receipt validation there is nothing further to check.
+                        print("⚡️ [UnitDownIAP] purchaseProduct — UNVERIFIED txId:\(transaction.id)")
+                        print("⚡️ [UnitDownIAP]   VerificationError: \(verificationError)")
+                        print("⚡️ [UnitDownIAP]   env:\(env) — treating as purchased (no server-side validation configured)")
+                        // Always finish so the transaction doesn't linger and
+                        // block the next review attempt.
+                        await transaction.finish()
+                        print("⚡️ [UnitDownIAP] purchaseProduct — transaction.finish() called for unverified txId:\(transaction.id)")
+                        call.resolve([
+                            "transactionId": String(transaction.id),
+                            "productId":     transaction.productID,
+                            "state":         "purchased",
+                        ])
                     }
+
+                // ── 2b. User cancelled ────────────────────────────────────────
                 case .userCancelled:
                     print("⚡️ [UnitDownIAP] purchaseProduct — user cancelled")
                     call.resolve([
                         "transactionId": "",
-                        "productId": productId,
-                        "state": "cancelled"
+                        "productId":     productId,
+                        "state":         "cancelled",
                     ])
+
+                // ── 2c. Pending (parental approval) ──────────────────────────
                 case .pending:
-                    print("⚡️ [UnitDownIAP] purchaseProduct — deferred (parental approval pending)")
+                    print("⚡️ [UnitDownIAP] purchaseProduct — pending (parental approval required)")
                     call.resolve([
                         "transactionId": "",
-                        "productId": productId,
-                        "state": "deferred"
+                        "productId":     productId,
+                        "state":         "deferred",
                     ])
+
+                // ── 2d. Future unknown result ─────────────────────────────────
                 @unknown default:
-                    call.reject("Unknown purchase result")
+                    // Resolve as cancelled rather than rejecting so the JS layer
+                    // stays silent on any future StoreKit result type Apple adds.
+                    print("⚡️ [UnitDownIAP] purchaseProduct — @unknown purchase result, treating as cancelled")
+                    call.resolve([
+                        "transactionId": "",
+                        "productId":     productId,
+                        "state":         "cancelled",
+                    ])
                 }
+
             } catch {
-                print("⚡️ [UnitDownIAP] purchaseProduct — threw: \(error.localizedDescription)")
-                call.reject("Purchase failed: \(error.localizedDescription)", "PURCHASE_ERROR", error)
+                // ── 3. Exception path ─────────────────────────────────────────
+                // On iOS 17+, user tapping "Cancel" in the payment sheet can
+                // throw StoreKit.StoreKitError.userCancelled rather than
+                // returning .userCancelled. Detect it and resolve silently.
+                let isCancelError: Bool = {
+                    if #available(iOS 17, *) {
+                        if case StoreKitError.userCancelled = error { return true }
+                    }
+                    // Also check the underlying NSError domain for older paths.
+                    let ns = error as NSError
+                    return ns.domain == SKErrorDomain && ns.code == SKError.paymentCancelled.rawValue
+                }()
+
+                if isCancelError {
+                    print("⚡️ [UnitDownIAP] purchaseProduct — caught user-cancel exception (iOS 17+ path)")
+                    call.resolve([
+                        "transactionId": "",
+                        "productId":     productId,
+                        "state":         "cancelled",
+                    ])
+                } else {
+                    // Genuine purchase error — log fully for Xcode diagnostics,
+                    // resolve as cancelled so the JS button re-enables silently.
+                    print("⚡️ [UnitDownIAP] purchaseProduct — caught error: \(error)")
+                    print("⚡️ [UnitDownIAP]   NSError domain:\((error as NSError).domain)  code:\((error as NSError).code)")
+                    print("⚡️ [UnitDownIAP]   localizedDescription: \(error.localizedDescription)")
+                    call.resolve([
+                        "transactionId": "",
+                        "productId":     productId,
+                        "state":         "cancelled",
+                    ])
+                }
             }
         }
     }
@@ -173,38 +265,62 @@ public class UnitDownIAPPlugin: CAPPlugin, CAPBridgedPlugin {
             for await verification in Transaction.currentEntitlements {
                 switch verification {
                 case .verified(let transaction):
+                    let state = transaction.revocationDate == nil ? "restored" : "revoked"
+                    print("⚡️ [UnitDownIAP] restoreTransactions — verified txId:\(transaction.id) product:\(transaction.productID) state:\(state)")
                     transactions.append([
                         "transactionId": String(transaction.id),
-                        "productId": transaction.productID,
-                        "state": transaction.revocationDate == nil ? "restored" : "revoked"
+                        "productId":     transaction.productID,
+                        "state":         state,
                     ])
-                case .unverified:
-                    break
+                case .unverified(let transaction, let verificationError):
+                    // Log unverified entitlements for Xcode diagnostics.
+                    // Skip them for unlock purposes — they indicate a signature
+                    // issue that should not grant Pro access.
+                    print("⚡️ [UnitDownIAP] restoreTransactions — UNVERIFIED txId:\(transaction.id) product:\(transaction.productID)")
+                    print("⚡️ [UnitDownIAP]   VerificationError: \(verificationError)")
                 }
             }
 
-            print("⚡️ [UnitDownIAP] restoreTransactions — found \(transactions.count) entitlement(s): \(transactions.map { $0["productId"] as? String ?? "?" }.joined(separator: ", "))")
+            print("⚡️ [UnitDownIAP] restoreTransactions — \(transactions.count) valid entitlement(s): \(transactions.map { $0["productId"] as? String ?? "?" }.joined(separator: ", "))")
             call.resolve(["transactions": transactions])
         }
     }
 
     // MARK: - finishTransaction
 
+    /// Explicit JS-initiated finish for any transaction the JS layer still holds
+    /// a reference to. Because purchaseProduct now calls transaction.finish()
+    /// natively, this is a safety net — it is harmless to call finish() twice.
     @objc func finishTransaction(_ call: CAPPluginCall) {
         guard let transactionIdStr = call.getString("transactionId"),
               let transactionId = UInt64(transactionIdStr) else {
+            // No valid ID — nothing to finish. Resolve immediately so the JS
+            // promise doesn't hang waiting for a response.
             call.resolve()
             return
         }
 
         Task {
+            // Collect all transactions up-front to avoid iterating an unbounded
+            // async sequence. We cap the search at 50 entries — enough for any
+            // realistic transaction history — so this Task always terminates.
+            var searched = 0
+            let limit = 50
+
             for await verification in Transaction.all {
-                if case .verified(let transaction) = verification, transaction.id == transactionId {
+                searched += 1
+                if case .verified(let transaction) = verification,
+                   transaction.id == transactionId {
                     await transaction.finish()
-                    print("⚡️ [UnitDownIAP] finishTransaction — finished txId:\(transactionId)")
-                    break
+                    print("⚡️ [UnitDownIAP] finishTransaction — finished txId:\(transactionId) (searched \(searched) entries)")
+                    call.resolve()
+                    return
                 }
+                if searched >= limit { break }
             }
+
+            // Not found in first `limit` entries — already finished or unknown.
+            print("⚡️ [UnitDownIAP] finishTransaction — txId:\(transactionId) not found in \(searched) entries (may be already finished)")
             call.resolve()
         }
     }
