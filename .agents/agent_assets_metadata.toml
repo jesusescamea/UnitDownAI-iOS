@@ -1,5 +1,10 @@
 uploads = []
-generated = []
+
+[[generated]]
+id = "5mg_HAy-z6ZJI1RhLPMZu"
+uri = "file://attached_assets/unitdown-promo-artwork.png"
+type = "image"
+title = "UnitDown AI Pro promotional artwork"
 
 [[outputs]]
 id = "eeLA1KtjgPdBDxX9lGfZ6"
@@ -36,3 +41,15 @@ id = "YSRN1vEfrljw0nN__4JOB"
 uri = "file://UnitDownAI-iOS-Build41.zip"
 type = "unspecified"
 title = "UnitDownAI iOS — Build 41 (debug.xcconfig + SPM fixed)"
+
+[[outputs]]
+id = "U3m2fkk-1L2L_VG2LOry2"
+uri = "file://UnitDownAI-iOS-Build42.zip"
+type = "unspecified"
+title = "UnitDownAI iOS — Build 42 (IAP + Legal links + SPM fixed)"
+
+[[outputs]]
+id = "DIi4Ki4AWNUQsWCCxszWp"
+uri = "file://attached_assets/unitdown-promo-artwork.png"
+type = "image"
+title = "UnitDown AI Pro — Promotional Artwork (IAP promo image, 1024×1024)"

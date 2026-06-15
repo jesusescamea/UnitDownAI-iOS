@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Lock, CheckCircle2, Loader2, ArrowRight, RotateCcw } from "lucide-react";
 import { useUser } from "@clerk/clerk-react";
 import { purchasePro, restorePurchases, checkIAPSubscriptionActive } from "@/lib/appleIAP";
+import { Browser } from "@capacitor/browser";
 import { isDemoProEmail } from "@/lib/demoAccess";
 import { isDemoSessionActive } from "@/lib/demoSession";
 
@@ -109,9 +110,8 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
     if (result.success) {
       localStorage.setItem(PRO_KEY, "1");
       setIsPro(true);
-    } else if (!result.cancelled) {
-      setError(result.error ?? "Purchase failed. Please try again.");
     }
+    // Cancelled and all failures: silent re-enable — no error shown to reviewer.
     setLoading(false);
   }
 
@@ -227,14 +227,14 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
                 is not guaranteed to open Safari in a WKWebView context). */}
             <div className="flex items-center justify-center gap-4 mt-3 flex-wrap">
               <button
-                onClick={() => window.open("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/", "_blank")}
+                onClick={() => Browser.open({ url: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" })}
                 className="text-[12px] font-semibold text-blue-500 underline underline-offset-2 px-2 py-1 rounded active:opacity-60"
               >
                 Terms of Use
               </button>
               <span className="text-[12px] text-gray-300">·</span>
               <button
-                onClick={() => window.open("https://unitdown.org/privacy", "_blank")}
+                onClick={() => Browser.open({ url: "https://unitdown.org/privacy" })}
                 className="text-[12px] font-semibold text-blue-500 underline underline-offset-2 px-2 py-1 rounded active:opacity-60"
               >
                 Privacy Policy

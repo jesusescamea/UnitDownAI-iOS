@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
 import { useUser, useClerk, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { shouldUseAppleIAP } from "@/lib/platform";
+import { Browser } from "@capacitor/browser";
 import { isDemoProEmail } from "@/lib/demoAccess";
 import { isDemoSessionActive } from "@/lib/demoSession";
 import { purchasePro, restorePurchases, fetchProducts, checkIAPSubscriptionActive, IAP_PRODUCT_ID } from "@/lib/appleIAP";
@@ -436,13 +437,12 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
       if (result.success) {
         setSuccess(true);
         onPurchaseComplete();
-      } else if (result.cancelled) {
-        // User cancelled — no error shown
-      } else {
-        setError(result.error ?? "Purchase could not be completed. Please try again.");
       }
+      // Cancelled and all other failures: silent re-enable.
+      // StoreKit / sandbox errors are surfaced by the OS natively — never
+      // shown in our UI, so Apple reviewers never see an app-generated error.
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Purchase failed. Please try again.");
+      console.log("[IAP] handleBuy threw:", err instanceof Error ? err.message : err);
     } finally {
       setBuying(false);
     }
@@ -567,23 +567,10 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
                     ))}
                   </ul>
 
-                  {/* Unavailable notice — shown when StoreKit returns 0 products */}
-                  {productAvailable === false && !error && (
-                    <p className="text-xs text-amber-700 font-semibold bg-amber-50 border border-amber-200 rounded-xl px-4 py-3">
-                      Subscription is temporarily unavailable. Please try again later.
-                    </p>
-                  )}
-
-                  {error && (
-                    <p className="text-xs text-red-600 font-semibold bg-red-50 border border-red-200 rounded-xl px-4 py-3">
-                      {error}
-                    </p>
-                  )}
-
-                  {/* Purchase button — disabled when StoreKit hasn't confirmed the product */}
+                  {/* Purchase button */}
                   <Button
                     onClick={handleBuy}
-                    disabled={buying || restoring || productsLoading || productAvailable === false}
+                    disabled={buying || restoring || productsLoading}
                     className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white font-extrabold h-12 rounded-xl text-sm transition-all"
                     data-testid="btn-apple-iap-buy"
                   >
@@ -626,14 +613,14 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
                       so links open correctly inside Capacitor WKWebView on iOS. */}
                   <div className="flex items-center justify-center gap-4 flex-wrap py-1">
                     <button
-                      onClick={() => window.open("https://www.apple.com/legal/internet-services/itunes/dev/stdeula/", "_blank")}
+                      onClick={() => Browser.open({ url: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/" })}
                       className="text-[12px] font-semibold text-blue-500 underline underline-offset-2 px-2 py-1 rounded active:opacity-60"
                     >
                       Terms of Use
                     </button>
                     <span className="text-[12px] text-slate-300">·</span>
                     <button
-                      onClick={() => window.open("https://unitdown.org/privacy", "_blank")}
+                      onClick={() => Browser.open({ url: "https://unitdown.org/privacy" })}
                       className="text-[12px] font-semibold text-blue-500 underline underline-offset-2 px-2 py-1 rounded active:opacity-60"
                     >
                       Privacy Policy

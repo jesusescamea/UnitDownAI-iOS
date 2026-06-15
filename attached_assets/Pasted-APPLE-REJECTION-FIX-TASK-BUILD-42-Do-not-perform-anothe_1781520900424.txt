@@ -1,0 +1,176 @@
+APPLE REJECTION FIX TASK — BUILD 42
+
+Do not perform another audit.
+
+Fix every issue Apple cited and produce a new App Store submission build that has been tested against Apple's review conditions.
+
+Apple Review Environment
+
+- iPhone 17 Pro Max
+- iPad Air 11-inch (M3)
+- iOS 26.4.2
+- iPadOS 26.5
+- Version reviewed: 1.0.1 (41)
+
+=========================================
+ISSUE #1 — IAP STILL FAILING
+Guideline 2.1(b)
+
+Apple still sees an error when pressing Subscribe.
+
+This is now the highest priority issue.
+
+Tasks:
+
+1. Trace the complete purchase flow from:
+   
+   - Paywall UI
+   - appleIAP.ts
+   - UnitDownIAPPlugin.swift
+   - StoreKit
+   - purchaseProduct()
+   - fetchProducts()
+
+2. Identify every code path that can show:
+   
+   - Product not found
+   - Subscription unavailable
+   - Timeout
+   - Fetch failed
+   - Purchase unavailable
+   - Any generic error message
+
+3. Determine exactly what Apple would experience when:
+   
+   - StoreKit returns zero products
+   - Product fetch is slow
+   - StoreKit is unavailable
+   - Sandbox account is not logged in
+   - Subscription metadata has not propagated yet
+
+4. Verify:
+   Product ID must be:
+   com.unitdown.subscription.monthly
+
+5. Verify:
+   
+   - App Store Connect subscription exists
+   - StoreKit file contains same ID
+   - Native plugin requests same ID
+   - JS requests same ID
+
+6. Test on:
+   
+   - Simulator
+   - Physical device logic
+   - StoreKit configuration
+   - Production build
+
+7. Produce evidence showing:
+   
+   - Product loads successfully
+   - Purchase sheet appears
+   - No timeout occurs
+   - No user-facing error appears
+
+8. If StoreKit fails:
+   
+   - App must fail gracefully
+   - User must not see a rejection-worthy error message
+   - Provide fallback UX
+
+9. Search entire codebase for hardcoded timeouts.
+
+Apple specifically reported:
+"error message still appeared when we tried to purchase"
+
+Find the exact message Apple likely saw.
+
+=========================================
+ISSUE #2 — SUBSCRIPTION METADATA
+Guideline 3.1.2(c)
+
+Apple now says ONLY metadata is missing.
+
+Tasks:
+
+Verify App Store metadata contains:
+
+A. Privacy Policy URL
+
+B. Terms of Use (EULA)
+
+Confirm:
+
+- Privacy Policy field populated
+- App Description contains EULA URL OR
+- Custom EULA configured in App Store Connect
+
+Provide exact URLs.
+
+Generate exact App Store Connect text that should be pasted into:
+
+- Description
+- Review Notes
+- EULA field (if custom)
+
+Do not assume.
+
+Verify against Apple's subscription requirements.
+
+=========================================
+ISSUE #3 — PROMOTIONAL IMAGE
+Guideline 2.3.2
+
+Apple says:
+
+Promotional image = app icon
+
+This is not allowed.
+
+Tasks:
+
+Inspect:
+
+- Subscription promotional artwork
+- Promoted IAP artwork
+- Win-back offer artwork
+
+Find where App Store Connect is likely using the icon.
+
+Design replacement concept:
+
+Requirements:
+
+- Must be different from app icon
+- Must clearly represent UnitDown AI Pro
+- Must show premium HVAC diagnostics
+- Must be App Store compliant
+
+Generate:
+
+- Recommended dimensions
+- Text overlay
+- Layout
+- Colors
+- Graphic elements
+
+Create image-generation prompt for replacement artwork.
+
+=========================================
+FINAL DELIVERABLE
+
+Return:
+
+1. Root cause of Apple's IAP failure.
+2. Exact files requiring modification.
+3. Exact code changes required.
+4. Verification screenshots required.
+5. App Store Connect metadata checklist.
+6. Promotional image replacement plan.
+7. Whether a new build is required.
+8. Confidence level that Build 42 will pass review.
+
+Do not stop at identifying issues.
+
+Implement fixes, rebuild, run cap sync, bump build number, generate Build 42 package, and provide proof that all three Apple rejection categories have been addressed.
