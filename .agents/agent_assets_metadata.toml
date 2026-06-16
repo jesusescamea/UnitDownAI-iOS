@@ -59,3 +59,9 @@ id = "yOgtiVNXzoGnrcK61JRoU"
 uri = "file://UnitDownAI-iOS-Build43.zip"
 type = "unspecified"
 title = "UnitDownAI iOS — Build 43 (final, all checks green)"
+
+[[outputs]]
+id = "5LhBDPxqilK3a-o5Bosi2"
+uri = "file://UnitDownAI-iOS-Build44.zip"
+type = "unspecified"
+title = "UnitDownAI iOS — Build 44 (all checks green)"
