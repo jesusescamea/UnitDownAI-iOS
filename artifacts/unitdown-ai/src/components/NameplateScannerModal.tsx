@@ -482,6 +482,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
   const [showHint,       setShowHint]       = useState(false);
   const [cameraError,    setCameraError]    = useState<string | null>(null);
   const [containerSize,  setContainerSize]  = useState({ w: 0, h: 0 });
+  const [isLandscape,    setIsLandscape]    = useState(() => typeof window !== "undefined" && window.innerWidth > window.innerHeight);
 
   const setPhase = useCallback((p: Phase) => {
     phaseRef.current = p;
@@ -500,6 +501,19 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
     const ro = new ResizeObserver(sync);
     ro.observe(el);
     return () => ro.disconnect();
+  }, []);
+
+  // Track orientation so we can switch between bottom-bar (portrait) and
+  // right-sidebar (landscape) button layouts without relying on CSS media queries,
+  // which don't fire fast enough during device rotation inside a fixed overlay.
+  useEffect(() => {
+    const update = () => setIsLandscape(window.innerWidth > window.innerHeight);
+    window.addEventListener("resize", update);
+    window.addEventListener("orientationchange", update);
+    return () => {
+      window.removeEventListener("resize", update);
+      window.removeEventListener("orientationchange", update);
+    };
   }, []);
 
   // Guide frame — adapts to container orientation:
@@ -781,7 +795,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
   const ringOffset = RING_CIRCUMF * (1 - stableProgress / 100);
 
   return (
-    <div className="fixed inset-0 z-[200] bg-black flex flex-col" style={{ touchAction: "none" }}>
+    <div className={`fixed inset-0 z-[200] bg-black flex ${isLandscape ? "flex-row" : "flex-col"}`} style={{ touchAction: "none" }}>
 
       {/* ── Camera viewport ────────────────────────────────────────────────── */}
       <div ref={containerRef} className="relative flex-1 overflow-hidden">
@@ -946,38 +960,38 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
         </button>
       </div>
 
-      {/* ── Bottom bar ───────────────────────────────────────────────────────── */}
-      <div className="flex-shrink-0" style={{ background: "#000" }}>
+      {/* ── Controls: portrait → bottom bar  |  landscape → right sidebar ─────── */}
+      {isLandscape ? (
 
-        {/* Scan-status row */}
-        {isScanning && !cameraError && (
-          <div className="flex items-center justify-between px-5 pt-3 pb-1">
-            <div className="flex items-center gap-2">
-              {isStable ? (
-                <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
-              ) : (
-                <div className="w-2 h-2 rounded-full border-2 border-white/30 animate-pulse flex-shrink-0" />
-              )}
-              <span className="text-white/60 text-xs">
-                {isStable
-                  ? `Plate found — holding steady… ${stableProgress}%`
-                  : "Scanning for data plate…"}
-              </span>
+        /* ── Landscape: narrow right sidebar, buttons stacked vertically ──────── *
+         * Frees the full screen height for the camera viewport so the guide box   *
+         * has room to breathe instead of being squished by a bottom bar.          */
+        <div
+          className="flex-shrink-0 flex flex-col items-stretch"
+          style={{ background: "#000", width: 86, padding: "10px 6px 20px" }}
+        >
+          {/* Compact pulse dot — replaces the text scan-status row */}
+          {isScanning && !cameraError && (
+            <div className="flex justify-center py-2">
+              {isStable
+                ? <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse" />
+                : <div className="w-2 h-2 rounded-full border-2 border-white/30 animate-pulse" />}
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Always-visible manual controls (except while capturing) */}
-        {!isCapturing && (
-          <div className="px-4 pt-2 pb-6">
-            <div className="flex gap-2">
+          {/* Push buttons toward vertical centre */}
+          <div className="flex-1" />
+
+          {/* Vertical button stack */}
+          {!isCapturing && (
+            <div className="flex flex-col gap-2">
 
               {/* Take Photo */}
               <button
                 onClick={handleManualCapture}
                 disabled={isCapturing || !!cameraError}
                 className={[
-                  "flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl",
+                  "flex flex-col items-center justify-center gap-1 py-3 rounded-2xl w-full",
                   "text-xs font-semibold transition-colors disabled:opacity-40",
                   isManual && !cameraError
                     ? "bg-blue-600 hover:bg-blue-700 text-white"
@@ -985,33 +999,105 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
                 ].join(" ")}
               >
                 <Camera className="w-4 h-4" />
-                Take Photo
+                <span className="text-[10px] leading-tight text-center">Take Photo</span>
               </button>
 
-              {/* Upload Image */}
+              {/* Upload */}
               <button
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isCapturing}
-                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-semibold bg-white/10 hover:bg-white/[0.18] text-white/75 transition-colors disabled:opacity-40"
+                className="flex flex-col items-center justify-center gap-1 py-3 rounded-2xl w-full text-[10px] font-semibold bg-white/10 hover:bg-white/[0.18] text-white/75 transition-colors disabled:opacity-40"
               >
                 <Upload className="w-4 h-4" />
-                Upload
+                <span className="leading-tight text-center">Upload</span>
               </button>
 
               {/* Enter Manually */}
               <button
                 onClick={onClose}
                 disabled={isCapturing}
-                className="flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-semibold bg-white/10 hover:bg-white/[0.18] text-white/75 transition-colors disabled:opacity-40"
+                className="flex flex-col items-center justify-center gap-1 py-3 rounded-2xl w-full text-[10px] font-semibold bg-white/10 hover:bg-white/[0.18] text-white/75 transition-colors disabled:opacity-40"
               >
                 <Pencil className="w-4 h-4" />
-                Enter Manually
+                <span className="leading-tight text-center">Manual</span>
               </button>
 
             </div>
-          </div>
-        )}
-      </div>
+          )}
+
+          <div className="flex-1" />
+        </div>
+
+      ) : (
+
+        /* ── Portrait: bottom bar — layout unchanged from before ─────────────── */
+        <div className="flex-shrink-0" style={{ background: "#000" }}>
+
+          {/* Scan-status row */}
+          {isScanning && !cameraError && (
+            <div className="flex items-center justify-between px-5 pt-3 pb-1">
+              <div className="flex items-center gap-2">
+                {isStable ? (
+                  <div className="w-2 h-2 rounded-full bg-blue-400 animate-pulse flex-shrink-0" />
+                ) : (
+                  <div className="w-2 h-2 rounded-full border-2 border-white/30 animate-pulse flex-shrink-0" />
+                )}
+                <span className="text-white/60 text-xs">
+                  {isStable
+                    ? `Plate found — holding steady… ${stableProgress}%`
+                    : "Scanning for data plate…"}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Always-visible manual controls (except while capturing) */}
+          {!isCapturing && (
+            <div className="px-4 pt-2 pb-6">
+              <div className="flex gap-2">
+
+                {/* Take Photo */}
+                <button
+                  onClick={handleManualCapture}
+                  disabled={isCapturing || !!cameraError}
+                  className={[
+                    "flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl",
+                    "text-xs font-semibold transition-colors disabled:opacity-40",
+                    isManual && !cameraError
+                      ? "bg-blue-600 hover:bg-blue-700 text-white"
+                      : "bg-white/10 hover:bg-white/[0.18] text-white/75",
+                  ].join(" ")}
+                >
+                  <Camera className="w-4 h-4" />
+                  Take Photo
+                </button>
+
+                {/* Upload Image */}
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isCapturing}
+                  className="flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-semibold bg-white/10 hover:bg-white/[0.18] text-white/75 transition-colors disabled:opacity-40"
+                >
+                  <Upload className="w-4 h-4" />
+                  Upload
+                </button>
+
+                {/* Enter Manually */}
+                <button
+                  onClick={onClose}
+                  disabled={isCapturing}
+                  className="flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-semibold bg-white/10 hover:bg-white/[0.18] text-white/75 transition-colors disabled:opacity-40"
+                >
+                  <Pencil className="w-4 h-4" />
+                  Enter Manually
+                </button>
+
+              </div>
+            </div>
+          )}
+        </div>
+
+      )}
 
       {/* Hidden file input */}
       <input
