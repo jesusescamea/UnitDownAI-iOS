@@ -3,6 +3,7 @@ import { ClerkProvider } from "@clerk/clerk-react";
 import App from "./App";
 import "./index.css";
 import { installIOSPaymentGuard } from "./lib/iosPaymentGuard";
+import { isNative } from "./lib/platform";
 
 // Install the iOS payment guard BEFORE React renders so that no Stripe or
 // external billing URL can slip through — regardless of how navigation is
@@ -16,41 +17,57 @@ if (!PUBLISHABLE_KEY) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
 }
 
-// In production, route all Clerk Frontend API calls through the server-side
-// proxy at /api/__clerk so auth works on custom domains (unitdown.org,
-// *.replit.app) without requiring DNS CNAME configuration.
-// In development, leave proxyUrl undefined — the Clerk SDK calls its API
-// directly, which is fine for dev-key / localhost flows.
-const proxyUrl = import.meta.env.PROD
-  ? `${window.location.origin}/api/__clerk`
-  : undefined;
-
-// Always redirect back to the exact origin the user logged in from.
-// Using an explicit absolute URL (not "/") prevents Clerk from resolving
-// the redirect against its own registered home URL (shared-gateway.replit.com)
-// or the stale unit-down-ai-new.replit.app URL in Clerk's instance config.
+// The canonical production web origin.  Used as the Clerk proxy base and for
+// post-auth redirects when we are running inside the Capacitor native shell.
 //
-// IMPORTANT: Clerk's production instance display_config contains stale URLs
-// (accounts.unitdown.org, unit-down-ai-new.replit.app) left over from an
-// earlier custom-domain configuration attempt. These ClerkProvider props
-// override every one of those at the SDK level so the app never navigates
-// to a non-existent domain.
-const origin = window.location.origin;
+// App Store Connect Bundle ID: co.median.ios.abmwydj
+// This matches capacitor.config.ts appId and PRODUCT_BUNDLE_IDENTIFIER in
+// App.xcodeproj/project.pbxproj (both Debug and Release configurations).
+// Info.plist inherits via $(PRODUCT_BUNDLE_IDENTIFIER) — no separate edit needed.
+const PRODUCTION_ORIGIN = "https://unitdown.org";
+
+// Resolve the effective origin for all Clerk URLs:
+//
+//   • Capacitor iOS native  → window.location.origin == "https://localhost"
+//                             (Capacitor's local WKWebView bridge). That URL
+//                             has no /api/__clerk proxy and is not registered in
+//                             Clerk's allowed-redirect list.  Always use the
+//                             real production domain instead.
+//
+//   • Web production        → use window.location.origin as-is
+//                             (unitdown.org, *.replit.app, etc.)
+//
+//   • Web development       → use window.location.origin as-is
+//                             (localhost:XXXX)
+const effectiveOrigin = isNative() ? PRODUCTION_ORIGIN : window.location.origin;
+
+// Route all Clerk Frontend API calls through the server-side proxy at
+// /api/__clerk so auth works on custom domains without DNS CNAME setup.
+//
+// Skip the proxy in local web development (PROD=false AND not native).
+const proxyUrl =
+  isNative() || import.meta.env.PROD
+    ? `${effectiveOrigin}/api/__clerk`
+    : undefined;
 
 createRoot(document.getElementById("root")!).render(
   <ClerkProvider
     publishableKey={PUBLISHABLE_KEY}
     proxyUrl={proxyUrl}
-    // ── Sign-in / sign-up paths live inside the app, never on accounts.unitdown.org ──
+    // ── Sign-in / sign-up paths live inside the app ──────────────────────────
     signInUrl="/login"
     signUpUrl="/signup"
-    // ── Post-auth redirects: always return to this origin ────────────────────
-    signInFallbackRedirectUrl={origin}
-    signUpFallbackRedirectUrl={origin}
-    afterSignInUrl={origin}
-    afterSignUpUrl={origin}
-    // ── Post sign-out: return to this origin, not accounts.unitdown.org ──────
-    afterSignOutUrl={origin}
+    // ── Post-auth redirects: always return to the effective origin ───────────
+    // In native Capacitor this is the production domain; on web it is the
+    // current window origin.  Using an explicit absolute URL prevents Clerk
+    // from resolving the redirect against its own registered home URL
+    // (shared-gateway.replit.com) or any stale URL in Clerk's instance config.
+    signInFallbackRedirectUrl={effectiveOrigin}
+    signUpFallbackRedirectUrl={effectiveOrigin}
+    afterSignInUrl={effectiveOrigin}
+    afterSignUpUrl={effectiveOrigin}
+    // ── Post sign-out: return to effective origin ────────────────────────────
+    afterSignOutUrl={effectiveOrigin}
   >
     <App />
   </ClerkProvider>
