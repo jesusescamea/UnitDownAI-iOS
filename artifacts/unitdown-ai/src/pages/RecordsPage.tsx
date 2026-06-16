@@ -186,12 +186,32 @@ export default function RecordsPage() {
     if (isLoggedIn) { loadUnits(); loadLogs(); }
   }, [isLoggedIn, loadUnits, loadLogs]);
 
-  const filteredUnits = units.filter((u) => {
-    if (!q) return true;
-    const lower = q.toLowerCase();
-    return [u.nickname, u.siteCustomerName, u.location, u.manufacturer, u.modelNumber, u.serialNumber]
-      .some((f) => f?.toLowerCase().includes(lower));
-  });
+  const filteredUnits = units
+    .filter((u) => {
+      if (!q) return true;
+      const lower = q.toLowerCase();
+      return [u.nickname, u.siteCustomerName, u.location, u.manufacturer, u.modelNumber, u.serialNumber]
+        .some((f) => f?.toLowerCase().includes(lower));
+    })
+    .sort((a, b) => {
+      // Primary: siteCustomerName A→Z; units with no name sink to the bottom
+      const aName = a.siteCustomerName?.trim() ?? "";
+      const bName = b.siteCustomerName?.trim() ?? "";
+      const aEmpty = aName === "";
+      const bEmpty = bName === "";
+      if (aEmpty !== bEmpty) return aEmpty ? 1 : -1;
+      const nameCmp = aName.localeCompare(bName, undefined, { sensitivity: "base" });
+      if (nameCmp !== 0) return nameCmp;
+      // Secondary: location A→Z
+      const aLoc = a.location?.trim() ?? "";
+      const bLoc = b.location?.trim() ?? "";
+      const locCmp = aLoc.localeCompare(bLoc, undefined, { sensitivity: "base" });
+      if (locCmp !== 0) return locCmp;
+      // Tertiary: nickname A→Z
+      const aNick = a.nickname?.trim() ?? "";
+      const bNick = b.nickname?.trim() ?? "";
+      return aNick.localeCompare(bNick, undefined, { sensitivity: "base" });
+    });
 
   const filteredLogs = logs.filter((l) => {
     const matchQ = !q || [l.symptoms, l.diagnosisTitle, l.technicianNotes].some((f) => f?.toLowerCase().includes(q.toLowerCase()));
