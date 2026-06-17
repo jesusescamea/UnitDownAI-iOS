@@ -64,7 +64,7 @@ title = "UnitDownAI iOS — Build 43 (final, all checks green)"
 id = "5LhBDPxqilK3a-o5Bosi2"
 uri = "file://UnitDownAI-iOS-Build44.zip"
 type = "unspecified"
-title = "UnitDownAI iOS — Build 44 (Clerk key baked in)"
+title = "UnitDownAI iOS — Build 44 (product ID fixed, Clerk key baked in)"
 
 [[outputs]]
 id = "UrDqv7FW3rez4XM-NFP8V"
