@@ -5,7 +5,7 @@
  * through to native Swift code in the iOS app target.
  *
  * Product setup required in App Store Connect:
- *   Product ID: com.unitdown.subscription.monthly
+ *   Product ID: com.unitdown.subscribtion.monthly
  *   Type: Auto-renewing subscription
  *   Price: $7.99/month
  *
@@ -15,7 +15,7 @@
  *   3. Copy artifacts/unitdown-ai/ios-plugins/UnitDownIAPPlugin.swift AND
  *      UnitDownIAPPlugin.m into ios/App/App/ in Xcode.
  *   4. The .m file registers the plugin methods with the Capacitor bridge.
- *   5. IAP product com.unitdown.subscription.monthly must exist in App Store
+ *   5. IAP product com.unitdown.subscribtion.monthly must exist in App Store
  *      Connect and be attached to the app version under "In-App Purchases and
  *      Subscriptions".
  *
@@ -26,7 +26,7 @@
 import { registerPlugin } from "@capacitor/core";
 import { getPlatform, isNative } from "./platform";
 
-export const IAP_PRODUCT_ID = "com.unitdown.subscription.monthly";
+export const IAP_PRODUCT_ID = "com.unitdown.subscribtion.monthly";
 
 // ── Plugin interface ──────────────────────────────────────────────────────────
 
