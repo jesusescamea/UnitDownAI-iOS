@@ -65,3 +65,9 @@ id = "5LhBDPxqilK3a-o5Bosi2"
 uri = "file://UnitDownAI-iOS-Build44.zip"
 type = "unspecified"
 title = "UnitDownAI iOS — Build 44 (Clerk key baked in)"
+
+[[outputs]]
+id = "UrDqv7FW3rez4XM-NFP8V"
+uri = "file://UnitDownAI-FullProject.zip"
+type = "unspecified"
+title = "UnitDownAI — Full Project Source (Build 44, compiled iOS assets included)"
