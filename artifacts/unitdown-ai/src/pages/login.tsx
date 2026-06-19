@@ -5,11 +5,11 @@ import { ThermometerSnowflake, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { shouldShowAppleSignIn } from "@/lib/platform";
+import { shouldShowAppleSignIn, isMedian } from "@/lib/platform";
 import { isDemoProEmail } from "@/lib/demoAccess";
 import { activateDemoSession } from "@/lib/demoSession";
 
-type Step = "email" | "password" | "forgot" | "reset-code" | "reset-password" | "demo-account";
+type Step = "email" | "password" | "forgot" | "reset-code" | "reset-password" | "demo-account" | "otp";
 
 const AUTH_TIMEOUT_MS = 15_000;
 
@@ -57,6 +57,9 @@ export default function LoginPage() {
   const { signIn, setActive, isLoaded } = useSignIn();
   const [, navigate] = useLocation();
 
+  // Evaluated once on mount — stable for the lifetime of this page render.
+  const isMedianWebView = isMedian();
+
   const [step, setStep] = useState<Step>("email");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -64,6 +67,7 @@ export default function LoginPage() {
   const [resetCode, setResetCode] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [showNewPassword, setShowNewPassword] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSendCode, setShowSendCode] = useState(false);
@@ -143,7 +147,74 @@ export default function LoginPage() {
     }
   }, [signIn, isLoaded]);
 
-  // ── Email → password (or demo bypass) step ───────────────────────────────────
+  // ── Email OTP — Median WebView path ──────────────────────────────────────────
+  //
+  // Median's free-tier WebView blocks all external-domain navigation, which
+  // kills Google and Apple OAuth (both require a redirect to an external IdP).
+  // The email_code strategy keeps every network call inside unitdown.org via the
+  // /api/__clerk proxy, so it works regardless of Median navigation policies.
+  //
+  // This handler is only invoked when isMedian() is true and the user is NOT a
+  // demo account email. It replaces the "go to password step" branch with a
+  // "send OTP and go to otp step" branch.
+  const handleSendOtp = useCallback(async () => {
+    if (!signIn || !isLoaded) return;
+    setError(null);
+    setLoading(true);
+    try {
+      await withTimeout(
+        signIn.create({ strategy: "email_code", identifier: email.trim() }),
+        AUTH_TIMEOUT_MS
+      );
+      setOtpCode("");
+      setStep("otp");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      if (msg.toLowerCase().includes("timeout")) {
+        setError(msg);
+      } else {
+        const code = (err as { errors?: Array<{ code?: string }> })?.errors?.[0]?.code ?? "";
+        if (code === "form_identifier_not_found") {
+          setError("No account found for that email address. Please check and try again.");
+        } else {
+          setError("We couldn't send a code right now. Please check your connection and try again.");
+        }
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [signIn, isLoaded, email]);
+
+  // ── Verify the OTP code (Median path) ────────────────────────────────────────
+  const handleVerifyOtp = useCallback(async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!signIn || !isLoaded) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const result = await withTimeout(
+        signIn.attemptFirstFactor({ strategy: "email_code", code: otpCode.trim() })
+      );
+      if (result.status === "complete") {
+        await setActive({ session: result.createdSessionId });
+        navigate("/");
+      } else {
+        setError("Sign-in could not be completed. Please request a new code and try again.");
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "";
+      setError(
+        msg.toLowerCase().includes("timeout")
+          ? msg
+          : (err as { errors?: Array<{ message?: string }> })?.errors?.[0]?.message ||
+            "Invalid or expired code. Please check and try again."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [signIn, setActive, isLoaded, otpCode, navigate]);
+
+  // ── Email → password (or demo bypass, or OTP for Median) step ────────────────
   //
   // APPLE REVIEW DEMO ACCOUNT BYPASS
   // When unitdownsupport@gmail.com (or any DEMO_PRO_EMAILS entry) is entered:
@@ -193,9 +264,19 @@ export default function LoginPage() {
       return;
     }
 
-    // Normal users → password step
+    // Median WebView: OAuth is blocked by the free-tier navigation policy.
+    // Use the email_code (OTP) strategy instead of advancing to the password
+    // step. This works for all account types — password, Google, or Apple —
+    // because Clerk looks up the account by email and sends the code regardless
+    // of how the account was originally created.
+    if (isMedianWebView) {
+      await handleSendOtp();
+      return;
+    }
+
+    // Normal users on web / Capacitor → password step
     setStep("password");
-  }, [email, signIn, isLoaded, setActive, navigate]);
+  }, [email, signIn, isLoaded, setActive, navigate, isMedianWebView, handleSendOtp]);
 
   // ── Sign in with password ─────────────────────────────────────────────────────
   const handleSignIn = useCallback(async (e: React.FormEvent) => {
@@ -330,8 +411,14 @@ export default function LoginPage() {
   const goBack = () => {
     setError(null);
     setShowSendCode(false);
-    if (step === "password" || step === "forgot" || step === "demo-account") setStep("email");
-    else if (step === "reset-code") setStep("forgot");
+    if (
+      step === "password" ||
+      step === "forgot" ||
+      step === "demo-account" ||
+      step === "otp"
+    ) {
+      setStep("email");
+    } else if (step === "reset-code") setStep("forgot");
     else if (step === "reset-password") setStep("reset-code");
     else navigate("/");
   };
@@ -343,6 +430,7 @@ export default function LoginPage() {
     "reset-code": "Check your email",
     "reset-password": "Set a new password",
     "demo-account": "Sign in to continue",
+    otp: "Check your email",
   };
 
   const stepSubtitle: Record<Step, string> = {
@@ -352,6 +440,7 @@ export default function LoginPage() {
     "reset-code": `If an account exists for ${email || "that address"}, a verification code or reset link has been sent.`,
     "reset-password": "Create a new secure password for your account.",
     "demo-account": email,
+    otp: `We sent a 6-digit code to ${email || "your email address"}.`,
   };
 
   return (
@@ -390,37 +479,45 @@ export default function LoginPage() {
           {step === "email" && (
             <div className="space-y-3">
 
-              {/* Sign in with Apple — always shown (Apple guideline 4.8:
-                  must appear wherever any third-party social login exists) */}
-              {showApple && (
-                <button
-                  onClick={handleApple}
-                  disabled={!isLoaded || loading}
-                  className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-900 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm transition-colors disabled:opacity-50"
-                  data-testid="btn-apple"
-                  aria-label="Sign in with Apple"
-                >
-                  <AppleIcon />
-                  Sign in with Apple
-                </button>
+              {/* OAuth buttons — hidden in Median WebView because the free-tier
+                  navigation policy blocks all external-domain redirects. Users
+                  on Median sign in via email OTP (code path below). */}
+              {!isMedianWebView && (
+                <>
+                  {/* Sign in with Apple — always shown on non-Median platforms
+                      (Apple guideline 4.8: must appear wherever any third-party
+                      social login exists) */}
+                  {showApple && (
+                    <button
+                      onClick={handleApple}
+                      disabled={!isLoaded || loading}
+                      className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-900 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm transition-colors disabled:opacity-50"
+                      data-testid="btn-apple"
+                      aria-label="Sign in with Apple"
+                    >
+                      <AppleIcon />
+                      Sign in with Apple
+                    </button>
+                  )}
+
+                  {/* Continue with Google */}
+                  <button
+                    onClick={handleGoogle}
+                    disabled={!isLoaded || loading}
+                    className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-semibold text-slate-700 text-sm transition-colors disabled:opacity-50"
+                    data-testid="btn-google"
+                  >
+                    <GoogleIcon />
+                    Continue with Google
+                  </button>
+
+                  <div className="flex items-center gap-3">
+                    <div className="flex-1 h-px bg-slate-200" />
+                    <span className="text-xs text-slate-400 font-medium">or</span>
+                    <div className="flex-1 h-px bg-slate-200" />
+                  </div>
+                </>
               )}
-
-              {/* Continue with Google — shown on all platforms */}
-              <button
-                onClick={handleGoogle}
-                disabled={!isLoaded || loading}
-                className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-semibold text-slate-700 text-sm transition-colors disabled:opacity-50"
-                data-testid="btn-google"
-              >
-                <GoogleIcon />
-                Continue with Google
-              </button>
-
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-slate-200" />
-                <span className="text-xs text-slate-400 font-medium">or</span>
-                <div className="flex-1 h-px bg-slate-200" />
-              </div>
 
               <form onSubmit={handleEmailContinue} className="space-y-4">
                 <div className="space-y-1.5">
@@ -442,11 +539,11 @@ export default function LoginPage() {
                 </div>
                 <Button
                   type="submit"
-                  disabled={!email.trim() || !isLoaded}
+                  disabled={!email.trim() || !isLoaded || loading}
                   className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
                   data-testid="btn-email-continue"
                 >
-                  Continue
+                  {loading ? "Sending code…" : "Continue"}
                 </Button>
               </form>
 
@@ -461,6 +558,50 @@ export default function LoginPage() {
                 </button>
               </p>
             </div>
+          )}
+
+          {/* ── STEP: otp (Median WebView only) ── */}
+          {step === "otp" && (
+            <form onSubmit={handleVerifyOtp} className="space-y-4">
+              <div className="space-y-1.5">
+                <Label htmlFor="otp-code" className="text-sm font-semibold text-slate-700">
+                  Verification code
+                </Label>
+                <Input
+                  id="otp-code"
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  autoFocus
+                  value={otpCode}
+                  onChange={(e) => setOtpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="6-digit code"
+                  className="h-11 rounded-xl border-slate-200 text-sm tracking-widest text-center focus-visible:ring-blue-500"
+                  required
+                  data-testid="input-otp"
+                />
+              </div>
+
+              <Button
+                type="submit"
+                disabled={otpCode.length !== 6 || loading}
+                className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
+                data-testid="btn-verify-otp"
+              >
+                {loading ? "Verifying…" : "Verify code"}
+              </Button>
+
+              <Button
+                type="button"
+                variant="outline"
+                onClick={handleSendOtp}
+                disabled={loading}
+                className="w-full h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold rounded-xl"
+                data-testid="btn-resend-otp"
+              >
+                {loading ? "Sending…" : "Resend code"}
+              </Button>
+            </form>
           )}
 
           {/* ── STEP: password ── */}
@@ -548,40 +689,25 @@ export default function LoginPage() {
                 onClick={handleGoogle}
                 disabled={!isLoaded || loading}
                 className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-semibold text-slate-700 text-sm transition-colors disabled:opacity-50"
-                data-testid="btn-google-demo"
               >
                 <GoogleIcon />
                 Continue with Google
               </button>
-
-              <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-slate-200" />
-                <span className="text-xs text-slate-400 font-medium">having trouble?</span>
-                <div className="flex-1 h-px bg-slate-200" />
-              </div>
-
-              <Button
-                type="button"
-                variant="outline"
-                onClick={sendCode}
-                disabled={!isLoaded || loading}
-                className="w-full h-11 border-slate-200 text-slate-700 hover:bg-slate-50 font-semibold rounded-xl"
-                data-testid="btn-send-code-demo"
-              >
-                {loading ? "Sending…" : "Send verification code instead"}
-              </Button>
             </div>
           )}
 
           {/* ── STEP: forgot ── */}
           {step === "forgot" && (
             <div className="space-y-4">
+              <p className="text-sm text-slate-600">
+                Enter your email address and we'll send you a code to reset your password.
+              </p>
               <div className="space-y-1.5">
-                <Label htmlFor="reset-email" className="text-sm font-semibold text-slate-700">
+                <Label htmlFor="forgot-email" className="text-sm font-semibold text-slate-700">
                   Email address
                 </Label>
                 <Input
-                  id="reset-email"
+                  id="forgot-email"
                   type="email"
                   autoComplete="email"
                   autoFocus
@@ -589,24 +715,18 @@ export default function LoginPage() {
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="you@example.com"
                   className="h-11 rounded-xl border-slate-200 text-sm focus-visible:ring-blue-500"
-                  data-testid="input-reset-email"
+                  required
+                  data-testid="input-forgot-email"
                 />
               </div>
               <Button
                 onClick={sendCode}
                 disabled={!email.trim() || loading}
                 className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
-                data-testid="btn-send-reset"
+                data-testid="btn-send-reset-code"
               >
-                {loading ? "Sending…" : "Send verification code"}
+                {loading ? "Sending…" : "Send reset code"}
               </Button>
-              <button
-                type="button"
-                onClick={() => { setError(null); setStep("password"); }}
-                className="w-full text-xs text-slate-500 hover:text-slate-700 font-semibold text-center py-1"
-              >
-                Back to sign in
-              </button>
             </div>
           )}
 
@@ -614,39 +734,31 @@ export default function LoginPage() {
           {step === "reset-code" && (
             <form onSubmit={handleVerifyCode} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="code" className="text-sm font-semibold text-slate-700">
+                <Label htmlFor="reset-code" className="text-sm font-semibold text-slate-700">
                   Verification code
                 </Label>
                 <Input
-                  id="code"
+                  id="reset-code"
                   type="text"
                   inputMode="numeric"
                   autoComplete="one-time-code"
                   autoFocus
                   value={resetCode}
-                  onChange={(e) => setResetCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onChange={(e) => setResetCode(e.target.value)}
                   placeholder="6-digit code"
-                  maxLength={6}
-                  className="h-11 rounded-xl border-slate-200 text-sm tracking-[0.3em] text-center font-mono focus-visible:ring-blue-500"
-                  data-testid="input-code"
+                  className="h-11 rounded-xl border-slate-200 text-sm focus-visible:ring-blue-500"
+                  required
+                  data-testid="input-reset-code"
                 />
               </div>
               <Button
                 type="submit"
-                disabled={resetCode.length < 6 || loading}
+                disabled={!resetCode.trim() || loading}
                 className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
                 data-testid="btn-verify-code"
               >
                 {loading ? "Verifying…" : "Verify code"}
               </Button>
-              <button
-                type="button"
-                onClick={sendCode}
-                disabled={loading}
-                className="w-full text-xs text-blue-600 hover:underline font-semibold text-center py-1"
-              >
-                Resend code
-              </button>
             </form>
           )}
 
@@ -665,9 +777,8 @@ export default function LoginPage() {
                     autoFocus
                     value={newPassword}
                     onChange={(e) => setNewPassword(e.target.value)}
-                    placeholder="At least 8 characters"
+                    placeholder="Create a new password"
                     className="h-11 rounded-xl border-slate-200 text-sm pr-10 focus-visible:ring-blue-500"
-                    minLength={8}
                     required
                     data-testid="input-new-password"
                   />
@@ -684,18 +795,15 @@ export default function LoginPage() {
               </div>
               <Button
                 type="submit"
-                disabled={newPassword.length < 8 || loading}
+                disabled={!newPassword || loading}
                 className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
                 data-testid="btn-set-password"
               >
-                {loading ? "Setting password…" : "Set password & sign in"}
+                {loading ? "Saving…" : "Set new password"}
               </Button>
             </form>
           )}
 
-          <p className="text-xs text-slate-400 text-center leading-relaxed">
-            Your account keeps your diagnostic history, subscription, and saved results secure across devices.
-          </p>
         </div>
       </main>
     </div>
