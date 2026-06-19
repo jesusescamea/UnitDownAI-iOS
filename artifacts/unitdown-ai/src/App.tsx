@@ -83,6 +83,7 @@ import {
   UserCircle,
   ThumbsUp,
   ThumbsDown,
+  Globe,
 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -2317,6 +2318,47 @@ function Home() {
                   </Button>
                 </div>
               </form>
+            </motion.div>
+
+            {/* Platform badges + cross-platform value prop */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.35 }}
+              className="flex flex-col items-center gap-3 pt-2"
+            >
+              <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+                {/* Web badge */}
+                <button
+                  type="button"
+                  onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                  className="flex items-center gap-2 h-[44px] px-5 bg-slate-900 text-white rounded-[10px] text-sm font-semibold hover:bg-slate-800 transition-colors"
+                  aria-label="Use UnitDown AI on the web"
+                >
+                  <Globe className="w-4 h-4" />
+                  Use on the Web
+                </button>
+                {/* App Store badge */}
+                <a
+                  href="https://apps.apple.com/app/id6767750626"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Download UnitDown AI on the App Store"
+                  className="hover:opacity-80 transition-opacity"
+                >
+                  <img
+                    src="/app-store-badge.svg"
+                    alt="Download on the App Store"
+                    className="h-[44px] w-auto"
+                  />
+                </a>
+              </div>
+              <p className="text-xs sm:text-sm text-slate-500 max-w-lg text-center leading-relaxed">
+                One account, total access. Subscribe once and get a rugged, fast native app on your phone
+                for when you're climbing roof ladders, plus full desktop access on the web when you're back
+                in the service truck writing up quotes.{" "}
+                <span className="font-semibold text-slate-600">Zero double-charging.</span>
+              </p>
             </motion.div>
 
             <motion.div
