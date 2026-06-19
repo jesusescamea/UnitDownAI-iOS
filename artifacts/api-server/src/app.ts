@@ -3,6 +3,7 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import pinoHttp from "pino-http";
 import router from "./routes";
+import { guideRouter, brandRouter } from "./routes/seo";
 import { logger } from "./lib/logger";
 import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
 
@@ -31,6 +32,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/api", router);
+app.use("/guides", guideRouter);
+app.use("/brand-guides", brandRouter);
 
 // Global JSON error handler — must have 4 parameters for Express to treat it as error middleware.
 // Catches any unhandled async throws from route handlers (Express 5 propagates them automatically)
