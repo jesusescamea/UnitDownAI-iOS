@@ -57,6 +57,64 @@ export default function BrandHub() {
     };
   }, []);
 
+  useEffect(() => {
+    const homeSchema = document.getElementById("home-jsonld") as HTMLScriptElement | null;
+    if (homeSchema) homeSchema.type = "application/json";
+
+    const id = "seo-jsonld";
+    let el = document.getElementById(id) as HTMLScriptElement | null;
+    if (!el) {
+      el = document.createElement("script");
+      el.id = id;
+      el.type = "application/ld+json";
+      document.head.appendChild(el);
+    }
+    el.textContent = JSON.stringify([
+      {
+        "@context": "https://schema.org",
+        "@type": "CollectionPage",
+        "@id": "https://unitdown.org/brand-guides",
+        name: "Brand-Specific HVAC Fault Guides",
+        description:
+          "Fault codes, lockout causes, reset procedures, and meter checks for specific commercial HVAC brands and models.",
+        url: "https://unitdown.org/brand-guides",
+        publisher: { "@type": "Organization", name: "UnitDown AI", url: "https://unitdown.org" },
+        hasPart: brandPages.map((p) => ({
+          "@type": "TechArticle",
+          headline: p.h1,
+          url: `https://unitdown.org/brand-guides/${p.slug}`,
+          description: p.metaDescription,
+          about: { "@type": "Brand", name: p.brand },
+        })),
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "ItemList",
+        name: "Brand-Specific HVAC Fault Guides",
+        url: "https://unitdown.org/brand-guides",
+        itemListElement: brandPages.map((p, i) => ({
+          "@type": "ListItem",
+          position: i + 1,
+          name: p.h1,
+          url: `https://unitdown.org/brand-guides/${p.slug}`,
+        })),
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "UnitDown AI", item: "https://unitdown.org/" },
+          { "@type": "ListItem", position: 2, name: "Guides", item: "https://unitdown.org/guides" },
+          { "@type": "ListItem", position: 3, name: "Brand Guides", item: "https://unitdown.org/brand-guides" },
+        ],
+      },
+    ]);
+    return () => {
+      el?.remove();
+      if (homeSchema) homeSchema.type = "application/ld+json";
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-white text-gray-900">
       <header className="border-b border-gray-100 bg-white sticky top-0 z-10">

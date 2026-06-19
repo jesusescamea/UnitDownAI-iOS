@@ -22,6 +22,9 @@ function useSeoMeta(title: string, description: string) {
 
 function useSeoJsonLd(title: string, description: string, slug: string) {
   useEffect(() => {
+    const homeSchema = document.getElementById("home-jsonld") as HTMLScriptElement | null;
+    if (homeSchema) homeSchema.type = "application/json";
+
     const id = "seo-jsonld";
     let el = document.getElementById(id) as HTMLScriptElement | null;
     if (!el) {
@@ -30,22 +33,36 @@ function useSeoJsonLd(title: string, description: string, slug: string) {
       el.type = "application/ld+json";
       document.head.appendChild(el);
     }
-    el.textContent = JSON.stringify({
-      "@context": "https://schema.org",
-      "@type": "TechArticle",
-      headline: title,
-      description,
-      url: `https://unitdown.org/guides/${slug}`,
-      author: { "@type": "Organization", name: "UnitDown AI", url: "https://unitdown.org" },
-      publisher: {
-        "@type": "Organization",
-        name: "UnitDown AI",
-        url: "https://unitdown.org",
-        logo: { "@type": "ImageObject", url: "https://unitdown.org/icon-192.png" },
+    el.textContent = JSON.stringify([
+      {
+        "@context": "https://schema.org",
+        "@type": "TechArticle",
+        headline: title,
+        description,
+        url: `https://unitdown.org/guides/${slug}`,
+        author: { "@type": "Organization", name: "UnitDown AI", url: "https://unitdown.org" },
+        publisher: {
+          "@type": "Organization",
+          name: "UnitDown AI",
+          url: "https://unitdown.org",
+          logo: { "@type": "ImageObject", url: "https://unitdown.org/icon-192.png" },
+        },
+        mainEntityOfPage: { "@type": "WebPage", "@id": `https://unitdown.org/guides/${slug}` },
       },
-      mainEntityOfPage: { "@type": "WebPage", "@id": `https://unitdown.org/guides/${slug}` },
-    });
-    return () => { el?.remove(); };
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "UnitDown AI", item: "https://unitdown.org/" },
+          { "@type": "ListItem", position: 2, name: "Troubleshooting Guides", item: "https://unitdown.org/guides" },
+          { "@type": "ListItem", position: 3, name: title, item: `https://unitdown.org/guides/${slug}` },
+        ],
+      },
+    ]);
+    return () => {
+      el?.remove();
+      if (homeSchema) homeSchema.type = "application/ld+json";
+    };
   }, [title, description, slug]);
 }
 
@@ -138,26 +155,26 @@ export default function SeoPage() {
           </div>
         </section>
 
+        <section className="mb-10">
+          <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+            <span className="w-1 h-6 bg-green-500 rounded-full inline-block" />
+            Fast Checks You Can Do Now
+          </h2>
+          <div className="space-y-3">
+            {page.fastChecks.map((check, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
+                <p className="text-gray-700 leading-relaxed">{check}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
         {/* ── Gradient fade into paywall ── */}
         <div className="relative -mb-2 h-8 bg-gradient-to-b from-transparent to-white pointer-events-none" />
 
         {/* ── Pro-gated content ── */}
         <ProGate previewTitle={page.h1}>
-          <section className="mb-10">
-            <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
-              <span className="w-1 h-6 bg-green-500 rounded-full inline-block" />
-              Fast Checks You Can Do Now
-            </h2>
-            <div className="space-y-3">
-              {page.fastChecks.map((check, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                  <p className="text-gray-700 leading-relaxed">{check}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
           <section className="mb-10">
             <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
               <span className="w-1 h-6 bg-violet-600 rounded-full inline-block" />
