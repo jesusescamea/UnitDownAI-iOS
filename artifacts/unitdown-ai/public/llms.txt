@@ -1,0 +1,45 @@
+# UnitDown AI
+
+> Self-guided HVAC diagnostic and troubleshooting assistant for commercial HVAC technicians, facility teams, and building owners.
+
+UnitDown AI helps technicians diagnose commercial rooftop unit (RTU) faults using symptom-driven AI diagnostics. Users describe what a unit is doing — or not doing — and receive ranked diagnoses, step-by-step field checks, and expected meter readings. The app also stores equipment records (nameplates, specs) and diagnostic logs per unit.
+
+## Features
+
+- AI-powered HVAC symptom diagnosis (ranked results with confidence scores)
+- Saved unit records with nameplate data (manufacturer, model, serial, refrigerant type, electrical specs)
+- Diagnostic log history linked to individual units
+- Equipment timeline (repairs, notes, maintenance events per unit)
+- Troubleshooting guides for common commercial RTU faults (free, publicly accessible)
+- Brand-specific guides for Lennox, Carrier, Trane, York, AAON, Daikin, Goodman, Rheem (Pro)
+- Pro membership for unlimited diagnostics and full guide access
+
+## Public Troubleshooting Guides
+
+- https://unitdown.org/guides/rtu-not-cooling-but-compressor-running
+- https://unitdown.org/guides/rtu-blower-motor-hums-wont-start
+- https://unitdown.org/guides/high-static-pressure-rooftop-unit-causes
+- https://unitdown.org/guides/economizer-stuck-open-symptoms
+- https://unitdown.org/guides/rooftop-unit-ignition-lockout
+- https://unitdown.org/guides/24v-present-no-contactor-pull-in
+- https://unitdown.org/guides/thermostat-calling-but-no-cooling
+- https://unitdown.org/guides/float-switch-keeps-tripping-causes
+- https://unitdown.org/guides/contactor-buzzing-not-pulling-in
+- https://unitdown.org/guides/high-superheat-troubleshooting-chart
+
+## Brand-Specific Guides (Pro)
+
+- https://unitdown.org/brand-guides/lennox-prodigy-m3-lockout-causes
+- https://unitdown.org/brand-guides/carrier-rtu-high-pressure-lockout-reset
+- https://unitdown.org/brand-guides/trane-voyager-trips-on-heat
+- https://unitdown.org/brand-guides/york-simplicity-board-random-shutdown
+- https://unitdown.org/brand-guides/aaon-freeze-protection-alarm-causes
+- https://unitdown.org/brand-guides/daikin-rtu-safety-lockout-reset
+- https://unitdown.org/brand-guides/goodman-commercial-pressure-switch-trips
+- https://unitdown.org/brand-guides/rheem-ignition-retry-lockout
+- https://unitdown.org/brand-guides/carrier-economizer-fault-causes
+- https://unitdown.org/brand-guides/trane-supply-fan-proof-failure
+
+## Sitemap
+
+https://unitdown.org/sitemap.xml

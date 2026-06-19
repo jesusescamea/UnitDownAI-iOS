@@ -1,4 +1,13 @@
 User-agent: *
 Allow: /
+Allow: /guides/
+Allow: /brand-guides/
+
+Disallow: /admin
+Disallow: /account
+Disallow: /records
+Disallow: /logs/
+Disallow: /sso-callback
+Disallow: /api/
 
 Sitemap: https://unitdown.org/sitemap.xml
