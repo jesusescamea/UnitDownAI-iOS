@@ -1,9 +1,18 @@
 import { useLocation } from "wouter";
 import { ThermometerSnowflake, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSeoHead } from "@/lib/useSeoHead";
 
 export default function PrivacyPage() {
   const [, navigate] = useLocation();
+
+  useSeoHead({
+    title: "Privacy Policy | UnitDown AI",
+    description:
+      "UnitDown AI privacy policy — how we collect, use, and protect your data when using our commercial HVAC diagnostic tool.",
+    canonical: "https://unitdown.org/privacy",
+    ogType: "website",
+  });
 
   return (
     <div className="min-h-screen bg-slate-50">

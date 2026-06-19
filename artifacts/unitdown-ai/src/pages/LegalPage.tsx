@@ -2,12 +2,21 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { ThermometerSnowflake, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSeoHead } from "@/lib/useSeoHead";
 
 type Tab = "terms" | "privacy" | "safety";
 
 export default function LegalPage() {
   const [, navigate] = useLocation();
   const [tab, setTab] = useState<Tab>("terms");
+
+  useSeoHead({
+    title: "Legal | UnitDown AI",
+    description:
+      "Terms of service, privacy policy, and safety disclaimer for UnitDown AI — commercial HVAC diagnostic tool.",
+    canonical: "https://unitdown.org/legal",
+    ogType: "website",
+  });
 
   return (
     <div className="min-h-screen bg-slate-50">

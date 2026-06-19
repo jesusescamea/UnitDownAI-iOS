@@ -5,6 +5,7 @@ import { ArrowRight, ChevronRight, Tag, Zap, Lock, CheckCircle2 } from "lucide-r
 import { useUser } from "@clerk/clerk-react";
 import { checkIAPSubscriptionActive } from "@/lib/appleIAP";
 import { isDemoProEmail } from "@/lib/demoAccess";
+import { useSeoHead } from "@/lib/useSeoHead";
 
 const CLIENT_ID_KEY = "unitdown_client_id";
 const PRO_KEY = "unitdown_is_pro";
@@ -42,20 +43,13 @@ function useProStatus() {
 export default function BrandHub() {
   const isPro = useProStatus();
 
-  useEffect(() => {
-    document.title = "Brand-Specific HVAC Fault Guides | UnitDown";
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "description";
-      document.head.appendChild(meta);
-    }
-    meta.content =
-      "Brand and model-specific HVAC fault guides for Lennox, Carrier, Trane, York, AAON, Daikin, Goodman, Rheem, and more.";
-    return () => {
-      document.title = "UnitDown AI — HVAC Diagnostics";
-    };
-  }, []);
+  useSeoHead({
+    title: "Brand-Specific HVAC Fault Guides | UnitDown",
+    description:
+      "Brand and model-specific HVAC fault guides for Lennox, Carrier, Trane, York, AAON, Daikin, Goodman, Rheem, and more.",
+    canonical: "https://unitdown.org/brand-guides",
+    ogType: "website",
+  });
 
   useEffect(() => {
     const homeSchema = document.getElementById("home-jsonld") as HTMLScriptElement | null;

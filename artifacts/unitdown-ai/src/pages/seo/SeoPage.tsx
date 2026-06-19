@@ -2,23 +2,9 @@ import { useEffect } from "react";
 import { useRoute, Link } from "wouter";
 import { getPageBySlug } from "./data";
 import ProGate from "./ProGate";
+import { useSeoHead } from "@/lib/useSeoHead";
 import { ArrowRight, Zap, CheckCircle2, AlertTriangle, Wrench, Phone, ChevronRight } from "lucide-react";
 
-function useSeoMeta(title: string, description: string) {
-  useEffect(() => {
-    document.title = title;
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "description";
-      document.head.appendChild(meta);
-    }
-    meta.content = description;
-    return () => {
-      document.title = "UnitDown AI — HVAC Diagnostics";
-    };
-  }, [title, description]);
-}
 
 function useSeoJsonLd(title: string, description: string, slug: string) {
   useEffect(() => {
@@ -71,10 +57,11 @@ export default function SeoPage() {
   const slug = params?.slug ?? "";
   const page = getPageBySlug(slug);
 
-  useSeoMeta(
-    page?.metaTitle ?? "UnitDown — HVAC Diagnostics",
-    page?.metaDescription ?? ""
-  );
+  useSeoHead({
+    title: page?.metaTitle ?? "UnitDown — HVAC Diagnostics",
+    description: page?.metaDescription ?? "",
+    canonical: `https://unitdown.org/guides/${slug}`,
+  });
   useSeoJsonLd(
     page?.metaTitle ?? "UnitDown — HVAC Diagnostics",
     page?.metaDescription ?? "",

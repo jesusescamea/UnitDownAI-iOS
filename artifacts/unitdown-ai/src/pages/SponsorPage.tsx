@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Link } from "wouter";
 import { ChevronRight, Users, MapPin, BarChart2, Zap, CheckCircle2 } from "lucide-react";
+import { useSeoHead } from "@/lib/useSeoHead";
 
 const stats = [
   { icon: Users, label: "Global HVAC Technician Audience" },
@@ -34,20 +35,13 @@ export default function SponsorPage() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    document.title = "Partner With UnitDown AI | Sponsorship";
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "description";
-      document.head.appendChild(meta);
-    }
-    meta.content =
-      "Partner with UnitDown AI to reach commercial HVAC technicians worldwide. Advertising, tool partnerships, distributor placements, and more.";
-    return () => {
-      document.title = "UnitDown AI — HVAC Diagnostics";
-    };
-  }, []);
+  useSeoHead({
+    title: "Partner With UnitDown AI | Sponsorship",
+    description:
+      "Partner with UnitDown AI to reach commercial HVAC technicians worldwide. Advertising, tool partnerships, distributor placements, and more.",
+    canonical: "https://unitdown.org/sponsor",
+    ogType: "website",
+  });
 
   function handleChange(
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>

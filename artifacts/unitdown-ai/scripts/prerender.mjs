@@ -1,14 +1,19 @@
 /**
- * Post-build pre-renderer for guide and brand-guide routes.
+ * Post-build pre-renderer for public routes.
  *
- * Runs after `vite build`. For each known SEO route it:
+ * Runs after `vite build` AND the SSR bundle build (dist/server/entry-server.js).
+ * For each known public route it:
  *  1. Reads dist/public/index.html (the built SPA shell)
  *  2. Swaps in page-specific title, description, canonical, OG/Twitter tags, JSON-LD
- *  3. Writes dist/public/<route>/index.html
+ *  3. Injects server-rendered body HTML so crawlers and social bots see real content
+ *  4. Writes dist/public/<route>/index.html
  *
  * Because Replit's static server checks for an exact file match before applying
  * the SPA rewrite rule (/* → /index.html), these per-route files are served
  * directly to crawlers and social-media scrapers — no JavaScript required.
+ *
+ * React hydrates over the server-rendered markup in the browser, so interactive
+ * features (Pro gate, IAP, Clerk auth) all work normally after hydration.
  */
 
 import { readFileSync, writeFileSync, mkdirSync } from "fs";
@@ -18,6 +23,17 @@ import { fileURLToPath } from "url";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const distDir = join(__dirname, "../dist/public");
 const templatePath = join(distDir, "index.html");
+const serverBundlePath = join(__dirname, "../dist/server/entry-server.js");
+
+// Load the SSR render function produced by `vite build --config vite.config.ssr.ts`.
+// If the bundle is missing (e.g. CI skipped the SSR step) we fall back gracefully.
+let ssrRender = (_url) => "";
+try {
+  const mod = await import(serverBundlePath);
+  ssrRender = mod.render ?? ssrRender;
+} catch (err) {
+  console.warn("⚠  SSR bundle not found — body content will not be pre-rendered:", err.message);
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -53,7 +69,7 @@ function escapeRe(s) {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function buildHtml(template, { title, description, canonical, type, jsonLd }) {
+function buildHtml(template, { title, description, canonical, type, jsonLd, bodyHtml = "" }) {
   let html = template;
 
   // <title>
@@ -110,11 +126,22 @@ function buildHtml(template, { title, description, canonical, type, jsonLd }) {
     `$1${escAttr(description)}$2`
   );
 
-  // JSON-LD — replace the existing block with a page-specific one
+  // JSON-LD — replace the existing block with a page-specific one.
+  // The id attribute may appear before type in the tag, so match any order.
   html = html.replace(
-    /<script type="application\/ld\+json">[\s\S]*?<\/script>/,
+    /<script\b[^>]*type="application\/ld\+json"[^>]*>[\s\S]*?<\/script>/,
     `<script type="application/ld+json">\n${JSON.stringify(jsonLd, null, 2)}\n    </script>`
   );
+
+  // Inject SSR-rendered body content inside <div id="root">.
+  // Crawlers and social bots receive real page content on the first request.
+  // React hydrates over this markup in the browser.
+  if (bodyHtml) {
+    html = html.replace(
+      /<div id="root"><\/div>/,
+      `<div id="root">${bodyHtml}</div>`
+    );
+  }
 
   return html;
 }
@@ -270,6 +297,70 @@ const hubPages = [
   },
 ];
 
+const staticPages = [
+  {
+    segments: ["sponsor"],
+    title: "Partner With UnitDown AI | Sponsorship",
+    description:
+      "Partner with UnitDown AI to reach commercial HVAC technicians worldwide. Advertising, tool partnerships, distributor placements, and more.",
+    canonical: "https://unitdown.org/sponsor",
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "Partner With UnitDown AI",
+      description:
+        "Partner with UnitDown AI to reach commercial HVAC technicians worldwide. Advertising, tool partnerships, distributor placements, and more.",
+      url: "https://unitdown.org/sponsor",
+      publisher: { "@type": "Organization", name: "UnitDown AI", url: "https://unitdown.org" },
+    },
+  },
+  {
+    segments: ["terms"],
+    title: "Terms of Service | UnitDown AI",
+    description:
+      "UnitDown AI terms of service — the rules and conditions for using our commercial HVAC diagnostic tool.",
+    canonical: "https://unitdown.org/terms",
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "Terms of Service",
+      description: "UnitDown AI terms of service.",
+      url: "https://unitdown.org/terms",
+      publisher: { "@type": "Organization", name: "UnitDown AI", url: "https://unitdown.org" },
+    },
+  },
+  {
+    segments: ["privacy"],
+    title: "Privacy Policy | UnitDown AI",
+    description:
+      "UnitDown AI privacy policy — how we collect, use, and protect your data when using our commercial HVAC diagnostic tool.",
+    canonical: "https://unitdown.org/privacy",
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "Privacy Policy",
+      description: "UnitDown AI privacy policy.",
+      url: "https://unitdown.org/privacy",
+      publisher: { "@type": "Organization", name: "UnitDown AI", url: "https://unitdown.org" },
+    },
+  },
+  {
+    segments: ["legal"],
+    title: "Legal | UnitDown AI",
+    description:
+      "Terms of service, privacy policy, and safety disclaimer for UnitDown AI — commercial HVAC diagnostic tool.",
+    canonical: "https://unitdown.org/legal",
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "Legal",
+      description: "Terms of service, privacy policy, and safety disclaimer for UnitDown AI.",
+      url: "https://unitdown.org/legal",
+      publisher: { "@type": "Organization", name: "UnitDown AI", url: "https://unitdown.org" },
+    },
+  },
+];
+
 // ── Main ───────────────────────────────────────────────────────────────────
 
 const template = readFileSync(templatePath, "utf8");
@@ -278,11 +369,13 @@ let count = 0;
 // Guide pages
 for (const page of guidePages) {
   const canonical = `https://unitdown.org/guides/${page.slug}`;
+  const url = `/guides/${page.slug}`;
   const html = buildHtml(template, {
     title: page.metaTitle,
     description: page.metaDescription,
     canonical,
     type: "article",
+    bodyHtml: ssrRender(url),
     jsonLd: {
       "@context": "https://schema.org",
       "@type": "TechArticle",
@@ -306,11 +399,13 @@ for (const page of guidePages) {
 // Brand pages
 for (const page of brandPages) {
   const canonical = `https://unitdown.org/brand-guides/${page.slug}`;
+  const url = `/brand-guides/${page.slug}`;
   const html = buildHtml(template, {
     title: page.metaTitle,
     description: page.metaDescription,
     canonical,
     type: "article",
+    bodyHtml: ssrRender(url),
     jsonLd: {
       "@context": "https://schema.org",
       "@type": "TechArticle",
@@ -338,6 +433,7 @@ for (const hub of hubPages) {
     description: hub.description,
     canonical: hub.canonical,
     type: "website",
+    bodyHtml: ssrRender(hub.segments.length === 1 ? `/${hub.segments[0]}` : `/${hub.segments.join("/")}`),
     jsonLd: {
       "@context": "https://schema.org",
       "@type": "CollectionPage",
@@ -352,6 +448,21 @@ for (const hub of hubPages) {
     },
   });
   writePage(distDir, hub.segments, html);
+  count++;
+}
+
+// Static pages (sponsor, legal, terms, privacy)
+for (const page of staticPages) {
+  const url = `/${page.segments.join("/")}`;
+  const html = buildHtml(template, {
+    title: page.title,
+    description: page.description,
+    canonical: page.canonical,
+    type: "website",
+    bodyHtml: ssrRender(url),
+    jsonLd: page.jsonLd,
+  });
+  writePage(distDir, page.segments, html);
   count++;
 }
 

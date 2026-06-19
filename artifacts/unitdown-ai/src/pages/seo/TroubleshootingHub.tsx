@@ -5,6 +5,7 @@ import { ArrowRight, BookOpen, ChevronRight, Zap, Lock, Tag, CheckCircle2 } from
 import { useUser } from "@clerk/clerk-react";
 import { checkIAPSubscriptionActive } from "@/lib/appleIAP";
 import { isDemoProEmail } from "@/lib/demoAccess";
+import { useSeoHead } from "@/lib/useSeoHead";
 
 const CLIENT_ID_KEY = "unitdown_client_id";
 const PRO_KEY = "unitdown_is_pro";
@@ -72,20 +73,13 @@ function useProStatus() {
 export default function TroubleshootingHub() {
   const isPro = useProStatus();
 
-  useEffect(() => {
-    document.title = "Commercial HVAC Troubleshooting Guides | UnitDown";
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "description";
-      document.head.appendChild(meta);
-    }
-    meta.content =
-      "Free commercial HVAC troubleshooting guides for RTU faults, blower motor issues, high static pressure, economizer problems, ignition lockouts, contactor faults, and more.";
-    return () => {
-      document.title = "UnitDown AI — HVAC Diagnostics";
-    };
-  }, []);
+  useSeoHead({
+    title: "Commercial HVAC Troubleshooting Guides | UnitDown",
+    description:
+      "Free commercial HVAC troubleshooting guides for RTU faults, blower motor issues, high static pressure, economizer problems, ignition lockouts, contactor faults, and more.",
+    canonical: "https://unitdown.org/guides",
+    ogType: "website",
+  });
 
   useEffect(() => {
     const homeSchema = document.getElementById("home-jsonld") as HTMLScriptElement | null;

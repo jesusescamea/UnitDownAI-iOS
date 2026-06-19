@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useRoute, Link } from "wouter";
 import { getBrandPageBySlug } from "./brand-data";
 import ProGate from "./ProGate";
+import { useSeoHead } from "@/lib/useSeoHead";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -15,21 +16,6 @@ import {
   BookOpen,
 } from "lucide-react";
 
-function useSeoMeta(title: string, description: string) {
-  useEffect(() => {
-    document.title = title;
-    let meta = document.querySelector<HTMLMetaElement>('meta[name="description"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.name = "description";
-      document.head.appendChild(meta);
-    }
-    meta.content = description;
-    return () => {
-      document.title = "UnitDown AI — HVAC Diagnostics";
-    };
-  }, [title, description]);
-}
 
 function useSeoJsonLd(title: string, description: string, slug: string, brand: string) {
   useEffect(() => {
@@ -84,10 +70,11 @@ export default function BrandPage() {
   const slug = params?.slug ?? "";
   const page = getBrandPageBySlug(slug);
 
-  useSeoMeta(
-    page?.metaTitle ?? "UnitDown — HVAC Diagnostics",
-    page?.metaDescription ?? ""
-  );
+  useSeoHead({
+    title: page?.metaTitle ?? "UnitDown — HVAC Diagnostics",
+    description: page?.metaDescription ?? "",
+    canonical: `https://unitdown.org/brand-guides/${slug}`,
+  });
   useSeoJsonLd(
     page?.metaTitle ?? "UnitDown — HVAC Diagnostics",
     page?.metaDescription ?? "",

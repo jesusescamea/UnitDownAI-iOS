@@ -1,9 +1,18 @@
 import { useLocation } from "wouter";
 import { ThermometerSnowflake, ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSeoHead } from "@/lib/useSeoHead";
 
 export default function TermsPage() {
   const [, navigate] = useLocation();
+
+  useSeoHead({
+    title: "Terms of Service | UnitDown AI",
+    description:
+      "UnitDown AI terms of service — the rules and conditions for using our commercial HVAC diagnostic tool.",
+    canonical: "https://unitdown.org/terms",
+    ogType: "website",
+  });
 
   return (
     <div className="min-h-screen bg-slate-50">
