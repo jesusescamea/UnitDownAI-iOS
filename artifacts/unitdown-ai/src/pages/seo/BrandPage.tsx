@@ -31,6 +31,36 @@ function useSeoMeta(title: string, description: string) {
   }, [title, description]);
 }
 
+function useSeoJsonLd(title: string, description: string, slug: string, brand: string) {
+  useEffect(() => {
+    const id = "seo-jsonld";
+    let el = document.getElementById(id) as HTMLScriptElement | null;
+    if (!el) {
+      el = document.createElement("script");
+      el.id = id;
+      el.type = "application/ld+json";
+      document.head.appendChild(el);
+    }
+    el.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: title,
+      description,
+      about: { "@type": "Brand", name: brand },
+      url: `https://unitdown.org/brand-guides/${slug}`,
+      author: { "@type": "Organization", name: "UnitDown AI", url: "https://unitdown.org" },
+      publisher: {
+        "@type": "Organization",
+        name: "UnitDown AI",
+        url: "https://unitdown.org",
+        logo: { "@type": "ImageObject", url: "https://unitdown.org/icon-192.png" },
+      },
+      mainEntityOfPage: { "@type": "WebPage", "@id": `https://unitdown.org/brand-guides/${slug}` },
+    });
+    return () => { el?.remove(); };
+  }, [title, description, slug, brand]);
+}
+
 export default function BrandPage() {
   const [, params] = useRoute("/brand-guides/:slug");
   const slug = params?.slug ?? "";
@@ -39,6 +69,12 @@ export default function BrandPage() {
   useSeoMeta(
     page?.metaTitle ?? "UnitDown — HVAC Diagnostics",
     page?.metaDescription ?? ""
+  );
+  useSeoJsonLd(
+    page?.metaTitle ?? "UnitDown — HVAC Diagnostics",
+    page?.metaDescription ?? "",
+    slug,
+    page?.brand ?? ""
   );
 
   if (!page) {
@@ -75,40 +111,45 @@ export default function BrandPage() {
 
         <p className="text-lg text-gray-600 leading-relaxed mb-6 max-w-3xl">{page.intro}</p>
 
+        {/* ── Free preview — indexed by search engines ── */}
+        <section className="mb-10">
+          <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
+            <span className="w-1 h-6 bg-blue-600 rounded-full inline-block" />
+            Symptoms
+          </h2>
+          <div className="space-y-2.5">
+            {page.symptoms.map((s, i) => (
+              <div key={i} className="flex items-start gap-3">
+                <CheckCircle2 className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
+                <p className="text-gray-700 text-sm leading-relaxed">{s}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="mb-10">
+          <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+            <span className="w-1 h-6 bg-orange-500 rounded-full inline-block" />
+            Likely Causes
+          </h2>
+          <div className="space-y-4">
+            {page.likelyCauses.map((cause, i) => (
+              <div key={i} className="border border-gray-200 rounded-xl p-5 hover:border-blue-200 hover:bg-blue-50/30 transition-colors">
+                <h3 className="font-semibold text-gray-900 mb-1.5 flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
+                  {cause.title}
+                </h3>
+                <p className="text-gray-600 text-sm leading-relaxed pl-6">{cause.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        {/* ── Gradient fade into paywall ── */}
+        <div className="relative -mb-2 h-8 bg-gradient-to-b from-transparent to-white pointer-events-none" />
+
+        {/* ── Pro-gated content ── */}
         <ProGate previewTitle={page.h1}>
-          <section className="mb-10">
-            <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <span className="w-1 h-6 bg-blue-600 rounded-full inline-block" />
-              Symptoms
-            </h2>
-            <div className="space-y-2.5">
-              {page.symptoms.map((s, i) => (
-                <div key={i} className="flex items-start gap-3">
-                  <CheckCircle2 className="w-4 h-4 text-blue-500 mt-0.5 shrink-0" />
-                  <p className="text-gray-700 text-sm leading-relaxed">{s}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          <section className="mb-10">
-            <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
-              <span className="w-1 h-6 bg-orange-500 rounded-full inline-block" />
-              Likely Causes
-            </h2>
-            <div className="space-y-4">
-              {page.likelyCauses.map((cause, i) => (
-                <div key={i} className="border border-gray-200 rounded-xl p-5 hover:border-blue-200 hover:bg-blue-50/30 transition-colors">
-                  <h3 className="font-semibold text-gray-900 mb-1.5 flex items-start gap-2">
-                    <AlertTriangle className="w-4 h-4 text-orange-500 mt-0.5 shrink-0" />
-                    {cause.title}
-                  </h3>
-                  <p className="text-gray-600 text-sm leading-relaxed pl-6">{cause.body}</p>
-                </div>
-              ))}
-            </div>
-          </section>
-
           <section className="mb-10">
             <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
               <span className="w-1 h-6 bg-purple-500 rounded-full inline-block" />

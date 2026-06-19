@@ -20,6 +20,35 @@ function useSeoMeta(title: string, description: string) {
   }, [title, description]);
 }
 
+function useSeoJsonLd(title: string, description: string, slug: string) {
+  useEffect(() => {
+    const id = "seo-jsonld";
+    let el = document.getElementById(id) as HTMLScriptElement | null;
+    if (!el) {
+      el = document.createElement("script");
+      el.id = id;
+      el.type = "application/ld+json";
+      document.head.appendChild(el);
+    }
+    el.textContent = JSON.stringify({
+      "@context": "https://schema.org",
+      "@type": "TechArticle",
+      headline: title,
+      description,
+      url: `https://unitdown.org/guides/${slug}`,
+      author: { "@type": "Organization", name: "UnitDown AI", url: "https://unitdown.org" },
+      publisher: {
+        "@type": "Organization",
+        name: "UnitDown AI",
+        url: "https://unitdown.org",
+        logo: { "@type": "ImageObject", url: "https://unitdown.org/icon-192.png" },
+      },
+      mainEntityOfPage: { "@type": "WebPage", "@id": `https://unitdown.org/guides/${slug}` },
+    });
+    return () => { el?.remove(); };
+  }, [title, description, slug]);
+}
+
 export default function SeoPage() {
   const [, params] = useRoute("/guides/:slug");
   const slug = params?.slug ?? "";
@@ -28,6 +57,11 @@ export default function SeoPage() {
   useSeoMeta(
     page?.metaTitle ?? "UnitDown — HVAC Diagnostics",
     page?.metaDescription ?? ""
+  );
+  useSeoJsonLd(
+    page?.metaTitle ?? "UnitDown — HVAC Diagnostics",
+    page?.metaDescription ?? "",
+    slug
   );
 
   if (!page) {
@@ -68,7 +102,7 @@ export default function SeoPage() {
           {page.intro}
         </p>
 
-        <ProGate previewTitle={page.h1}>
+        {/* ── Free preview — indexed by search engines ── */}
         <section className="mb-10">
           <h2 className="text-xl font-bold text-gray-900 mb-4 flex items-center gap-2">
             <span className="w-1 h-6 bg-blue-600 rounded-full inline-block" />
@@ -104,109 +138,114 @@ export default function SeoPage() {
           </div>
         </section>
 
-        <section className="mb-10">
-          <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
-            <span className="w-1 h-6 bg-green-500 rounded-full inline-block" />
-            Fast Checks You Can Do Now
-          </h2>
-          <div className="space-y-3">
-            {page.fastChecks.map((check, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
-                <p className="text-gray-700 leading-relaxed">{check}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+        {/* ── Gradient fade into paywall ── */}
+        <div className="relative -mb-2 h-8 bg-gradient-to-b from-transparent to-white pointer-events-none" />
 
-        <section className="mb-10">
-          <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
-            <span className="w-1 h-6 bg-violet-600 rounded-full inline-block" />
-            Meter Readings &amp; Technical Checks
-          </h2>
-          <div className="overflow-x-auto rounded-xl border border-gray-200">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="text-left px-4 py-3 font-semibold text-gray-700">Measurement</th>
-                  <th className="text-left px-4 py-3 font-semibold text-green-700">Normal</th>
-                  <th className="text-left px-4 py-3 font-semibold text-red-700">Suspect</th>
-                </tr>
-              </thead>
-              <tbody>
-                {page.meterReadings.map((row, i) => (
-                  <tr
-                    key={i}
-                    className={`border-b border-gray-100 last:border-0 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}
-                  >
-                    <td className="px-4 py-3 font-medium text-gray-800">{row.measurement}</td>
-                    <td className="px-4 py-3 text-green-700">{row.normal}</td>
-                    <td className="px-4 py-3 text-red-700">{row.suspect}</td>
+        {/* ── Pro-gated content ── */}
+        <ProGate previewTitle={page.h1}>
+          <section className="mb-10">
+            <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+              <span className="w-1 h-6 bg-green-500 rounded-full inline-block" />
+              Fast Checks You Can Do Now
+            </h2>
+            <div className="space-y-3">
+              {page.fastChecks.map((check, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <CheckCircle2 className="w-5 h-5 text-green-500 mt-0.5 shrink-0" />
+                  <p className="text-gray-700 leading-relaxed">{check}</p>
+                </div>
+              ))}
+            </div>
+          </section>
+
+          <section className="mb-10">
+            <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+              <span className="w-1 h-6 bg-violet-600 rounded-full inline-block" />
+              Meter Readings &amp; Technical Checks
+            </h2>
+            <div className="overflow-x-auto rounded-xl border border-gray-200">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="text-left px-4 py-3 font-semibold text-gray-700">Measurement</th>
+                    <th className="text-left px-4 py-3 font-semibold text-green-700">Normal</th>
+                    <th className="text-left px-4 py-3 font-semibold text-red-700">Suspect</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </section>
+                </thead>
+                <tbody>
+                  {page.meterReadings.map((row, i) => (
+                    <tr
+                      key={i}
+                      className={`border-b border-gray-100 last:border-0 ${i % 2 === 0 ? "bg-white" : "bg-gray-50/50"}`}
+                    >
+                      <td className="px-4 py-3 font-medium text-gray-800">{row.measurement}</td>
+                      <td className="px-4 py-3 text-green-700">{row.normal}</td>
+                      <td className="px-4 py-3 text-red-700">{row.suspect}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
 
-        <section className="mb-10">
-          <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
-            <span className="w-1 h-6 bg-gray-700 rounded-full inline-block" />
-            What Pros Inspect Next
-          </h2>
-          <div className="space-y-4">
-            {page.prosInspect.map((item, i) => (
-              <div key={i} className="bg-gray-50 rounded-xl p-5 border border-gray-100">
-                <h3 className="font-semibold text-gray-900 mb-1.5 flex items-start gap-2">
-                  <Wrench className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
-                  {item.title}
-                </h3>
-                <p className="text-gray-600 text-sm leading-relaxed pl-6">{item.body}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+          <section className="mb-10">
+            <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+              <span className="w-1 h-6 bg-gray-700 rounded-full inline-block" />
+              What Pros Inspect Next
+            </h2>
+            <div className="space-y-4">
+              {page.prosInspect.map((item, i) => (
+                <div key={i} className="bg-gray-50 rounded-xl p-5 border border-gray-100">
+                  <h3 className="font-semibold text-gray-900 mb-1.5 flex items-start gap-2">
+                    <Wrench className="w-4 h-4 text-gray-500 mt-0.5 shrink-0" />
+                    {item.title}
+                  </h3>
+                  <p className="text-gray-600 text-sm leading-relaxed pl-6">{item.body}</p>
+                </div>
+              ))}
+            </div>
+          </section>
 
-        <section className="mb-12">
-          <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
-            <span className="w-1 h-6 bg-red-500 rounded-full inline-block" />
-            When to Call a Technician
-          </h2>
-          <div className="bg-red-50 border border-red-100 rounded-xl p-5 space-y-3">
-            {page.whenToCall.map((line, i) => (
-              <div key={i} className="flex items-start gap-3">
-                <Phone className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
-                <p className="text-red-800 text-sm leading-relaxed">{line}</p>
-              </div>
-            ))}
-          </div>
-        </section>
+          <section className="mb-12">
+            <h2 className="text-xl font-bold text-gray-900 mb-5 flex items-center gap-2">
+              <span className="w-1 h-6 bg-red-500 rounded-full inline-block" />
+              When to Call a Technician
+            </h2>
+            <div className="bg-red-50 border border-red-100 rounded-xl p-5 space-y-3">
+              {page.whenToCall.map((line, i) => (
+                <div key={i} className="flex items-start gap-3">
+                  <Phone className="w-4 h-4 text-red-600 mt-0.5 shrink-0" />
+                  <p className="text-red-800 text-sm leading-relaxed">{line}</p>
+                </div>
+              ))}
+            </div>
+          </section>
 
-        <section className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 p-8 sm:p-10 text-white text-center">
-          <div className="flex justify-center mb-4">
-            <Zap className="w-8 h-8 text-blue-200" />
-          </div>
-          <h2 className="text-2xl sm:text-3xl font-bold mb-3">Need Faster Answers?</h2>
-          <p className="text-blue-100 mb-6 max-w-xl mx-auto leading-relaxed">
-            Use UnitDown AI to get ranked likely causes, meter checks, and next-step diagnostics in seconds — tailored to your exact equipment and symptoms.
-          </p>
-          <Link href="/">
-            <button className="inline-flex items-center gap-2 bg-white text-blue-700 font-semibold px-6 py-3 rounded-xl hover:bg-blue-50 transition-colors">
-              Try UnitDown Now
-              <ArrowRight className="w-4 h-4" />
-            </button>
-          </Link>
-        </section>
+          <section className="rounded-2xl bg-gradient-to-br from-blue-600 to-blue-700 p-8 sm:p-10 text-white text-center">
+            <div className="flex justify-center mb-4">
+              <Zap className="w-8 h-8 text-blue-200" />
+            </div>
+            <h2 className="text-2xl sm:text-3xl font-bold mb-3">Need Faster Answers?</h2>
+            <p className="text-blue-100 mb-6 max-w-xl mx-auto leading-relaxed">
+              Use UnitDown AI to get ranked likely causes, meter checks, and next-step diagnostics in seconds — tailored to your exact equipment and symptoms.
+            </p>
+            <Link href="/">
+              <button className="inline-flex items-center gap-2 bg-white text-blue-700 font-semibold px-6 py-3 rounded-xl hover:bg-blue-50 transition-colors">
+                Try UnitDown Now
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </Link>
+          </section>
 
-        <div className="mt-10 pt-8 border-t border-gray-100 flex items-center justify-between flex-wrap gap-4">
-          <Link
-            href="/guides"
-            className="text-sm text-blue-600 hover:underline flex items-center gap-1"
-          >
-            ← All troubleshooting guides
-          </Link>
-          <span className="text-xs text-gray-400">Commercial HVAC Diagnostics · UnitDown AI</span>
-        </div>
+          <div className="mt-10 pt-8 border-t border-gray-100 flex items-center justify-between flex-wrap gap-4">
+            <Link
+              href="/guides"
+              className="text-sm text-blue-600 hover:underline flex items-center gap-1"
+            >
+              ← All troubleshooting guides
+            </Link>
+            <span className="text-xs text-gray-400">Commercial HVAC Diagnostics · UnitDown AI</span>
+          </div>
         </ProGate>
       </main>
     </div>
