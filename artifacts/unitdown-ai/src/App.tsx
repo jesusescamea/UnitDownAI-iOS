@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Switch, Route, Router as WouterRouter, useLocation } from "wouter";
+import { Switch, Route, Router as WouterRouter, useLocation, Link } from "wouter";
 import { useUser, useClerk, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { shouldUseAppleIAP } from "@/lib/platform";
 import { Browser } from "@capacitor/browser";
@@ -2118,14 +2118,14 @@ function Home() {
 
           {/* Center nav */}
           <nav className="flex items-center">
-            <button
-              onClick={() => navigate("/guides")}
+            <Link
+              href="/guides"
               className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-blue-50"
               data-testid="nav-guides"
             >
               <BookOpen className="w-4 h-4" />
               <span className="hidden sm:inline">Guides</span>
-            </button>
+            </Link>
             {clerkLoaded && clerkUser && (
               <button
                 onClick={() => navigate("/records")}
@@ -3093,14 +3093,8 @@ function Home() {
             </div>
 
             <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-semibold" aria-label="Footer navigation">
-              <button onClick={() => navigate("/legal")} className="hover:text-slate-200 transition-colors" data-testid="footer-legal">Legal</button>
-              <a
-                href="mailto:unitdownsupport@gmail.com?subject=Sponsorship%20Inquiry%20-%20UnitDown%20AI"
-                className="hover:text-blue-400 transition-colors text-blue-500 font-bold"
-                data-testid="footer-sponsor"
-              >
-                Sponsor
-              </a>
+              <Link href="/legal" className="hover:text-slate-200 transition-colors" data-testid="footer-legal">Legal</Link>
+              <Link href="/sponsor" className="hover:text-blue-400 transition-colors text-blue-500 font-bold" data-testid="footer-sponsor">Sponsor</Link>
             </nav>
 
             {isPro ? (
