@@ -1,0 +1,30 @@
+Act as an expert mobile App Store Optimization (ASO) designer. I need a high-conversion visual layout and copy blueprint for 5 unique App Store screenshots for "UnitDown AI"—a rugged utility app built specifically for field HVAC service technicians. 
+
+Please map out these 5 essential screens using a bold, clean, rugged industrial aesthetic (dark tech gradients, high-contrast text) wrapped in crisp iPhone 16 Pro Max device mockups. Use subtle callouts or zoom effects on the UI elements so a technician skimming the results can read the data.
+
+Requirements for the 5-Screenshot Flow:
+
+### 1. SCREEN 1: THE STAR UTILITY (Nameplate Scanner)
+   - Header Marketing Copy: "Scan Nameplates. Get Instant Specs."
+   - Visual Composition: A simulated phone camera viewfinder framing a real-world, faded equipment data tag. A clean digital UI overlay instantly captures and highlights the parsed Model Number, Serial Number, and system tonnage.
+   - Focus: Highlighting immediate, friction-free time-savings on a roof.
+
+### 2. SCREEN 2: THE CORE ENGINE (AI Diagnostic Chat)
+   - Header Marketing Copy: "HVAC Diagnostics, Accelerated by AI."
+   - Visual Composition: A clean, ready-to-use AI diagnostic chat interface. A technician describes a symptom (e.g., 'Compressor is grounding'), and the AI instantly responds with a prioritized, bulleted troubleshooting checklist.
+   - Focus: Proving the brain of the app.
+
+### 3. SCREEN 3: FIELD MATH (Calculators & Tools)
+   - Header Marketing Copy: "Instant Superheat & Subcooling."
+   - Visual Composition: The app's calculator interface, showing a view for live system charging calculations. The fields are pre-filled with example pressures and temperatures, clearly displaying a calculated live target and actual system numbers.
+   - Focus: Providing everyday, technical precision on the job.
+
+### 4. SCREEN 4: EVERYDAY UTILITY (Main Dashboard Overview)
+   - Header Marketing Copy: "Your Mobile Service Assistant."
+   - Visual Composition: A sleek, professional main app dashboard view. This screen highlights clean navigation buttons for all key features (Scanner, Chat, Calculators, Account, etc.), emphasizing an organized workflow for a busy tech.
+   - Focus: Showcasing the organized, professional hub of the application.
+
+### 5. SCREEN 5: THE VALUE PROP (Pro Conversion)
+   - Header Marketing Copy: "One Account. Total Access."
+   - Visual Composition: The premium account or 'Pro' dashboard view. This screen emphasizes that a single subscription grants both native mobile app access for field work (like ladders/roofs) and desktop web access for service truck or office work. It highlights a Pro badge or subscription checkmark.
+   - Focus: Proving value and seamless workflow across platforms.

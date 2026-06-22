@@ -6,6 +6,12 @@ uri = "file://attached_assets/unitdown-promo-artwork.png"
 type = "image"
 title = "UnitDown AI Pro promotional artwork"
 
+[[generated]]
+id = "ZmCmTWXVP6UOuncIcY7zb"
+uri = "file://artifacts/mockup-sandbox/public/images/nameplate-worn.png"
+type = "image"
+title = "worn metal HVAC nameplate"
+
 [[outputs]]
 id = "eeLA1KtjgPdBDxX9lGfZ6"
 uri = "file://screenshots/appstore/unitdown-appstore-screenshots.zip"
