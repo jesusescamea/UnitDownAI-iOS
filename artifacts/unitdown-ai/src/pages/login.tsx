@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useSignIn } from "@clerk/clerk-react";
 import { useLocation } from "wouter";
 import { ThermometerSnowflake, ArrowLeft, Eye, EyeOff } from "lucide-react";
@@ -77,6 +77,18 @@ export default function LoginPage() {
   // first render and was the cause of "Apple button missing on iPhone Safari".
   const showApple = shouldShowAppleSignIn();
 
+  // Safety valve: if Clerk hasn't finished initialising after 6 s, re-enable
+  // all buttons so the user is never permanently locked out due to a failed
+  // Clerk SDK init (e.g. pk_test_ key on a production proxy, network timeout,
+  // or a Clerk outage). When timed out, handlers fall through to the !signIn
+  // guard and surface a clear "temporarily unavailable" message.
+  const [clerkTimedOut, setClerkTimedOut] = useState(false);
+  useEffect(() => {
+    if (isLoaded) return;
+    const t = setTimeout(() => setClerkTimedOut(true), 6_000);
+    return () => clearTimeout(t);
+  }, [isLoaded]);
+
   const clerkError = useCallback((err: unknown): string => {
     const e = err as { errors?: Array<{ code?: string; longMessage?: string; message?: string }> };
     return (
@@ -88,7 +100,6 @@ export default function LoginPage() {
 
   // ── Sign in with Apple (iOS native) ──────────────────────────────────────────
   const handleApple = useCallback(async () => {
-    if (!isLoaded) return;
     // Clerk loaded but signIn is null → Clerk initialised in an error state.
     // Surface a clear message instead of silently doing nothing (which looked
     // like a freeze to App Store reviewers).
@@ -116,11 +127,10 @@ export default function LoginPage() {
       }
       setLoading(false);
     }
-  }, [signIn, isLoaded]);
+  }, [signIn]);
 
   // ── Google OAuth ──────────────────────────────────────────────────────────────
   const handleGoogle = useCallback(async () => {
-    if (!isLoaded) return;
     if (!signIn) {
       setError("Google sign-in is temporarily unavailable. Please try again or use email.");
       return;
@@ -145,7 +155,7 @@ export default function LoginPage() {
       }
       setLoading(false);
     }
-  }, [signIn, isLoaded]);
+  }, [signIn]);
 
   // ── Email OTP — Median WebView path ──────────────────────────────────────────
   //
@@ -158,7 +168,7 @@ export default function LoginPage() {
   // demo account email. It replaces the "go to password step" branch with a
   // "send OTP and go to otp step" branch.
   const handleSendOtp = useCallback(async () => {
-    if (!signIn || !isLoaded) return;
+    if (!signIn) return;
     setError(null);
     setLoading(true);
     try {
@@ -183,12 +193,12 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [signIn, isLoaded, email]);
+  }, [signIn, email]);
 
   // ── Verify the OTP code (Median path) ────────────────────────────────────────
   const handleVerifyOtp = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signIn || !isLoaded) return;
+    if (!signIn) return;
     setError(null);
     setLoading(true);
     try {
@@ -212,7 +222,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [signIn, setActive, isLoaded, otpCode, navigate]);
+  }, [signIn, setActive, otpCode, navigate]);
 
   // ── Email → password (or demo bypass, or OTP for Median) step ────────────────
   //
@@ -226,7 +236,7 @@ export default function LoginPage() {
   // Normal email addresses are completely unaffected.
   const handleEmailContinue = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim() || !signIn || !isLoaded) return;
+    if (!email.trim() || !signIn) return;
     setError(null);
     setShowSendCode(false);
 
@@ -276,12 +286,12 @@ export default function LoginPage() {
 
     // Normal users on web / Capacitor → password step
     setStep("password");
-  }, [email, signIn, isLoaded, setActive, navigate, isMedianWebView, handleSendOtp]);
+  }, [email, signIn, setActive, navigate, isMedianWebView, handleSendOtp]);
 
   // ── Sign in with password ─────────────────────────────────────────────────────
   const handleSignIn = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signIn || !isLoaded) return;
+    if (!signIn) return;
     setError(null);
     setShowSendCode(false);
     setLoading(true);
@@ -332,11 +342,11 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [signIn, setActive, isLoaded, email, password, navigate, clerkError]);
+  }, [signIn, setActive, email, password, navigate, clerkError]);
 
   // ── Send verification / reset code ───────────────────────────────────────────
   const sendCode = useCallback(async () => {
-    if (!signIn || !isLoaded) return;
+    if (!signIn) return;
     setError(null);
     setLoading(true);
     try {
@@ -352,12 +362,12 @@ export default function LoginPage() {
       setLoading(false);
       setStep("reset-code");
     }
-  }, [signIn, isLoaded, email]);
+  }, [signIn, email]);
 
   // ── Verify the emailed code ───────────────────────────────────────────────────
   const handleVerifyCode = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signIn || !isLoaded) return;
+    if (!signIn) return;
     setError(null);
     setLoading(true);
     try {
@@ -384,12 +394,12 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [signIn, setActive, isLoaded, resetCode, navigate]);
+  }, [signIn, setActive, resetCode, navigate]);
 
   // ── Set new password after code verified ─────────────────────────────────────
   const handleSetPassword = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!signIn || !isLoaded) return;
+    if (!signIn) return;
     setError(null);
     setLoading(true);
     try {
@@ -406,7 +416,7 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  }, [signIn, setActive, isLoaded, newPassword, navigate, clerkError]);
+  }, [signIn, setActive, newPassword, navigate, clerkError]);
 
   const goBack = () => {
     setError(null);
@@ -443,6 +453,10 @@ export default function LoginPage() {
     otp: `We sent a 6-digit code to ${email || "your email address"}.`,
   };
 
+  // True while Clerk is still initialising AND the safety timeout hasn't fired.
+  // Used to disable buttons — once either condition clears, buttons become active.
+  const clerkBlocking = !isLoaded && !clerkTimedOut;
+
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col">
       <header className="bg-white border-b border-slate-200">
@@ -475,6 +489,27 @@ export default function LoginPage() {
           {/* Error banner */}
           {error && <ErrorBanner message={error} />}
 
+          {/* Clerk timeout warning — shown when Clerk SDK hasn't initialised
+              after 6 s. Buttons are re-enabled so the user is never stuck;
+              tapping them will surface a "temporarily unavailable" error if
+              Clerk truly failed, or succeed if it finished loading just after
+              the timeout fired. */}
+          {clerkTimedOut && !isLoaded && (
+            <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 font-medium leading-snug flex items-start gap-2">
+              <span className="flex-shrink-0 mt-px">⚠</span>
+              <div>
+                <p>Sign-in services are taking longer than expected. Check your connection.</p>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="underline font-semibold mt-1 hover:text-amber-900"
+                >
+                  Tap to reload
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* ── STEP: email ── */}
           {step === "email" && (
             <div className="space-y-3">
@@ -490,7 +525,7 @@ export default function LoginPage() {
                   {showApple && (
                     <button
                       onClick={handleApple}
-                      disabled={!isLoaded || loading}
+                      disabled={clerkBlocking || loading}
                       className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-900 bg-slate-900 hover:bg-slate-800 text-white font-semibold text-sm transition-colors disabled:opacity-50"
                       data-testid="btn-apple"
                       aria-label="Sign in with Apple"
@@ -503,7 +538,7 @@ export default function LoginPage() {
                   {/* Continue with Google */}
                   <button
                     onClick={handleGoogle}
-                    disabled={!isLoaded || loading}
+                    disabled={clerkBlocking || loading}
                     className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-semibold text-slate-700 text-sm transition-colors disabled:opacity-50"
                     data-testid="btn-google"
                   >
@@ -539,7 +574,7 @@ export default function LoginPage() {
                 </div>
                 <Button
                   type="submit"
-                  disabled={!email.trim() || !isLoaded || loading}
+                  disabled={!email.trim() || clerkBlocking || loading}
                   className="w-full h-11 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
                   data-testid="btn-email-continue"
                 >
@@ -687,7 +722,7 @@ export default function LoginPage() {
 
               <button
                 onClick={handleGoogle}
-                disabled={!isLoaded || loading}
+                disabled={clerkBlocking || loading}
                 className="w-full flex items-center justify-center gap-3 h-11 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 font-semibold text-slate-700 text-sm transition-colors disabled:opacity-50"
               >
                 <GoogleIcon />
@@ -746,7 +781,7 @@ export default function LoginPage() {
                   value={resetCode}
                   onChange={(e) => setResetCode(e.target.value)}
                   placeholder="6-digit code"
-                  className="h-11 rounded-xl border-slate-200 text-sm focus-visible:ring-blue-500"
+                  className="h-11 rounded-xl border-slate-200 text-sm focus-visible:ring-blue-505"
                   required
                   data-testid="input-reset-code"
                 />
