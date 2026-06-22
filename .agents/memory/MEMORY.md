@@ -1,2 +1,3 @@
 - [Diagnostic engine scoring lessons](diagnostic-engine-scoring.md) — false-positive triggers in FLAME_PROVEN_TERMS and broad-word triggers on general entries cascade into wrong primaries.
-- [Equipment Timeline architecture](equipment-timeline.md) — diagnostic events are virtual (synthesized from diagnostic_logs at query time), not stored in equipment_timeline; avoids dual-write sync issues.
+- [Equipment Timeline architecture](equipment-timeline.md) — diagnostic events are virtual (synthesized from diagnostic_ogs at query time), not stored in equipment_timeline; avoids dual-write sync issues.
+- [Capacitor iOS pk_test_ root cause](capacitor-ios-clerk-key.md) — dev env VITE_CLERK_PUBLISHABLE_KEY=pk_test_ bakes into iOS bundle; fix is build with pk_live_ then cap sync, not just changing source.
