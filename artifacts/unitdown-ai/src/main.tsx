@@ -4,6 +4,7 @@ import App from "./App";
 import "./index.css";
 import { installIOSPaymentGuard } from "./lib/iosPaymentGuard";
 import { isNative } from "./lib/platform";
+import { RootErrorBoundary } from "./components/RootErrorBoundary";
 
 // Install the iOS payment guard BEFORE React renders so that no Stripe or
 // external billing URL can slip through — regardless of how navigation is
@@ -51,24 +52,26 @@ const proxyUrl =
     : undefined;
 
 createRoot(document.getElementById("root")!).render(
-  <ClerkProvider
-    publishableKey={PUBLISHABLE_KEY}
-    proxyUrl={proxyUrl}
-    // ── Sign-in / sign-up paths live inside the app ──────────────────────────
-    signInUrl="/login"
-    signUpUrl="/signup"
-    // ── Post-auth redirects: always return to the effective origin ───────────
-    // In native Capacitor this is the production domain; on web it is the
-    // current window origin.  Using an explicit absolute URL prevents Clerk
-    // from resolving the redirect against its own registered home URL
-    // (shared-gateway.replit.com) or any stale URL in Clerk's instance config.
-    signInFallbackRedirectUrl={effectiveOrigin}
-    signUpFallbackRedirectUrl={effectiveOrigin}
-    afterSignInUrl={effectiveOrigin}
-    afterSignUpUrl={effectiveOrigin}
-    // ── Post sign-out: return to effective origin ────────────────────────────
-    afterSignOutUrl={effectiveOrigin}
-  >
-    <App />
-  </ClerkProvider>
+  <RootErrorBoundary>
+    <ClerkProvider
+      publishableKey={PUBLISHABLE_KEY}
+      proxyUrl={proxyUrl}
+      // ── Sign-in / sign-up paths live inside the app ──────────────────────────
+      signInUrl="/login"
+      signUpUrl="/signup"
+      // ── Post-auth redirects: always return to the effective origin ───────────
+      // In native Capacitor this is the production domain; on web it is the
+      // current window origin.  Using an explicit absolute URL prevents Clerk
+      // from resolving the redirect against its own registered home URL
+      // (shared-gateway.replit.com) or any stale URL in Clerk's instance config.
+      signInFallbackRedirectUrl={effectiveOrigin}
+      signUpFallbackRedirectUrl={effectiveOrigin}
+      afterSignInUrl={effectiveOrigin}
+      afterSignUpUrl={effectiveOrigin}
+      // ── Post sign-out: return to effective origin ────────────────────────────
+      afterSignOutUrl={effectiveOrigin}
+    >
+      <App />
+    </ClerkProvider>
+  </RootErrorBoundary>
 );
