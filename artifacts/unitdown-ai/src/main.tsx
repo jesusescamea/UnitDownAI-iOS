@@ -23,6 +23,32 @@ if (!PUBLISHABLE_KEY) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
 }
 
+// Clerk key type guard.
+//
+// pk_test_* keys are "dev instance" keys. They use a cookie-based "dev browser"
+// session-sync flow (a redirect to clerk.shared.lcl.dev that sets a
+// __clerk_db_jwt cookie). That flow is blocked in two situations:
+//
+//   1. Cross-origin iframes (Replit preview pane, any embedded context) because
+//      modern browsers reject SameSite=None cookies from cross-origin frames.
+//
+//   2. Through the /api/__clerk proxy — the proxy intercepts the dev_browser
+//      handshake and returns a 400, permanently preventing isLoaded from
+//      becoming true.
+//
+// SOLUTION: Always use pk_live_* in VITE_CLERK_PUBLISHABLE_KEY.
+// Development/testing on localhost still works fine with live keys.
+const isLiveKey = PUBLISHABLE_KEY.startsWith("pk_live_");
+
+if (!isLiveKey && import.meta.env.PROD) {
+  // Deployed to production with a test key — this will cause a proxy 400 and
+  // a permanent Clerk init failure. Log a loud warning.
+  console.error(
+    "[UnitDown] VITE_CLERK_PUBLISHABLE_KEY is a pk_test_ key. " +
+    "Production deployments must use a pk_live_ key or Clerk will fail to initialize."
+  );
+}
+
 // The canonical production web origin.  Used as the Clerk proxy base and for
 // post-auth redirects when we are running inside the Capacitor native shell.
 //
@@ -50,9 +76,15 @@ const effectiveOrigin = isNative() ? PRODUCTION_ORIGIN : window.location.origin;
 // Route all Clerk Frontend API calls through the server-side proxy at
 // /api/__clerk so auth works on custom domains without DNS CNAME setup.
 //
-// Skip the proxy in local web development (PROD=false AND not native).
+// The proxy is ONLY used with live keys:
+//   • pk_test_ + proxy → Clerk's dev_browser endpoint returns 400 through the
+//     proxy (the proxy forwards a different Host header), permanently blocking init.
+//   • pk_test_ without proxy → dev browser cookie is blocked in cross-origin
+//     iframes (Replit preview), but at least localhost dev works.
+//   • pk_live_ + proxy → correct production path for deployed web and iOS.
+//   • pk_live_ without proxy → correct path in Vite dev mode (direct FAPI call).
 const proxyUrl =
-  isNative() || import.meta.env.PROD
+  isLiveKey && (isNative() || import.meta.env.PROD)
     ? `${effectiveOrigin}/api/__clerk`
     : undefined;
 

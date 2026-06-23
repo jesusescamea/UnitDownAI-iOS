@@ -498,11 +498,20 @@ export default function LoginPage() {
             <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-sm text-amber-800 font-medium leading-snug flex items-start gap-2">
               <span className="flex-shrink-0 mt-px">⚠</span>
               <div>
-                <p>Sign-in services are taking longer than expected. Check your connection.</p>
+                <p>Sign-in is taking longer than expected.</p>
+                {import.meta.env.DEV && !import.meta.env.VITE_CLERK_PUBLISHABLE_KEY?.startsWith("pk_live_") ? (
+                  <p className="mt-1 text-xs font-normal">
+                    Dev mode with a <code className="font-mono">pk_test_</code> key — Clerk cannot initialize in a
+                    cross-origin iframe. Set <code className="font-mono">VITE_CLERK_PUBLISHABLE_KEY</code> to a{" "}
+                    <code className="font-mono">pk_live_</code> key in Replit Secrets.
+                  </p>
+                ) : (
+                  <p className="mt-1 text-xs font-normal">Check your connection and try reloading.</p>
+                )}
                 <button
                   type="button"
                   onClick={() => window.location.reload()}
-                  className="underline font-semibold mt-1 hover:text-amber-900"
+                  className="underline font-semibold mt-1.5 hover:text-amber-900"
                 >
                   Tap to reload
                 </button>
