@@ -25,6 +25,7 @@ import DiagnosticLogDetailPage from "./pages/DiagnosticLogDetailPage";
 import InstallPromptBanner from "./components/InstallPromptBanner";
 import EmailWallModal from "./components/EmailWallModal";
 import { getFingerprint } from "./lib/fingerprint";
+import { applyTheme } from "./lib/theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -84,6 +85,8 @@ import {
   ThumbsUp,
   ThumbsDown,
   Globe,
+  Moon,
+  Sun,
 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -1693,6 +1696,22 @@ function Home() {
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [selectedUnitLabel, setSelectedUnitLabel] = useState<string | null>(null);
   const { signOut: clerkSignOut } = useClerk();
+
+  // Dark mode — read from html class set by initTheme() at startup
+  const [darkMode, setDarkMode] = useState(() =>
+    document.documentElement.classList.contains("dark")
+  );
+  const toggleDarkMode = useCallback(() => {
+    const next = !darkMode;
+    setDarkMode(next);
+    applyTheme(next);
+    try {
+      const raw = localStorage.getItem("unitdown_prefs");
+      const prefs = raw ? JSON.parse(raw) : {};
+      localStorage.setItem("unitdown_prefs", JSON.stringify({ ...prefs, darkMode: next }));
+    } catch {}
+  }, [darkMode]);
+
   // Google Play closed testing whitelist — remove or replace after testing.
   const testerEmail = clerkUser?.primaryEmailAddress?.emailAddress;
   const pendingSymptomsRef = useRef<string>("");
@@ -2206,18 +2225,28 @@ function Home() {
                     </Button>
                   </>
                 ) : null}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleLogout}
-                  className="flex text-xs sm:text-sm font-semibold text-slate-500 hover:text-red-600 hover:bg-red-50"
-                  data-testid="nav-logout"
-                >
-                  <LogOut className="w-3.5 h-3.5 mr-1.5" />
-                  Logout
-                </Button>
               </>
             )}
+
+            {/* Dark mode toggle — always visible */}
+            <button
+              onClick={toggleDarkMode}
+              aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+              className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 px-2 sm:px-3 py-1.5 rounded-lg transition-colors"
+              data-testid="nav-dark-mode-toggle"
+            >
+              {darkMode ? (
+                <>
+                  <Sun className="w-4 h-4" />
+                  <span className="hidden sm:inline">Light</span>
+                </>
+              ) : (
+                <>
+                  <Moon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Dark</span>
+                </>
+              )}
+            </button>
           </div>
         </div>
       </header>
@@ -3095,6 +3124,16 @@ function Home() {
             <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-semibold" aria-label="Footer navigation">
               <Link href="/legal" className="hover:text-slate-200 transition-colors" data-testid="footer-legal">Legal</Link>
               <Link href="/sponsor" className="hover:text-blue-400 transition-colors text-blue-500 font-bold" data-testid="footer-sponsor">Sponsor</Link>
+              {clerkLoaded && clerkUser && (
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-1.5 text-slate-400 hover:text-red-400 transition-colors"
+                  data-testid="footer-logout"
+                >
+                  <LogOut className="w-3.5 h-3.5" />
+                  Logout
+                </button>
+              )}
             </nav>
 
             {isPro ? (
