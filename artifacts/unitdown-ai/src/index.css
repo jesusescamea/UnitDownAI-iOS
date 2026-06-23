@@ -202,8 +202,9 @@ html.dark .bg-slate-200 { background-color: hsl(217 32% 18%) !important; }
 /* Header backdrop (sticky nav uses bg-white/80 backdrop-blur) */
 html.dark [class*="bg-white\/"] { background-color: hsl(222 47% 9% / 0.92) !important; }
 
-/* Hero gradient overlay — suppress the light blue wash so dark bg shows through */
-html.dark [class*="from-blue-50"] { background-image: none !important; }
+/* Hero gradient overlay — suppress the light blue wash so dark bg shows through.
+   Target the absolute-positioned -z-10 decorative overlays by zeroing their opacity. */
+html.dark [class*="from-blue-50"] { opacity: 0 !important; }
 
 /* Diagnostic card uses rounded-3xl on sm+ screens; ensure bg-white override catches it */
 html.dark .rounded-3xl.bg-white { background-color: hsl(222 47% 10%) !important; }

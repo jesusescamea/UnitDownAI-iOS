@@ -2104,7 +2104,7 @@ function Home() {
   }, [clientId, testerEmail, openModal, runDiagnosis, refreshUsageStatus]);
 
   return (
-    <div className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-[#f8fafc] text-slate-900 font-sans selection:bg-blue-100 flex flex-col">
+    <div className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-slate-50 text-slate-900 font-sans selection:bg-blue-100 flex flex-col">
 
       {/* Email Wall Modal */}
       <EmailWallModal
