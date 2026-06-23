@@ -5,6 +5,11 @@ import "./index.css";
 import { installIOSPaymentGuard } from "./lib/iosPaymentGuard";
 import { isNative } from "./lib/platform";
 import { RootErrorBoundary } from "./components/RootErrorBoundary";
+import { initTheme } from "./lib/theme";
+
+// Restore saved dark/light preference before React renders so there is no
+// flash of the wrong theme on first paint.
+initTheme();
 
 // Install the iOS payment guard BEFORE React renders so that no Stripe or
 // external billing URL can slip through — regardless of how navigation is

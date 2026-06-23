@@ -183,3 +183,66 @@
     pointer-events: none;
   }
 }
+
+/* ── Dark mode overrides ───────────────────────────────────────────────────────
+   The app uses hardcoded Tailwind slate color classes throughout. These rules
+   remap them when html.dark is present so every screen responds to the toggle
+   without requiring per-component dark: variant edits.
+   ──────────────────────────────────────────────────────────────────────────── */
+html.dark {
+  color-scheme: dark;
+}
+
+/* Page & card backgrounds */
+html.dark .bg-white { background-color: hsl(222 47% 9%) !important; }
+html.dark .bg-slate-50 { background-color: hsl(222 47% 6%) !important; }
+html.dark .bg-slate-100 { background-color: hsl(222 47% 12%) !important; }
+html.dark .bg-slate-200 { background-color: hsl(217 32% 18%) !important; }
+
+/* Header backdrop (sticky nav uses bg-white/80 backdrop-blur) */
+html.dark [class*="bg-white\/"] { background-color: hsl(222 47% 9% / 0.92) !important; }
+
+/* Text */
+html.dark .text-slate-900 { color: hsl(210 40% 96%) !important; }
+html.dark .text-slate-800 { color: hsl(210 40% 88%) !important; }
+html.dark .text-slate-700 { color: hsl(210 40% 78%) !important; }
+html.dark .text-slate-600 { color: hsl(215 20% 65%) !important; }
+html.dark .text-slate-500 { color: hsl(215 20% 56%) !important; }
+html.dark .text-slate-400 { color: hsl(215 20% 47%) !important; }
+html.dark .text-slate-300 { color: hsl(215 20% 38%) !important; }
+
+/* Borders */
+html.dark .border-slate-100 { border-color: hsl(217 32% 14%) !important; }
+html.dark .border-slate-200 { border-color: hsl(217 32% 20%) !important; }
+html.dark .border-slate-300 { border-color: hsl(217 32% 26%) !important; }
+
+/* Hover states */
+html.dark .hover\:bg-slate-50:hover { background-color: hsl(222 47% 12%) !important; }
+html.dark .hover\:bg-slate-100:hover { background-color: hsl(222 47% 14%) !important; }
+html.dark .hover\:bg-white:hover { background-color: hsl(222 47% 12%) !important; }
+html.dark .hover\:border-slate-300:hover { border-color: hsl(217 32% 28%) !important; }
+
+/* Form inputs */
+html.dark input,
+html.dark textarea,
+html.dark select {
+  background-color: hsl(222 47% 12%) !important;
+  border-color: hsl(217 32% 22%) !important;
+  color: hsl(210 40% 94%) !important;
+}
+html.dark input::placeholder,
+html.dark textarea::placeholder { color: hsl(215 20% 48%) !important; }
+
+/* Skeleton loaders */
+html.dark .bg-slate-700 { background-color: hsl(217 32% 22%) !important; }
+
+/* AccountPage Section component uses bg-white on the card wrapper */
+html.dark .rounded-2xl.bg-white,
+html.dark .rounded-2xl.border.bg-white { background-color: hsl(222 47% 10%) !important; }
+
+/* Diagnostic result card dark header rows — keep intentionally dark, just lift slightly */
+html.dark .bg-slate-900 { background-color: hsl(222 47% 14%) !important; }
+
+/* Subtle elevation layers */
+html.dark [class*="shadow-sm"] { box-shadow: 0 1px 3px hsl(0 0% 0% / 0.4) !important; }
+html.dark [class*="shadow-md"] { box-shadow: 0 4px 6px hsl(0 0% 0% / 0.5) !important; }

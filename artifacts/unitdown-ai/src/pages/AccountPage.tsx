@@ -309,6 +309,9 @@ export default function AccountPage() {
     setPrefs((prev) => {
       const next = { ...prev, ...update };
       savePrefs(next);
+      if ("darkMode" in update) {
+        import("../lib/theme").then(({ applyTheme }) => applyTheme(next.darkMode));
+      }
       return next;
     });
   }
@@ -783,11 +786,23 @@ export default function AccountPage() {
             <div className="flex items-center justify-between py-3 border-t border-slate-100">
               <div>
                 <p className="text-sm font-semibold text-slate-700">Dark Mode</p>
-                <p className="text-xs text-slate-400 mt-0.5">Coming soon</p>
+                <p className="text-xs text-slate-400 mt-0.5">Easier on the eyes in low light</p>
               </div>
-              <div className="w-11 h-6 bg-slate-200 rounded-full opacity-50 cursor-not-allowed flex items-center px-0.5">
-                <div className="w-5 h-5 bg-white rounded-full shadow-sm" />
-              </div>
+              <button
+                role="switch"
+                aria-checked={prefs.darkMode}
+                onClick={() => updatePrefs({ darkMode: !prefs.darkMode })}
+                className={`relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                  prefs.darkMode ? "bg-blue-600" : "bg-slate-200"
+                }`}
+                data-testid="toggle-dark-mode"
+              >
+                <span
+                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${
+                    prefs.darkMode ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
             </div>
           </div>
         </Section>
