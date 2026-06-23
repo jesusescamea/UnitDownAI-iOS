@@ -202,6 +202,16 @@ html.dark .bg-slate-200 { background-color: hsl(217 32% 18%) !important; }
 /* Header backdrop (sticky nav uses bg-white/80 backdrop-blur) */
 html.dark [class*="bg-white\/"] { background-color: hsl(222 47% 9% / 0.92) !important; }
 
+/* Hero gradient overlay — suppress the light blue wash so dark bg shows through */
+html.dark [class*="from-blue-50"] { background-image: none !important; }
+
+/* Diagnostic card uses rounded-3xl on sm+ screens; ensure bg-white override catches it */
+html.dark .rounded-3xl.bg-white { background-color: hsl(222 47% 10%) !important; }
+
+/* Opacity-modified borders (e.g. border-slate-200/60) — remap same as border-slate-200 */
+html.dark [class*="border-slate-200\/"] { border-color: hsl(217 32% 20%) !important; }
+html.dark [class*="border-slate-100\/"] { border-color: hsl(217 32% 14%) !important; }
+
 /* Text */
 html.dark .text-slate-900 { color: hsl(210 40% 96%) !important; }
 html.dark .text-slate-800 { color: hsl(210 40% 88%) !important; }
