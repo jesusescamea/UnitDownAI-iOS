@@ -18,8 +18,24 @@ if (Number.isNaN(port) || port <= 0) {
 // In production / CI the app is served from the root, so default to "/".
 const basePath = process.env.BASE_PATH ?? "/";
 
+// Replit's secret-injection layer can cache VITE_CLERK_PUBLISHABLE_KEY across
+// workflow restarts, serving a stale pk_test_ value even after the secret is
+// updated in the Secrets panel. CLERK_PUBLISHABLE_KEY propagates correctly.
+// This define bridges the gap: if VITE_ is stale (not pk_live_), fall back to
+// the correctly-propagated CLERK_PUBLISHABLE_KEY.
+const clerkPublishableKey = (() => {
+  const viteKey = process.env.VITE_CLERK_PUBLISHABLE_KEY ?? "";
+  if (viteKey.startsWith("pk_live_")) return viteKey;
+  const fallback = process.env.CLERK_PUBLISHABLE_KEY ?? "";
+  if (fallback) return fallback;
+  return viteKey; // return whatever we have (may be empty or pk_test_)
+})();
+
 export default defineConfig({
   base: basePath,
+  define: {
+    "import.meta.env.VITE_CLERK_PUBLISHABLE_KEY": JSON.stringify(clerkPublishableKey),
+  },
   plugins: [
     react(),
     tailwindcss(),
