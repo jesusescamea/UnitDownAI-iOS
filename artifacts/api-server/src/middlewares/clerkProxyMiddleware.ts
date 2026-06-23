@@ -53,8 +53,13 @@ export function getClerkProxyHost(req: {
 }
 
 export function clerkProxyMiddleware(): RequestHandler {
-  // Only run proxy in production — Clerk proxying doesn't work for dev instances
-  if (process.env.NODE_ENV !== "production") {
+  // Skip proxy for test/dev Clerk instances (pk_test_ keys use a dev-browser
+  // cookie flow that breaks through a proxy). For live keys the proxy works in
+  // any environment and is required when clerk.<custom-domain> is not reachable
+  // (e.g. DNS CNAME not configured) — the proxy forwards to frontend-api.clerk.dev
+  // which is always reachable, including the clerk.browser.js script load.
+  const publishableKey = process.env.CLERK_PUBLISHABLE_KEY ?? "";
+  if (!publishableKey.startsWith("pk_live_")) {
     return (_req, _res, next) => next();
   }
 

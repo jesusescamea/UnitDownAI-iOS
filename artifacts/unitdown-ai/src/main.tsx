@@ -76,17 +76,18 @@ const effectiveOrigin = isNative() ? PRODUCTION_ORIGIN : window.location.origin;
 // Route all Clerk Frontend API calls through the server-side proxy at
 // /api/__clerk so auth works on custom domains without DNS CNAME setup.
 //
-// The proxy is ONLY used with live keys:
+// The proxy is used with ALL live keys in ALL environments:
 //   • pk_test_ + proxy → Clerk's dev_browser endpoint returns 400 through the
 //     proxy (the proxy forwards a different Host header), permanently blocking init.
 //   • pk_test_ without proxy → dev browser cookie is blocked in cross-origin
 //     iframes (Replit preview), but at least localhost dev works.
-//   • pk_live_ + proxy → correct production path for deployed web and iOS.
-//   • pk_live_ without proxy → correct path in Vite dev mode (direct FAPI call).
-const proxyUrl =
-  isLiveKey && (isNative() || import.meta.env.PROD)
-    ? `${effectiveOrigin}/api/__clerk`
-    : undefined;
+//   • pk_live_ + proxy → correct path everywhere — also fixes script loading:
+//     when proxyUrl is set, Clerk loads clerk.browser.js from the proxy host
+//     (/api/__clerk/npm/...) instead of the FAPI domain (clerk.unitdown.org),
+//     which may not be reachable in some environments (e.g. Replit preview).
+//   • pk_live_ without proxy → direct FAPI load; fails if clerk.unitdown.org
+//     is unreachable (no DNS CNAME configured).
+const proxyUrl = isLiveKey ? `${effectiveOrigin}/api/__clerk` : undefined;
 
 createRoot(document.getElementById("root")!).render(
   <RootErrorBoundary>
