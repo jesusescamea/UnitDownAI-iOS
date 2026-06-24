@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TimelineAddModal from "@/components/TimelineAddModal";
 import EquipmentResources from "@/components/EquipmentResources";
+import PhotoAlbum from "@/components/PhotoAlbum";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -498,6 +499,11 @@ export default function UnitDetailPage() {
             />
           </div>
         )}
+
+        {/* ── Photos & Notes ───────────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-4">
+          <PhotoAlbum unitId={unit.id} clientId={clientId} />
+        </div>
 
         {/* ── Equipment Timeline ───────────────────────────────────────── */}
         <div>

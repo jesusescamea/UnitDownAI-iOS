@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@clerk/express": "^2.1.11",
+    "@google-cloud/storage": "^7.21.0",
     "@types/multer": "^2.1.0",
     "@workspace/api-zod": "workspace:*",
     "@workspace/db": "workspace:*",
@@ -18,7 +19,9 @@
     "cookie-parser": "^1.4.7",
     "cors": "^2",
     "drizzle-orm": "catalog:",
+    "zod": "catalog:",
     "express": "^5",
+    "google-auth-library": "^10.7.0",
     "http-proxy-middleware": "^3.0.5",
     "multer": "^2.1.1",
     "pino": "^9",

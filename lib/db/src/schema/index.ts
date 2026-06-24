@@ -5,3 +5,4 @@ export * from "./diagnosticHistory";
 export * from "./unitRecords";
 export * from "./diagnosticLogs";
 export * from "./equipmentTimeline";
+export * from "./unitPhotos";

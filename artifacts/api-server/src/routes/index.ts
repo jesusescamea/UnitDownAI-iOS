@@ -12,6 +12,8 @@ import diagnosticLogsRouter from "./diagnosticLogs";
 import nameplateRouter from "./nameplate";
 import timelineRouter from "./timeline";
 import resourcesRouter from "./resources";
+import storageRouter from "./storage";
+import unitPhotosRouter from "./unitPhotos";
 
 const router: IRouter = Router();
 
@@ -28,5 +30,7 @@ router.use(diagnosticLogsRouter);
 router.use(nameplateRouter);
 router.use(timelineRouter);
 router.use(resourcesRouter);
+router.use(storageRouter);
+router.use(unitPhotosRouter);
 
 export default router;
