@@ -81,6 +81,7 @@ timelineRouter.get("/units/:unitId/timeline", async (req: Request, res: Response
       linkedDiagnosticLogId: entry.linkedDiagnosticLogId,
       eventDate: Number(entry.eventDate),
       createdAt: entry.createdAt.toISOString(),
+      updatedAt: entry.updatedAt ? entry.updatedAt.toISOString() : null,
       confidencePercent: null as number | null,
       source: "manual" as const,
     }));
@@ -186,6 +187,7 @@ timelineRouter.patch("/timeline/:id", async (req: Request, res: Response) => {
 
   const entryId = String(req.params.id);
   const validStatuses = ["unresolved", "monitoring", "resolved"];
+  const validTypes   = ["repair", "note", "maintenance", "scan"];
   const updates: Record<string, unknown> = { updatedAt: new Date() };
 
   if (typeof fields.title === "string" && fields.title.trim()) updates.title = fields.title.slice(0, 500);
@@ -194,6 +196,8 @@ timelineRouter.patch("/timeline/:id", async (req: Request, res: Response) => {
   if (typeof fields.cost === "string") updates.cost = fields.cost.slice(0, 100);
   if (typeof fields.parts === "string") updates.parts = fields.parts.slice(0, 1000);
   if (typeof fields.status === "string" && validStatuses.includes(fields.status)) updates.status = fields.status;
+  if (typeof fields.eventType === "string" && validTypes.includes(fields.eventType)) updates.eventType = fields.eventType;
+  if (typeof fields.eventDate === "number") updates.eventDate = fields.eventDate;
 
   try {
     const [existing] = await db

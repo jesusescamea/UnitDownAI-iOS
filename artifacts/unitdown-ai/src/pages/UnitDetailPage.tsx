@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation, useParams } from "wouter";
 import { useUser } from "@clerk/clerk-react";
 import {
-  ChevronRight, Wrench, ThermometerSnowflake, Edit2, Trash2,
+  ChevronRight, Wrench, ThermometerSnowflake, Edit2, Trash2, Pencil,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
   MapPin, Activity, Loader2, FileText, Settings, Camera, Search,
 } from "lucide-react";
@@ -52,6 +52,7 @@ interface TimelineEvent {
   linkedDiagnosticLogId: string | null;
   eventDate: number;
   createdAt: string;
+  updatedAt?: string | null;
   confidencePercent: number | null;
   source: "log" | "manual";
 }
@@ -103,15 +104,23 @@ function TimelineCard({
   onToggle,
   onNavigate,
   onDelete,
+  onEdit,
 }: {
   event: TimelineEvent;
   expanded: boolean;
   onToggle: () => void;
   onNavigate: (path: string) => void;
   onDelete: (id: string) => void;
+  onEdit: (event: TimelineEvent) => void;
 }) {
   const typeCfg = eventTypeConfig(event.eventType);
   const stCfg = event.status ? statusConfig(event.status) : null;
+
+  const isEdited =
+    event.source === "manual" &&
+    !!event.updatedAt &&
+    !!event.createdAt &&
+    new Date(event.updatedAt).getTime() - new Date(event.createdAt).getTime() > 1000;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
@@ -137,6 +146,11 @@ function TimelineCard({
                   <stCfg.Icon className="w-3 h-3" />
                   {stCfg.label}
                 </Badge>
+              )}
+              {isEdited && (
+                <span className="text-[10px] font-semibold text-slate-400 bg-slate-100 rounded px-1.5 py-0.5 flex-shrink-0">
+                  Edited
+                </span>
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5 flex-wrap">
@@ -207,13 +221,22 @@ function TimelineCard({
               <span />
             )}
             {event.source === "manual" && (
-              <button
-                onClick={() => onDelete(event.id)}
-                className="text-xs text-slate-400 hover:text-red-500 flex items-center gap-1 transition-colors"
-              >
-                <Trash2 className="w-3 h-3" />
-                Remove
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => onEdit(event)}
+                  className="text-xs text-slate-400 hover:text-blue-600 flex items-center gap-1 transition-colors"
+                >
+                  <Pencil className="w-3 h-3" />
+                  Edit
+                </button>
+                <button
+                  onClick={() => onDelete(event.id)}
+                  className="text-xs text-slate-400 hover:text-red-500 flex items-center gap-1 transition-colors"
+                >
+                  <Trash2 className="w-3 h-3" />
+                  Remove
+                </button>
+              </div>
             )}
           </div>
         </div>
@@ -252,6 +275,7 @@ export default function UnitDetailPage() {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [showAddModal, setShowAddModal] = useState(false);
   const [addDefaultType, setAddDefaultType] = useState<"note" | "repair" | "maintenance">("note");
+  const [editingEvent, setEditingEvent] = useState<TimelineEvent | null>(null);
 
   const clientId = getClientId();
   const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
@@ -344,6 +368,15 @@ export default function UnitDetailPage() {
       // silent — entry stays in list on failure
     }
   }, [clientId]);
+
+  const handleUpdateEvent = useCallback((updated: TimelineEvent) => {
+    setEvents((prev) =>
+      prev
+        .map((e) => (e.id === updated.id ? updated : e))
+        .sort((a, b) => b.eventDate - a.eventDate)
+    );
+    setEditingEvent(null);
+  }, []);
 
   const openAddModal = useCallback((type: "note" | "repair" | "maintenance") => {
     setAddDefaultType(type);
@@ -619,6 +652,7 @@ export default function UnitDetailPage() {
                   onToggle={() => toggleExpand(event.id)}
                   onNavigate={navigate}
                   onDelete={handleDeleteEvent}
+                  onEdit={setEditingEvent}
                 />
               ))}
             </div>
@@ -635,6 +669,18 @@ export default function UnitDetailPage() {
           defaultType={addDefaultType}
           onSave={handleAddEvent}
           onClose={() => setShowAddModal(false)}
+        />
+      )}
+
+      {/* Edit Entry modal */}
+      {editingEvent && (
+        <TimelineAddModal
+          unitId={unit.id}
+          clientId={clientId}
+          initialEvent={editingEvent}
+          onSave={handleAddEvent}
+          onUpdate={handleUpdateEvent}
+          onClose={() => setEditingEvent(null)}
         />
       )}
     </div>

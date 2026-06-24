@@ -17,6 +17,7 @@ interface TimelineEvent {
   linkedDiagnosticLogId: string | null;
   eventDate: number;
   createdAt: string;
+  updatedAt?: string | null;
   confidencePercent: number | null;
   source: "log" | "manual";
 }
@@ -25,7 +26,9 @@ interface Props {
   unitId: string;
   clientId: string;
   defaultType?: EventType;
+  initialEvent?: TimelineEvent;
   onSave: (event: TimelineEvent) => void;
+  onUpdate?: (event: TimelineEvent) => void;
   onClose: () => void;
 }
 
@@ -46,15 +49,41 @@ function todayStr(): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
 
-export default function TimelineAddModal({ unitId, clientId, defaultType = "note", onSave, onClose }: Props) {
-  const [eventType, setEventType] = useState<EventType>(defaultType);
-  const [title, setTitle] = useState("");
-  const [dateStr, setDateStr] = useState(todayStr);
-  const [description, setDescription] = useState("");
-  const [status, setStatus] = useState<StatusValue>("unresolved");
-  const [technicianNotes, setTechnicianNotes] = useState("");
-  const [cost, setCost] = useState("");
-  const [parts, setParts] = useState("");
+function tsToDateStr(ts: number): string {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function toEventType(val: string): EventType {
+  if (val === "repair" || val === "maintenance") return val;
+  return "note";
+}
+
+export default function TimelineAddModal({
+  unitId,
+  clientId,
+  defaultType = "note",
+  initialEvent,
+  onSave,
+  onUpdate,
+  onClose,
+}: Props) {
+  const isEditMode = !!initialEvent;
+
+  const [eventType, setEventType] = useState<EventType>(
+    initialEvent ? toEventType(initialEvent.eventType) : defaultType
+  );
+  const [title, setTitle] = useState(initialEvent?.title ?? "");
+  const [dateStr, setDateStr] = useState(
+    initialEvent ? tsToDateStr(initialEvent.eventDate) : todayStr()
+  );
+  const [description, setDescription] = useState(initialEvent?.description ?? "");
+  const [status, setStatus] = useState<StatusValue>(
+    (initialEvent?.status as StatusValue | null) ?? "unresolved"
+  );
+  const [technicianNotes, setTechnicianNotes] = useState(initialEvent?.technicianNotes ?? "");
+  const [cost, setCost] = useState(initialEvent?.cost ?? "");
+  const [parts, setParts] = useState(initialEvent?.parts ?? "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -74,34 +103,63 @@ export default function TimelineAddModal({ unitId, clientId, defaultType = "note
     const [year, month, day] = dateStr.split("-").map(Number);
     const eventDate = new Date(year, month - 1, day, 12, 0, 0).getTime();
 
-    const payload = {
-      clientId,
-      event: {
-        eventType,
-        title: title.trim(),
-        description: description.trim() || null,
-        status: (eventType === "repair") ? status : null,
-        technicianNotes: technicianNotes.trim() || null,
-        cost: (eventType !== "note") ? (cost.trim() || null) : null,
-        parts: (eventType !== "note") ? (parts.trim() || null) : null,
-        eventDate,
-      },
-    };
-
     try {
-      const res = await fetch(`/api/units/${unitId}/timeline`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "Save failed");
-      onSave(data.event as TimelineEvent);
+      if (isEditMode && initialEvent) {
+        // ── Edit mode: PATCH existing entry ──────────────────────────────────
+        const payload = {
+          clientId,
+          title: title.trim(),
+          eventType,
+          description: description.trim() || null,
+          status: (eventType === "repair") ? status : null,
+          technicianNotes: technicianNotes.trim() || null,
+          cost: (eventType !== "note") ? (cost.trim() || null) : null,
+          parts: (eventType !== "note") ? (parts.trim() || null) : null,
+          eventDate,
+        };
+
+        const res = await fetch(`/api/timeline/${initialEvent.id}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Update failed");
+        onUpdate?.(data.event as TimelineEvent);
+      } else {
+        // ── Add mode: POST new entry ──────────────────────────────────────────
+        const payload = {
+          clientId,
+          event: {
+            eventType,
+            title: title.trim(),
+            description: description.trim() || null,
+            status: (eventType === "repair") ? status : null,
+            technicianNotes: technicianNotes.trim() || null,
+            cost: (eventType !== "note") ? (cost.trim() || null) : null,
+            parts: (eventType !== "note") ? (parts.trim() || null) : null,
+            eventDate,
+          },
+        };
+
+        const res = await fetch(`/api/units/${unitId}/timeline`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error ?? "Save failed");
+        onSave(data.event as TimelineEvent);
+      }
     } catch (err: any) {
       setError(err.message ?? "Failed to save");
       setSaving(false);
     }
-  }, [unitId, clientId, eventType, title, dateStr, description, status, technicianNotes, cost, parts, onSave]);
+  }, [
+    isEditMode, initialEvent, unitId, clientId,
+    eventType, title, dateStr, description, status, technicianNotes, cost, parts,
+    onSave, onUpdate,
+  ]);
 
   return (
     <div className="fixed inset-0 z-[300] flex flex-col justify-end">
@@ -117,7 +175,9 @@ export default function TimelineAddModal({ unitId, clientId, defaultType = "note
 
         {/* Header */}
         <div className="flex-shrink-0 flex items-center justify-between px-5 pb-3">
-          <h2 className="text-base font-extrabold text-slate-900">Add Timeline Entry</h2>
+          <h2 className="text-base font-extrabold text-slate-900">
+            {isEditMode ? "Edit Entry" : "Add Timeline Entry"}
+          </h2>
           <button
             onClick={onClose}
             className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 hover:bg-slate-200 transition-colors"
@@ -287,7 +347,7 @@ export default function TimelineAddModal({ unitId, clientId, defaultType = "note
             className="flex-1 h-11 rounded-xl bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-sm transition-colors flex items-center justify-center gap-2"
           >
             {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
-            {saving ? "Saving…" : "Save Entry"}
+            {saving ? "Saving…" : isEditMode ? "Save Changes" : "Save Entry"}
           </button>
         </div>
       </div>
