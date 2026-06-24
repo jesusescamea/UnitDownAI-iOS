@@ -4,8 +4,8 @@ import { X, Camera, Loader2, Upload, Pencil } from "lucide-react";
 // ─── Constants ────────────────────────────────────────────────────────────────
 const ANALYSIS_W      = 160;     // analysis canvas width (px)
 const ANALYSIS_SKIP   = 6;       // analyse every 6th RAF frame ≈ 10 fps
-const STABLE_MS       = 1_000;   // wall-clock ms of continuous stability required
-const MOVE_MAD_THRESH = 10;      // mean-abs-diff in gray levels that counts as "moving"
+const STABLE_MS       = 500;     // wall-clock ms of continuous stability required (was 1000)
+const MOVE_MAD_THRESH = 18;      // mean-abs-diff in gray levels that counts as "moving" (was 10)
 const HINT_MS         = 30_000;  // show hint after 30 s; scanner keeps running
 
 // Image-quality thresholds
@@ -70,13 +70,13 @@ const INSTRUCTION: Record<Guidance, string> = {
   too_dark:    "Use more light",
   glare:       "Reduce glare",
   overexposed: "Reduce glare",
-  find_plate:  "Find the equipment data plate",
+  find_plate:  "Center nameplate",
   move_closer: "Move closer",
-  center_plate:"Center the data plate",
+  center_plate:"Center nameplate",
   too_blurry:  "Hold steady",
   straighten:  "Straighten camera",
-  unreadable:  "Move closer until text becomes readable",
-  good:        "Data plate found — hold steady",
+  unreadable:  "Move closer — text must be visible",
+  good:        "Nameplate detected",
 };
 
 const GUIDE_CLR: Record<Guidance, string> = {
@@ -384,6 +384,54 @@ function analyzeFrame(
   return { qualifies: true, guidance: "good", edgeDensity, nameplateDetected: true, readabilityDetected: true, gray };
 }
 
+// ─── Image preprocessing for OCR ──────────────────────────────────────────────
+// Applies adaptive contrast boost + 3×3 unsharp-mask sharpening in-place.
+// Run after drawImage() and before toBlob() to improve legibility of faded,
+// glare-washed, or low-contrast nameplates before sending to the OCR API.
+function preprocessForOCR(ctx: CanvasRenderingContext2D, w: number, h: number): void {
+  if (w < 2 || h < 2) return;
+  const raw = ctx.getImageData(0, 0, w, h);
+  const src = new Uint8ClampedArray(raw.data); // snapshot of original pixels
+  const n   = w * h;
+
+  // Compute mean luminance to choose adaptive contrast factor
+  let lumSum = 0;
+  for (let i = 0; i < n; i++) lumSum += (src[i * 4] * 77 + src[i * 4 + 1] * 150 + src[i * 4 + 2] * 29) >> 8;
+  const meanLum = lumSum / n;
+  // More aggressive boost when image is dark or washed-out
+  const cf = (meanLum < 90 || meanLum > 185) ? 1.45 : 1.30;
+
+  // Pass 1: contrast boost → intermediate buffer
+  const contrast = new Uint8ClampedArray(src.length);
+  for (let i = 0; i < n; i++) {
+    const o = i * 4;
+    contrast[o]     = Math.min(255, Math.max(0, Math.round((src[o]     - 128) * cf + 128)));
+    contrast[o + 1] = Math.min(255, Math.max(0, Math.round((src[o + 1] - 128) * cf + 128)));
+    contrast[o + 2] = Math.min(255, Math.max(0, Math.round((src[o + 2] - 128) * cf + 128)));
+    contrast[o + 3] = 255;
+  }
+
+  // Pass 2: unsharp-mask kernel [0,−1,0; −1,5,−1; 0,−1,0] — reads contrast[], writes raw.data
+  const d = raw.data;
+  d.set(contrast); // pre-fill edges with contrast-boosted values
+  for (let row = 1; row < h - 1; row++) {
+    for (let col = 1; col < w - 1; col++) {
+      const i = (row * w + col) * 4;
+      for (let c = 0; c < 3; c++) {
+        d[i + c] = Math.min(255, Math.max(0,
+          5 * contrast[i + c]
+          - contrast[((row - 1) * w + col) * 4 + c]
+          - contrast[((row + 1) * w + col) * 4 + c]
+          - contrast[(row * w + col - 1)    * 4 + c]
+          - contrast[(row * w + col + 1)    * 4 + c],
+        ));
+      }
+      d[i + 3] = 255;
+    }
+  }
+  ctx.putImageData(raw, 0, 0);
+}
+
 // ─── Capture helpers ──────────────────────────────────────────────────────────
 function getCropCoords(video: HTMLVideoElement, guide: Guide) {
   const vW = video.videoWidth,  vH = video.videoHeight;
@@ -398,19 +446,35 @@ function getCropCoords(video: HTMLVideoElement, guide: Guide) {
 }
 
 async function captureFrame(
-  video:   HTMLVideoElement,
-  guide:   Guide,
-  maxPx  = 1200,
-  quality = 0.75,
+  video:       HTMLVideoElement,
+  guide:       Guide,
+  maxPx      = 1600,
+  quality    = 0.85,
+  cropToGuide = true,
 ): Promise<{ blob: Blob; previewUrl: string }> {
-  const { x, y, w, h } = getCropCoords(video, guide);
-  const s   = Math.min(1, maxPx / Math.max(w, h));
   const cvs = document.createElement("canvas");
-  cvs.width  = Math.max(1, Math.round(w * s));
-  cvs.height = Math.max(1, Math.round(h * s));
   const ctx  = cvs.getContext("2d");
   if (!ctx) throw new Error("Canvas unavailable");
-  ctx.drawImage(video, x, y, w, h, 0, 0, cvs.width, cvs.height);
+
+  if (cropToGuide) {
+    // Auto-scan: crop tightly to the guide box for highest nameplate pixel density
+    const { x, y, w, h } = getCropCoords(video, guide);
+    const s = Math.min(1, maxPx / Math.max(w, h));
+    cvs.width  = Math.max(1, Math.round(w * s));
+    cvs.height = Math.max(1, Math.round(h * s));
+    ctx.drawImage(video, x, y, w, h, 0, 0, cvs.width, cvs.height);
+  } else {
+    // Manual shot: capture the full frame so the tech's own framing is used as-is
+    const vW = video.videoWidth  || 1;
+    const vH = video.videoHeight || 1;
+    const s  = Math.min(1, maxPx / Math.max(vW, vH));
+    cvs.width  = Math.max(1, Math.round(vW * s));
+    cvs.height = Math.max(1, Math.round(vH * s));
+    ctx.drawImage(video, 0, 0, vW, vH, 0, 0, cvs.width, cvs.height);
+  }
+
+  preprocessForOCR(ctx, cvs.width, cvs.height);
+
   return new Promise((resolve, reject) => {
     cvs.toBlob(
       (blob) => blob
@@ -424,8 +488,8 @@ async function captureFrame(
 
 async function resizeFile(
   file:    File,
-  maxPx  = 1200,
-  quality = 0.75,
+  maxPx  = 1600,
+  quality = 0.85,
 ): Promise<{ blob: Blob; previewUrl: string }> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(file);
@@ -440,6 +504,7 @@ async function resizeFile(
       const ctx = cvs.getContext("2d");
       if (!ctx) { reject(new Error("Canvas unavailable")); return; }
       ctx.drawImage(img, 0, 0, w, h);
+      preprocessForOCR(ctx, w, h);
       cvs.toBlob(
         (blob) => blob
           ? resolve({ blob, previewUrl: URL.createObjectURL(blob) })
@@ -531,15 +596,17 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
 
     let gW: number, gH: number;
     if (isPortrait) {
-      // 75 % of container width; 3:4 aspect (taller than wide)
-      // Capped so the box never exceeds 45 % of container height
-      gW = Math.round(w * 0.75);
-      gH = Math.min(Math.round(gW * (4 / 3)), Math.round(h * 0.45));
+      // Portrait: tall vertical rectangle occupying ~3/4 of the camera area.
+      // Width = 63 % of container; height up to 76 % of container, capped at 2.1× width
+      // so it stays a proper tall rectangle and never becomes an extreme sliver.
+      gW = Math.round(w * 0.63);
+      gH = Math.min(Math.round(h * 0.76), Math.round(gW * 2.1));
     } else {
-      // 42 % wide × up to 62 % tall; also capped at 1.4× width so the box
-      // stays roughly square/rectangular and never becomes a tall sliver
-      gW = Math.round(w * 0.42);
-      gH = Math.min(Math.round(h * 0.62), Math.round(gW * 1.4));
+      // Landscape: wide box covering ~2/3 of camera area.
+      // Width = 74 % of container; height up to 84 % of container, capped at 0.75× width
+      // so the box stays naturally wider-than-tall in landscape orientation.
+      gW = Math.round(w * 0.74);
+      gH = Math.min(Math.round(h * 0.84), Math.round(gW * 0.75));
     }
 
     return {
@@ -648,11 +715,11 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
         prevGrayRef.current = gray;
 
         if (isMoving) {
-          // Camera still settling — reset timer but keep showing "hold steady"
+          // Camera still settling — reset timer but plate is still detected
           stableStartRef.current = null;
           setStableProgress(0);
           setGuidance("good");
-          setInstruction("Hold steady");
+          setInstruction("Nameplate detected");
           return;
         }
 
@@ -660,14 +727,14 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
         const now = Date.now();
         if (stableStartRef.current === null) {
           stableStartRef.current = now;
-          console.log("[Scanner] Nameplate detected + camera stable — starting 1 s hold timer");
+          console.log("[Scanner] Nameplate detected + camera stable — starting 0.5 s hold timer");
         }
 
         const elapsed  = now - stableStartRef.current;
         const progress = Math.min(100, Math.round((elapsed / STABLE_MS) * 100));
         setStableProgress(progress);
         setGuidance("good");
-        setInstruction("Data plate found — hold steady");
+        setInstruction("Reading model / serial");
 
         if (elapsed >= STABLE_MS && !isCapturingRef.current) {
           isCapturingRef.current = true;
@@ -733,8 +800,8 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
       return;
     }
     try {
-      console.log("[Scanner] Manual capture triggered");
-      const result = await captureFrame(video, g);
+      console.log("[Scanner] Manual capture triggered — full frame");
+      const result = await captureFrame(video, g, 1600, 0.85, false); // full frame, no guide crop
       streamRef.current?.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
       onCapture(result.blob, result.previewUrl);
@@ -915,14 +982,14 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
                   {guidance === "find_plate"
                     ? "Aim at the metal label showing MODEL, SERIAL, VOLTS, and electrical data"
                     : guidance === "move_closer"
-                    ? "Fill the guide frame with the data plate — text must be large enough to read"
+                    ? "Fill the frame with the nameplate — text must be large enough to read"
                     : guidance === "center_plate"
-                    ? "Move the plate to fill the guide frame"
+                    ? "Keep the nameplate centered in the frame"
                     : guidance === "straighten"
                     ? "Rotate phone so the plate sits level in the frame"
                     : guidance === "unreadable"
-                    ? "Text is too small for OCR — move closer until each character is clearly visible"
-                    : "Fill the frame · Avoid glare · Hold steady"}
+                    ? "Move closer until each character is clearly visible"
+                    : "Nameplate detected — reading…"}
                 </p>
               )}
 
@@ -944,7 +1011,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/40">
             <Loader2 className="w-10 h-10 text-white animate-spin" />
             <p className="text-white text-sm font-bold" style={{ textShadow: "0 1px 6px rgba(0,0,0,0.9)" }}>
-              Scanning…
+              Captured
             </p>
           </div>
         )}
@@ -1044,8 +1111,8 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
                 )}
                 <span className="text-white/60 text-xs">
                   {isStable
-                    ? `Plate found — holding steady… ${stableProgress}%`
-                    : "Scanning for data plate…"}
+                    ? `Reading model / serial… ${stableProgress}%`
+                    : "Scanning for nameplate…"}
                 </span>
               </div>
             </div>

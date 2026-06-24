@@ -198,10 +198,14 @@ export default function UnitFormPage() {
       setOcrConfidence(confidence);
       setRawOcrText(ext.rawText ?? data.rawResponse ?? null);
 
-      // Accept either key: prompt returns missing_fields; future versions may return uncertainFields.
-      const uncertain: Set<string> = new Set(
-        (ext.uncertainFields ?? ext.missing_fields ?? []) as string[],
-      );
+      // Merge three sources into the "needs review" set:
+      //   reviewFields  — populated but low-confidence / OCR-corrected (new key)
+      //   uncertainFields — legacy alias
+      //   missing_fields  — fields left null (prompts user to fill them)
+      const uncertain: Set<string> = new Set([
+        ...(ext.reviewFields ?? ext.uncertainFields ?? []),
+        ...(ext.missing_fields ?? []),
+      ] as string[]);
       setUncertainFields(uncertain);
 
       const fieldMap: Record<string, keyof UnitFormData> = {

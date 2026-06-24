@@ -11,7 +11,7 @@ const nameplateRouter = Router();
 
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+  limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB — large enough for 1600 px captures
   fileFilter: (_req, file, cb) => {
     const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
     if (allowed.includes(file.mimetype)) {
@@ -35,8 +35,7 @@ function uploadMiddleware(req: Request, res: Response, next: NextFunction) {
   });
 }
 
-// Strict nameplate-only extraction prompt.
-// Explicitly forbids analysing the unit cabinet or anything outside the data plate.
+// HVAC nameplate extraction prompt — rooftop-field hardened.
 const EXTRACT_PROMPT = `You are a specialized HVAC nameplate OCR extractor.
 
 TASK: Locate the equipment data plate / nameplate label in this image and extract ONLY the text printed on that label.
@@ -48,20 +47,38 @@ IGNORE COMPLETELY:
 - Any text or markings that are NOT on the nameplate label itself
 
 NO NAMEPLATE FOUND:
-If the image does not contain a clearly visible HVAC equipment data plate / nameplate label, stop immediately and return ONLY this JSON:
+Only use this path when there is NO visible nameplate at all in the image:
 {
   "error": "No readable HVAC nameplate found",
   "confidence": 0,
-  "missing_fields": ["manufacturer","modelNumber","serialNumber","equipmentType","systemType","voltage","phase","hertz","mca","mocp","rla","lra","refrigerantType","refrigerantCharge","coolingCapacity","heatingCapacity","capacityTons","gasType","manufactureDate"]
+  "missing_fields": ["manufacturer","modelNumber","serialNumber","equipmentType","systemType","voltage","phase","hertz","mca","mocp","rla","lra","refrigerantType","refrigerantCharge","coolingCapacity","heatingCapacity","capacityTons","gasType","manufactureDate"],
+  "reviewFields": []
 }
+
+LOW CONFIDENCE / PARTIAL / GLARE-AFFECTED IMAGES:
+If a nameplate IS visible but image quality is poor, glare-affected, angled, or partially readable:
+- DO NOT return the error key. Always attempt extraction.
+- Populate every field you can read, even if uncertain.
+- Add partially-readable or OCR-corrected field keys to "reviewFields".
+- Set confidence to your actual estimate (can be as low as 10).
+- Return the full JSON schema — never return only the error object when a nameplate is present.
 
 EXTRACTION RULES:
 - Extract exactly what you can read on the nameplate label — nothing more.
 - NEVER guess, infer, or hallucinate values. If a field is absent or unreadable, set it to null.
-- If a field is partially readable, return the partial text as-is.
+- If a field is partially readable, return the partial text and add the key to reviewFields.
 - confidence: integer 0–100 reflecting overall image clarity and nameplate legibility.
-- missing_fields: list every key that you set to null.
-- manufacturer: extract ONLY if the manufacturer name or brand is printed as text on the nameplate label itself. Do NOT infer the manufacturer from logos, cabinet color, unit shape, brand appearance, or visual style — even if you recognise the brand. If manufacturer text is not readable on the nameplate, set manufacturer to null.
+- missing_fields: list every key you set to null.
+- reviewFields: list every key you populated but are uncertain about (partially read, OCR-corrected, low-confidence).
+- manufacturer: extract ONLY if the manufacturer name or brand is printed as text on the nameplate label itself. Do NOT infer from logos, cabinet color, unit shape, or visual style. If not readable, set to null.
+
+HVAC TEXT NORMALIZATION (apply silently; add corrected key to reviewFields):
+- Voltage: "2081230" → "208/230"; "208 230" → "208/230"; "460 3 60" → "460/3/60"
+- Refrigerant: "R41OA" or "R-41OA" or "R4l0A" → "R-410A"; "R22" → "R-22"; "R32" → "R-32"
+- OCR digit/letter confusion (apply only when field context supports it):
+  * voltage, mca, mocp, rla, lra fields: capital-O → 0 where a digit is expected
+  * model/serial: lowercase-l or capital-I → 1 only when surrounded by digits
+  * refrigerantType: O → 0 when it would form a known refrigerant (e.g. R-41OA → R-410A)
 
 Return ONLY the following JSON. No markdown. No explanation. No surrounding text.
 
@@ -87,6 +104,7 @@ Return ONLY the following JSON. No markdown. No explanation. No surrounding text
   "manufactureDate": string|null,
   "confidence": number,
   "missing_fields": string[],
+  "reviewFields": string[],
   "rawText": string
 }
 
@@ -131,15 +149,15 @@ nameplateRouter.post(
     try {
       const completion = await openai.chat.completions.create({
         model: "gpt-5.4",
-        // 900 tokens gives the no-nameplate early-exit path (19-field array) and
-        // a full extraction enough headroom to complete without truncation.
-        max_completion_tokens: 900,
+        // 1400 tokens gives the full schema (reviewFields + missing_fields + rawText)
+        // and the no-nameplate path ample headroom without truncation.
+        max_completion_tokens: 1400,
         messages: [
           {
             role: "user",
             content: [
               { type: "text", text: EXTRACT_PROMPT },
-              { type: "image_url", image_url: { url: dataUrl, detail: "auto" } },
+              { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
             ],
           },
         ],
