@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TimelineAddModal from "@/components/TimelineAddModal";
+import EquipmentResources from "@/components/EquipmentResources";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -485,6 +486,16 @@ export default function UnitDetailPage() {
           <div className="bg-white rounded-2xl border border-slate-200 p-4">
             <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mb-2">Notes</p>
             <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{unit.notes}</p>
+          </div>
+        )}
+
+        {/* ── Equipment Resources ──────────────────────────────────────── */}
+        {(unit.modelNumber || unit.manufacturer) && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-4">
+            <EquipmentResources
+              modelNumber={unit.modelNumber}
+              manufacturer={unit.manufacturer}
+            />
           </div>
         )}
 
