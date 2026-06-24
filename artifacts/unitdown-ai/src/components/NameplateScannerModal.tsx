@@ -35,7 +35,8 @@ const OCR_CONF_MIN    = 50;               // min heuristic OCR confidence score 
 const CAPTURE_SCALE   = 1200 / ANALYSIS_W; // ≈7.5× — convert analysis-canvas px → capture-image px
 
 // ─── Types ────────────────────────────────────────────────────────────────────
-type Phase = "scanning" | "capturing" | "manual";
+type Phase    = "scanning" | "capturing" | "manual";
+type ScanMode = "live" | "uploading" | "processingUpload";
 
 type Guidance =
   | "too_dark"
@@ -539,6 +540,11 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
   const guideRef        = useRef<Guide | null>(null);
   const showHintRef     = useRef(false);
 
+  // Upload-picker pause guard
+  const scanPausedRef   = useRef(false);  // true while file picker is open
+  const fileChosenRef   = useRef(false);  // true when onChange fires with a real file
+  const focusCleanupRef = useRef<(() => void) | null>(null); // removes window focus listener
+
   // React state (drives UI redraws)
   const [phaseState,     setPhaseState]     = useState<Phase>("scanning");
   const [guidance,       setGuidance]       = useState<Guidance>("find_plate");
@@ -548,6 +554,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
   const [cameraError,    setCameraError]    = useState<string | null>(null);
   const [containerSize,  setContainerSize]  = useState({ w: 0, h: 0 });
   const [isLandscape,    setIsLandscape]    = useState(() => typeof window !== "undefined" && window.innerWidth > window.innerHeight);
+  const [scanMode,       setScanMode]       = useState<ScanMode>("live");
 
   const setPhase = useCallback((p: Phase) => {
     phaseRef.current = p;
@@ -681,6 +688,9 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
       frameCountRef.current++;
       if (frameCountRef.current % ANALYSIS_SKIP !== 0) return;
 
+      // Pause guard: file picker is open — keep loop alive but skip all analysis
+      if (scanPausedRef.current) return;
+
       // Show 30-second hint — loop keeps running
       if (!showHintRef.current && Date.now() - startTimeRef.current > HINT_MS) {
         showHintRef.current = true;
@@ -736,7 +746,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
         setGuidance("good");
         setInstruction("Reading model / serial");
 
-        if (elapsed >= STABLE_MS && !isCapturingRef.current) {
+        if (elapsed >= STABLE_MS && !isCapturingRef.current && !scanPausedRef.current) {
           isCapturingRef.current = true;
           if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
           console.log(`[Scanner] Held stable for ${elapsed} ms — triggering auto-capture`);
@@ -759,7 +769,12 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
     }
 
     rafIdRef.current = requestAnimationFrame(loop);
-    return () => { if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current); };
+    return () => {
+      if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+      // Remove any pending focus listener registered by the upload picker
+      focusCleanupRef.current?.();
+      focusCleanupRef.current = null;
+    };
   }, []); // intentionally empty — all mutable state accessed via refs
 
   // ─── Capture ───────────────────────────────────────────────────────────────
@@ -811,13 +826,83 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
     }
   }, [onCapture, setPhase]);
 
+  // ─── Upload button: pause scanner immediately, then open picker ───────────
+  const handleUploadClick = useCallback(() => {
+    // 1. Pause live scanning right away — before picker even opens
+    scanPausedRef.current = true;
+    fileChosenRef.current = false;
+    stableStartRef.current = null;
+    prevGrayRef.current = null;
+    setScanMode("uploading");
+    setStableProgress(0);
+    setGuidance("find_plate");
+    setInstruction(INSTRUCTION.find_plate);
+    console.log("[Scanner] Upload picker opened — live scan paused");
+
+    // 2. Detect picker cancel via window focus event.
+    //    onChange only fires when a file is selected; focus fires when picker closes
+    //    for any reason (cancel OR select). We use a short delay so onChange
+    //    (which fires synchronously before focus) can set fileChosenRef first.
+    const onWindowFocus = () => {
+      window.removeEventListener("focus", onWindowFocus);
+      focusCleanupRef.current = null;
+
+      setTimeout(() => {
+        if (!fileChosenRef.current && scanPausedRef.current) {
+          // Picker was cancelled — safely restart scanner
+          console.log("[Scanner] Upload picker cancelled — restarting live scan");
+          scanPausedRef.current = false;
+          isCapturingRef.current = false;
+          stableStartRef.current = null;
+          prevGrayRef.current = null;
+          frameCountRef.current = 0;
+          startTimeRef.current = Date.now();
+          showHintRef.current = false;
+          setScanMode("live");
+          setStableProgress(0);
+          setGuidance("find_plate");
+          setInstruction(INSTRUCTION.find_plate);
+          setShowHint(false);
+          if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+      }, 300);
+    };
+
+    window.addEventListener("focus", onWindowFocus);
+    focusCleanupRef.current = () => window.removeEventListener("focus", onWindowFocus);
+
+    fileInputRef.current?.click();
+  }, []);
+
+  // ─── File chosen: process the upload ──────────────────────────────────────
   const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+
+    if (!file) {
+      // Some browsers fire onChange with empty file list on cancel — treat as cancel
+      if (scanPausedRef.current) {
+        scanPausedRef.current = false;
+        setScanMode("live");
+        setGuidance("find_plate");
+        setInstruction(INSTRUCTION.find_plate);
+        if (fileInputRef.current) fileInputRef.current.value = "";
+      }
+      return;
+    }
+
+    // Mark file chosen — prevents the focus listener from restarting the scanner
+    fileChosenRef.current = true;
+    // Remove the focus listener (no longer needed)
+    focusCleanupRef.current?.();
+    focusCleanupRef.current = null;
+
     if (isCapturingRef.current) return;
     isCapturingRef.current = true;
-    if (rafIdRef.current) cancelAnimationFrame(rafIdRef.current);
+
+    // Phase → "capturing" stops the RAF loop naturally (loop checks phaseRef)
+    setScanMode("processingUpload");
     setPhase("capturing");
+
     try {
       console.log("[Scanner] File upload — resizing before OCR");
       const result = await resizeFile(file);
@@ -826,6 +911,8 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
       onCapture(result.blob, result.previewUrl);
     } catch {
       isCapturingRef.current = false;
+      scanPausedRef.current = false;
+      setScanMode("live");
       setPhase("manual");
       if (fileInputRef.current) fileInputRef.current.value = "";
     }
@@ -1071,7 +1158,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
 
               {/* Upload */}
               <button
-                onClick={() => fileInputRef.current?.click()}
+                onClick={handleUploadClick}
                 disabled={isCapturing}
                 className="flex flex-col items-center justify-center gap-1 py-3 rounded-2xl w-full text-[10px] font-semibold bg-white/10 hover:bg-white/[0.18] text-white/75 transition-colors disabled:opacity-40"
               >
@@ -1141,7 +1228,7 @@ export default function NameplateScannerModal({ onCapture, onClose }: Props) {
 
                 {/* Upload Image */}
                 <button
-                  onClick={() => fileInputRef.current?.click()}
+                  onClick={handleUploadClick}
                   disabled={isCapturing}
                   className="flex-1 flex flex-col items-center justify-center gap-1 py-3 rounded-2xl text-xs font-semibold bg-white/10 hover:bg-white/[0.18] text-white/75 transition-colors disabled:opacity-40"
                 >
