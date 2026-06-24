@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { X, Wrench, FileText, Settings, Loader2 } from "lucide-react";
+import { trackTimelineEntry } from "@/lib/appReview";
 
 type EventType = "note" | "repair" | "maintenance";
 type StatusValue = "unresolved" | "monitoring" | "resolved";
@@ -149,6 +150,7 @@ export default function TimelineAddModal({
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Save failed");
+        trackTimelineEntry();
         onSave(data.event as TimelineEvent);
       }
     } catch (err: any) {

@@ -22,11 +22,11 @@ class ViewController: CAPBridgeViewController {
 
     override func capacitorDidLoad() {
         // Register the local StoreKit IAP plugin.
-        // UnitDownIAPPlugin conforms to CAPBridgedPlugin directly in Swift
-        // (identifier / jsName / pluginMethods), so it satisfies the
-        // CapacitorPlugin = CAPPlugin & CAPBridgedPlugin type alias.
         bridge?.registerPluginInstance(UnitDownIAPPlugin())
-
         print("⚡️ [ViewController] UnitDownIAP plugin registered — jsName=\(UnitDownIAPPlugin().jsName)")
+
+        // Register the App Store review request plugin.
+        bridge?.registerPluginInstance(UnitDownReviewPlugin())
+        print("⚡️ [ViewController] UnitDownReview plugin registered — jsName=\(UnitDownReviewPlugin().jsName)")
     }
 }

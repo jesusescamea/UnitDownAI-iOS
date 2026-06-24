@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation, Link } from "wouter";
 import { useUser, useClerk, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { shouldUseAppleIAP } from "@/lib/platform";
+import { trackDiagnosisComplete, trackThumbsUp, maybeRequestReview } from "@/lib/appReview";
 import { Browser } from "@capacitor/browser";
 import { isDemoProEmail } from "@/lib/demoAccess";
 import { isDemoSessionActive } from "@/lib/demoSession";
@@ -1361,6 +1362,10 @@ function FeedbackButtons({ recommendationId, issueInput, confidence }: FeedbackB
     if (submitted) return;
     setVote(v);
     setSubmitted(true);
+    if (v === "up") {
+      trackThumbsUp();
+      setTimeout(() => { maybeRequestReview("thumbs_up").catch(() => {}); }, 1500);
+    }
     fetch("/api/feedback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -1974,6 +1979,8 @@ function Home() {
           const newCount = incrementDiagCount();
           setDiagCount(newCount);
           setCurrentResult(result);
+          trackDiagnosisComplete();
+          setTimeout(() => { maybeRequestReview("diagnosis").catch(() => {}); }, 2000);
           setHistory((prev) => {
             const updated = [entry, ...prev].slice(0, MAX_HISTORY);
             saveHistory(updated);

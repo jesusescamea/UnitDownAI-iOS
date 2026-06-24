@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation, useParams } from "wouter";
+import { trackUnitSaved, maybeRequestReview } from "@/lib/appReview";
 import { useUser } from "@clerk/clerk-react";
 import {
   ChevronRight, Camera, Loader2, AlertTriangle, CheckCircle2,
@@ -323,6 +324,8 @@ export default function UnitFormPage() {
         throw new Error((d as any).error ?? "Save failed");
       }
       const data = await res.json();
+      trackUnitSaved();
+      void maybeRequestReview("unit_saved");
       navigate(`/records/${data.unit?.id ?? params.id}`);
     } catch (err: any) {
       setError(err.message ?? "Save failed");

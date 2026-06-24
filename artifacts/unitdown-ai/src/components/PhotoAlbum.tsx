@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
+import { trackPhoto } from "@/lib/appReview";
 import {
   Camera, Upload, X, ChevronLeft, ChevronRight, Trash2,
   Loader2, ImagePlus, ScanText, Edit3, Check, AlertCircle,
@@ -539,6 +540,7 @@ export default function PhotoAlbum({ unitId, clientId }: Props) {
 
   const handleAdded = useCallback((photo: UnitPhoto) => {
     setPhotos((prev) => [photo, ...prev]);
+    trackPhoto();
   }, []);
 
   const handleDelete = useCallback((id: string) => {
