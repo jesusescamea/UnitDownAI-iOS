@@ -49,6 +49,34 @@ function getClientId(): string {
   try { return localStorage.getItem("unitdown_client_id") ?? ""; } catch { return ""; }
 }
 
+// ─── Nameplate image storage ──────────────────────────────────────────────────
+// Uploads the captured blob to object storage and returns a persistent URL
+// that is valid across all devices and sessions.
+// Throws on failure so the caller can fall back gracefully.
+async function uploadNameplateBlob(blob: Blob): Promise<string> {
+  const file = new File([blob], "nameplate.jpg", { type: "image/jpeg" });
+
+  // 1. Request a presigned GCS upload URL
+  const urlRes = await fetch("/api/storage/uploads/request-url", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: file.name, size: file.size, contentType: file.type }),
+  });
+  if (!urlRes.ok) throw new Error("Failed to get upload URL");
+  const { uploadURL, objectPath } = (await urlRes.json()) as { uploadURL: string; objectPath: string };
+
+  // 2. PUT directly to GCS via presigned URL
+  const putRes = await fetch(uploadURL, {
+    method: "PUT",
+    body: file,
+    headers: { "Content-Type": file.type },
+  });
+  if (!putRes.ok) throw new Error("Storage upload failed");
+
+  // 3. Return the persistent serving URL
+  return `/api/storage${objectPath}`;
+}
+
 // ─── Form field component ─────────────────────────────────────────────────────
 
 function Field({
@@ -175,21 +203,39 @@ export default function UnitFormPage() {
     setOcrConfidence(null);
     setOcrFieldCount(null);
 
+    // Show the blob URL immediately so the preview appears while work runs in the background.
+    // This will be replaced with the persistent storage URL before the form is saved.
+    setForm((prev) => ({ ...prev, nameplateImageUrl: previewUrl }));
+
     try {
       const fd = new FormData();
       fd.append("file", blob, "nameplate.jpg");
 
-      const res = await fetch("/api/nameplate/ocr", {
-        method: "POST",
-        body: fd,
-      });
+      // Run OCR and storage upload in parallel — neither depends on the other
+      const [ocrResult, storageResult] = await Promise.allSettled([
+        fetch("/api/nameplate/ocr", { method: "POST", body: fd }).then(async (res) => {
+          if (!res.ok) {
+            const d = await res.json().catch(() => ({}));
+            throw new Error((d as any).error ?? "OCR failed");
+          }
+          return res.json();
+        }),
+        uploadNameplateBlob(blob),
+      ]);
 
-      if (!res.ok) {
-        const d = await res.json().catch(() => ({}));
-        throw new Error((d as any).error ?? "OCR failed");
+      // Replace the temporary blob URL with the persistent storage URL.
+      // If storage upload fails, fall back to the blob URL and log the failure.
+      if (storageResult.status === "fulfilled") {
+        setForm((prev) => ({ ...prev, nameplateImageUrl: storageResult.value }));
+      } else {
+        console.error("[Nameplate] Storage upload failed — blob URL used (not persistent):", storageResult.reason);
       }
 
-      const data = await res.json();
+      if (ocrResult.status === "rejected") {
+        throw ocrResult.reason;
+      }
+
+      const data = ocrResult.value;
       const ext = data.extracted ?? {};
 
       if (typeof ext.error === "string") {
@@ -225,7 +271,7 @@ export default function UnitFormPage() {
 
       let filled = 0;
       setForm((prev) => {
-        const updated = { ...prev, nameplateImageUrl: previewUrl };
+        const updated = { ...prev };
         for (const [extKey, formKey] of Object.entries(fieldMap)) {
           if (ext[extKey] != null && String(ext[extKey]).trim()) {
             updated[formKey] = String(ext[extKey]).trim();
@@ -503,6 +549,14 @@ export default function UnitFormPage() {
               src={form.nameplateImageUrl}
               alt="Nameplate"
               className="w-full rounded-2xl border border-slate-200 object-cover max-h-48"
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (!img.dataset.errored) {
+                  img.dataset.errored = "1";
+                  console.warn("[Nameplate] Image failed to load:", form.nameplateImageUrl);
+                  img.style.display = "none";
+                }
+              }}
             />
             <button
               onClick={() => handleChange("nameplateImageUrl", "")}

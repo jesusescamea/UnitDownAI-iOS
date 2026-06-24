@@ -450,6 +450,19 @@ export default function UnitDetailPage() {
               src={unit.nameplateImageUrl}
               alt="Nameplate"
               className="w-full rounded-2xl border border-slate-200 object-cover max-h-48"
+              onError={(e) => {
+                const img = e.currentTarget;
+                if (!img.dataset.errored) {
+                  img.dataset.errored = "1";
+                  console.warn("[Nameplate] Image failed to load:", unit.nameplateImageUrl);
+                  // Replace broken image with a placeholder message
+                  img.style.display = "none";
+                  const placeholder = document.createElement("div");
+                  placeholder.className = "w-full rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-center py-8 text-xs text-slate-400";
+                  placeholder.textContent = "Nameplate photo unavailable";
+                  img.parentElement?.appendChild(placeholder);
+                }
+              }}
             />
           </div>
         )}
