@@ -5,25 +5,16 @@ import { openai } from "@workspace/integrations-openai-ai-server";
 const nameplateRouter = Router();
 
 // ─── Multer upload middleware ─────────────────────────────────────────────────
-// Accepts multipart/form-data with a single "file" field.
-// Stores the upload in memory (buffer) — no disk I/O.
-// Hard limits: 2 MB file size, JPEG / PNG / WebP only.
-
 const upload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB — large enough for 1600 px captures
+  limits: { fileSize: 4 * 1024 * 1024 }, // 4 MB
   fileFilter: (_req, file, cb) => {
     const allowed = ["image/jpeg", "image/jpg", "image/png", "image/webp"];
-    if (allowed.includes(file.mimetype)) {
-      cb(null, true);
-    } else {
-      cb(new Error("Unsupported file type. Please upload a JPEG, PNG, or WebP image."));
-    }
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Unsupported file type. Please upload a JPEG, PNG, or WebP image."));
   },
 });
 
-// Wraps multer so that file-size and file-filter errors return clean JSON
-// instead of propagating as unhandled middleware errors.
 function uploadMiddleware(req: Request, res: Response, next: NextFunction) {
   upload.single("file")(req, res, (err: any) => {
     if (!err) { next(); return; }
@@ -35,53 +26,92 @@ function uploadMiddleware(req: Request, res: Response, next: NextFunction) {
   });
 }
 
-// HVAC nameplate extraction prompt — rooftop-field hardened.
-const EXTRACT_PROMPT = `You are a specialized HVAC nameplate OCR extractor.
+// ─── Vision extraction prompt ─────────────────────────────────────────────────
+// Two-phase approach: (1) detect and crop the nameplate region, (2) extract fields.
+const EXTRACT_PROMPT = `You are an HVAC equipment nameplate OCR specialist.
 
-TASK: Locate the equipment data plate / nameplate label in this image and extract ONLY the text printed on that label.
+PHASE 1 — DETECT THE NAMEPLATE LABEL:
+Identify the equipment data plate / nameplate label in this image.
+The nameplate is a rectangular label (white, silver, or brushed metal) affixed to the HVAC unit body.
+It contains dense text: MODEL, SERIAL, VOLTS, AMPS, BTU, refrigerant data, electrical ratings.
+It is NOT the unit cabinet, conduit, wiring, ductwork, screws, shadows, or background.
+Focus EXCLUSIVELY on the printed text within that rectangular label boundary.
+Ignore everything outside the label perimeter.
 
-IGNORE COMPLETELY:
-- Unit cabinet, sheet metal, rooftop surface
-- Wiring, pipes, conduit, ductwork
-- Background, tools, people, jobsite conditions
-- Any text or markings that are NOT on the nameplate label itself
+PHASE 2 — TRANSCRIBE ALL NAMEPLATE TEXT:
+Read every character visible on that label and output it verbatim in rawText.
+Preserve spacing, slashes, dashes. Include all numbers, abbreviations, units.
+This transcript is the primary source for all field extraction.
+
+PHASE 3 — EXTRACT STRUCTURED FIELDS:
+Map the rawText to the output fields using these label patterns:
+
+  modelNumber       ← M/N  MODEL  MODEL NO  MODEL NUMBER  CATALOG NO  CATALOG NUMBER
+  serialNumber      ← S/N  SERIAL  SERIAL NO  SERIAL NUMBER
+  voltage           ← VOLTS  VOLTAGE  VOLT (include phase/hz suffix if on same line)
+  phase             ← PH  PHASE  (digit 1 or 3)
+  hertz             ← HZ  HERTZ  (usually 60)
+  mca               ← MIN CKT AMPACITY  MIN. CKT. AMP  MCA  MIN CIRCUIT AMPS
+  mocp              ← MAX FUSE OR CKT BKR  MAX OVERCURRENT  MOCP  MOP  MAX BREAKER  MAX FUSE
+  rla               ← COMP RLA  COMPRESSOR RLA  RLA  FLA  (compressor amps, not fan motor)
+  lra               ← LRA  LOCKED ROTOR AMPS
+  refrigerantType   ← REFRIGERANT  CONTAINS  (the designation: R-410A, R-22, etc.)
+  refrigerantCharge ← oz or lbs quantity next to refrigerant type
+  coolingCapacity   ← COOLING BTUH  BTUH COOLING  COOLING OUTPUT  NET COOLING CAPACITY
+  heatingCapacity   ← HEATING INPUT  HEATING OUTPUT  GAS INPUT  HEATING BTUH
+  capacityTons      ← explicit tons rating, or derive by dividing coolingCapacity BTUH by 12000
+  gasType           ← NAT GAS  NATURAL GAS  LP  PROPANE  L.P.
+  manufacturer      ← brand name IF printed as text on the nameplate (LENNOX, CARRIER, etc.)
+  equipmentType     ← as printed; also INFER using model prefix rules below
+  systemType        ← as printed; also INFER using model + nameplate data rules below
+  manufactureDate   ← any date code printed; also decode serial number format if recognizable
+
+EQUIPMENT TYPE INFERENCE (add to reviewFields when inferred, not printed):
+  - Lennox LGH / LCH / LGC / LGR / LCA prefix → "Packaged Rooftop Unit"
+  - Carrier 48xx / 50xx prefix → "Packaged Rooftop Unit"
+  - York YCD / YHC / ZFx / ZBx prefix → "Packaged Rooftop Unit"
+  - Trane YCD / WCC / WCD prefix → "Packaged Rooftop Unit"
+  - AAON RN / RQ / RL / CL prefix → "Packaged Rooftop Unit"
+  - Text on label: ROOFTOP / RTU / PACKAGED UNIT / PACKAGE AIR → "Packaged Rooftop Unit"
+  - Text on label: SPLIT SYSTEM → "Split System"
+  - Text on label: HEAT PUMP → "Heat Pump"
+
+SYSTEM TYPE INFERENCE (add to reviewFields when inferred, not printed):
+  - Lennox LGH prefix (G = Gas) → "gas heat"
+  - Lennox LCH prefix (C = Cooling only / elec heat) → "electric heat"
+  - HEAT PUMP or HP visible in model/nameplate → "heat pump"
+  - Heating BTU/input data present AND cooling data present → "gas heat"
+  - Refrigerant/cooling data only, no heating → "cooling-only"
+
+MANUFACTURE DATE DECODING (add to reviewFields when decoded, not printed):
+  Many manufacturers encode date in the first 4 serial digits as WWYY or YYWW:
+  - Try WW=first-2-digits, YY=next-2-digits: valid if WW is 01–52
+  - If WW > 52, try YYWW reversed: YY=first-2, WW=next-2
+  - Convert YY < 50 → 20YY; YY ≥ 50 → 19YY
+  - Convert week number to approximate month (week ÷ 4.33, rounded up)
+  - Example: serial "0613XXXXX" → WW=06, YY=2013 → "Feb 2013"
 
 NO NAMEPLATE FOUND:
-Only use this path when there is NO visible nameplate at all in the image:
-{
-  "error": "No readable HVAC nameplate found",
-  "confidence": 0,
-  "missing_fields": ["manufacturer","modelNumber","serialNumber","equipmentType","systemType","voltage","phase","hertz","mca","mocp","rla","lra","refrigerantType","refrigerantCharge","coolingCapacity","heatingCapacity","capacityTons","gasType","manufactureDate"],
-  "reviewFields": []
-}
+Return this ONLY if no nameplate label is visible anywhere in the image:
+{"error":"No readable HVAC nameplate found","confidence":0,"missing_fields":[],"reviewFields":[],"rawText":""}
 
-LOW CONFIDENCE / PARTIAL / GLARE-AFFECTED IMAGES:
-If a nameplate IS visible but image quality is poor, glare-affected, angled, or partially readable:
-- DO NOT return the error key. Always attempt extraction.
-- Populate every field you can read, even if uncertain.
-- Add partially-readable or OCR-corrected field keys to "reviewFields".
-- Set confidence to your actual estimate (can be as low as 10).
-- Return the full JSON schema — never return only the error object when a nameplate is present.
+LOW CONFIDENCE / PARTIAL / GLARE:
+If a nameplate IS visible but partly obscured or glare-affected:
+- ALWAYS attempt extraction. Never return the error object when a nameplate is present.
+- Populate every field you can read even if uncertain.
+- Add uncertain field keys to reviewFields. Set confidence to your honest estimate (min 10).
+- Return the full JSON structure.
 
-EXTRACTION RULES:
-- Extract exactly what you can read on the nameplate label — nothing more.
-- NEVER guess, infer, or hallucinate values. If a field is absent or unreadable, set it to null.
-- If a field is partially readable, return the partial text and add the key to reviewFields.
-- confidence: integer 0–100 reflecting overall image clarity and nameplate legibility.
-- missing_fields: list every key you set to null.
-- reviewFields: list every key you populated but are uncertain about (partially read, OCR-corrected, low-confidence).
-- manufacturer: extract ONLY if the manufacturer name or brand is printed as text on the nameplate label itself. Do NOT infer from logos, cabinet color, unit shape, or visual style. If not readable, set to null.
+HVAC TEXT NORMALIZATION (apply silently; add key to reviewFields if corrected):
+- Voltage: "208 230" → "208/230"; "460 3 60" → "460/3/60"; "2081230" → "208/230"
+- Refrigerant: "R41OA" / "R-41OA" / "R4l0A" / "R41OA" → "R-410A"
+  "R22" → "R-22"; "R32" → "R-32"; "R134A" → "R-134A"; "R407C" → "R-407C"
+- OCR letter/digit (field-context only):
+  * voltage/mca/mocp/rla/lra: capital-O → 0 where a digit is expected
+  * model/serial: lowercase-l or capital-I → 1 only when flanked by digits
+  * refrigerantType: O → 0 to form a known refrigerant
 
-HVAC TEXT NORMALIZATION (apply silently; add corrected key to reviewFields):
-- Voltage: "2081230" → "208/230"; "208 230" → "208/230"; "460 3 60" → "460/3/60"
-- Refrigerant: "R41OA" or "R-41OA" or "R4l0A" → "R-410A"; "R22" → "R-22"; "R32" → "R-32"
-- OCR digit/letter confusion (apply only when field context supports it):
-  * voltage, mca, mocp, rla, lra fields: capital-O → 0 where a digit is expected
-  * model/serial: lowercase-l or capital-I → 1 only when surrounded by digits
-  * refrigerantType: O → 0 when it would form a known refrigerant (e.g. R-41OA → R-410A)
-
-Return ONLY the following JSON. No markdown. No explanation. No surrounding text.
-
+Return ONLY valid JSON. No markdown fences, no prose, no explanation:
 {
   "manufacturer": string|null,
   "modelNumber": string|null,
@@ -106,26 +136,333 @@ Return ONLY the following JSON. No markdown. No explanation. No surrounding text
   "missing_fields": string[],
   "reviewFields": string[],
   "rawText": string
+}`;
+
+// ─── Type aliases ─────────────────────────────────────────────────────────────
+type FieldMap = Record<string, string | null | undefined>;
+
+// ─── Server-side HVAC regex parser ───────────────────────────────────────────
+// Parses rawText using HVAC-specific regex patterns.
+// Acts as a supplement/fallback to the vision extraction.
+function parseHvacText(raw: string): FieldMap {
+  const result: FieldMap = {};
+  if (!raw) return result;
+
+  // ── Model Number ──────────────────────────────────────────────────────────
+  // M/N, MODEL, MODEL NO, MODEL NUMBER, CATALOG NO
+  const modelM = raw.match(
+    /(?:^|\n|\s)(?:M\/N|MODEL\s*(?:NO\.?|NUMBER)?|CATALOG\s*(?:NO\.?|NUMBER)?)\s*[:\-]?\s*([A-Z][A-Z0-9\-]{3,24})/im
+  );
+  if (modelM) result.modelNumber = modelM[1].trim();
+
+  // ── Serial Number ─────────────────────────────────────────────────────────
+  const serialM = raw.match(
+    /(?:^|\n|\s)(?:S\/N|SERIAL\s*(?:NO\.?|NUMBER)?)\s*[:\-]?\s*([A-Z0-9][A-Z0-9\-]{5,19})/im
+  );
+  if (serialM) result.serialNumber = serialM[1].trim();
+
+  // ── Voltage ───────────────────────────────────────────────────────────────
+  const voltM = raw.match(/(?:VOLTS?|VOLTAGE)\s*[:\-]?\s*([\d\-\/]+(?:\/\d+)*)/i);
+  if (voltM) {
+    let v = voltM[1].trim().replace(/(\d+)\s+(\d+)/g, "$1/$2");
+    result.voltage = v;
+  }
+
+  // ── Phase ─────────────────────────────────────────────────────────────────
+  const phM = raw.match(/\bPH(?:ASE)?\s*[:\-]?\s*([13])\b/i);
+  if (phM) result.phase = phM[1];
+
+  // ── Hertz ─────────────────────────────────────────────────────────────────
+  const hzM =
+    raw.match(/\bHZ\s*[:\-]?\s*(60|50)\b/i) ||
+    raw.match(/\b(60|50)\s*HZ\b/i);
+  if (hzM) result.hertz = hzM[1];
+
+  // ── MCA ───────────────────────────────────────────────────────────────────
+  const mcaM = raw.match(
+    /(?:MIN\.?\s*(?:CKT\.?\s*)?AMP(?:ACITY|S)?|MCA|MIN\s*CIRCUIT\s*AMPS?)\s*[:\-]?\s*([\d\.]+)/i
+  );
+  if (mcaM) result.mca = mcaM[1];
+
+  // ── MOCP ──────────────────────────────────────────────────────────────────
+  const mocpM = raw.match(
+    /(?:MAX\.?\s*(?:FUSE\s*(?:OR\s*)?(?:CKT\.?\s*)?BKR?\.?|BREAKER|OVERCURRENT)|MOCP|MOP|MAX\s*FUSE)\s*[:\-]?\s*([\d\.]+)/i
+  );
+  if (mocpM) result.mocp = mocpM[1];
+
+  // ── RLA / FLA ─────────────────────────────────────────────────────────────
+  const rlaM = raw.match(/(?:COMP\.?\s*)?(?:RLA|FLA)\s*[:\-]?\s*([\d\.]+)/i);
+  if (rlaM) result.rla = rlaM[1];
+
+  // ── LRA ───────────────────────────────────────────────────────────────────
+  const lraM = raw.match(/\bLRA\s*[:\-]?\s*([\d\.]+)/i);
+  if (lraM) result.lra = lraM[1];
+
+  // ── Refrigerant type ──────────────────────────────────────────────────────
+  const refM =
+    raw.match(/(?:CONTAINS?|REFRIGERANT)\s*[:\-]?\s*(R-?[\dA-Z]{2,6})/i) ||
+    raw.match(/\b(R-?4[01][0OlI][A-Z]?)\b/i) ||
+    raw.match(/\b(R-?22|R-?32|R-?134A?|R-?407C?|R-?404A?|R-?408A?)\b/i);
+  if (refM) {
+    let ref = refM[1].toUpperCase().trim();
+    if (!ref.startsWith("R-")) ref = "R-" + ref.slice(1);
+    // Common OCR substitutions
+    ref = ref
+      .replace(/R-41OA/i, "R-410A")
+      .replace(/R-4l0A/i, "R-410A")
+      .replace(/R-4I0A/i, "R-410A")
+      .replace(/R-41(?:O|0)A/i, "R-410A");
+    result.refrigerantType = ref;
+  }
+
+  // ── Refrigerant charge ────────────────────────────────────────────────────
+  const chargeM = raw.match(
+    /(?:CHARGE|CONTAINS?|REFRIGERANT)[^\n]{0,40}?([\d\.]+)\s*(OZ|LBS?)\b/i
+  );
+  if (chargeM) {
+    result.refrigerantCharge = `${chargeM[1]} ${chargeM[2].toLowerCase()}`;
+  }
+
+  // ── Cooling capacity ──────────────────────────────────────────────────────
+  const coolM =
+    raw.match(
+      /(?:COOL(?:ING)?\s*(?:BTUH?|CAPACITY|OUTPUT)|NET\s*COOL(?:ING)?)\s*[:\-]?\s*([\d,]+)/i
+    ) || raw.match(/\b(\d{5,6})\s*BTUH?\b/i);
+  if (coolM) {
+    const btuh = parseInt(coolM[1].replace(/,/g, ""), 10);
+    if (btuh >= 12_000 && btuh <= 600_000) {
+      result.coolingCapacity = btuh.toLocaleString() + " BTUH";
+      result.capacityTons = (btuh / 12_000).toFixed(1);
+    }
+  }
+
+  // ── Heating capacity ──────────────────────────────────────────────────────
+  const heatM = raw.match(
+    /(?:HEAT(?:ING)?\s*(?:INPUT|OUTPUT|BTUH?|CAPACITY)|GAS\s*INPUT)\s*[:\-]?\s*([\d,]+)/i
+  );
+  if (heatM) {
+    const btuh = parseInt(heatM[1].replace(/,/g, ""), 10);
+    if (btuh >= 1_000 && btuh <= 2_000_000) {
+      result.heatingCapacity = btuh.toLocaleString() + " BTUH";
+    }
+  }
+
+  // ── Gas type ──────────────────────────────────────────────────────────────
+  const gasM = raw.match(/\b(NAT(?:URAL)?\s*GAS|NATURAL\s*GAS|L\.?P\.?|PROPANE)\b/i);
+  if (gasM) result.gasType = gasM[1].replace(/\s+/g, " ").trim();
+
+  // ── Manufacturer (known brands) ───────────────────────────────────────────
+  const mfgM = raw.match(
+    /\b(LENNOX|CARRIER|TRANE|YORK|DAIKIN|RHEEM|RUUD|GOODMAN|AMANA|AMERICAN\s*STANDARD|MCQUAY|AAON|HEATCRAFT|CLIMATE\s*MASTER|REZNOR|NORTEK|WEIL[- ]MCLAIN)\b/i
+  );
+  if (mfgM) {
+    result.manufacturer = mfgM[1]
+      .trim()
+      .split(/\s+/)
+      .map((w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(" ");
+  }
+
+  return result;
 }
 
-FIELD GUIDANCE:
-equipmentType  — as printed (e.g. "Packaged Rooftop Unit", "Split System Condensing Unit", "Heat Pump Condenser")
-systemType     — infer from nameplate indicators only: "heat pump" | "gas heat" | "electric heat" | "cooling-only"
-voltage        — include all ratings exactly as printed (e.g. "208-230/1/60", "460/3/60")
-hertz          — Hz rating, usually "60"
-mca            — labeled MCA, Min Circuit Amps, Min. Circ. Amps
-mocp           — labeled MOCP, Max Fuse, Max Overcurrent, Max Breaker, MOP
-rla            — labeled RLA or FLA (Rated/Full Load Amps)
-lra            — labeled LRA (Locked Rotor Amps)
-refrigerantCharge — factory refrigerant charge in oz or lbs (e.g. "84 oz", "5.25 lbs")
-coolingCapacity   — BTU/h or tons for cooling stage
-heatingCapacity   — BTU/h or kW for heating stage
-gasType        — natural gas, LP, propane, etc.
-manufactureDate   — production date code decoded to month/year when possible
-rawText        — every word visible on the nameplate, transcribed exactly as printed`;
+// ─── Equipment type inference ─────────────────────────────────────────────────
+function inferEquipmentType(
+  model: string | null,
+  rawText: string
+): { value: string; inferred: boolean } | null {
+  const m = (model ?? "").toUpperCase();
+  const t = rawText.toUpperCase();
 
-// POST /api/nameplate/ocr
-// Body: multipart/form-data — field name "file", JPEG/PNG/WebP image
+  // Explicit text printed on nameplate — highest priority
+  if (/\b(?:ROOFTOP|RTU|PACKAGED\s+(?:ROOF\s*TOP\s*)?UNIT|PACKAGE\s+(?:AIR|UNIT))\b/.test(t))
+    return { value: "Packaged Rooftop Unit", inferred: false };
+  if (/\bSPLIT[\s-]+SYSTEM\b/.test(t))
+    return { value: "Split System Condensing Unit", inferred: false };
+  if (/\bHEAT[\s-]+PUMP\b/.test(t))
+    return { value: "Heat Pump", inferred: false };
+  if (/\bCONDENSING\s+UNIT\b/.test(t))
+    return { value: "Condensing Unit", inferred: false };
+  if (/\bAIR\s+HANDLER\b/.test(t))
+    return { value: "Air Handler", inferred: false };
+
+  // Lennox rooftop model prefix: LGH / LCH / LGC / LGR / LCA
+  if (/^LG[HCRA]|^LCH/.test(m)) return { value: "Packaged Rooftop Unit", inferred: true };
+  // Carrier RTU: 48xx = gas/elec, 50xx = heat pump package
+  if (/^4[89]\w/.test(m) || /^50[A-Z]/.test(m)) return { value: "Packaged Rooftop Unit", inferred: true };
+  // Trane RTU
+  if (/^YCD|^YHC|^YCH|^WCC|^WCD/.test(m)) return { value: "Packaged Rooftop Unit", inferred: true };
+  // York RTU
+  if (/^ZF[A-Z]|^ZB[A-Z]|^ZH[A-Z]/.test(m)) return { value: "Packaged Rooftop Unit", inferred: true };
+  // AAON RTU
+  if (/^RN|^RQ|^RL-|^RL\d|^CL-/.test(m)) return { value: "Packaged Rooftop Unit", inferred: true };
+
+  return null;
+}
+
+// ─── System type inference ────────────────────────────────────────────────────
+function inferSystemType(
+  model: string | null,
+  rawText: string
+): { value: string; inferred: boolean } | null {
+  const m = (model ?? "").toUpperCase();
+  const t = rawText.toUpperCase();
+
+  // Explicit text on nameplate — highest priority
+  if (/\bHEAT\s*PUMP\b/.test(t)) return { value: "heat pump", inferred: false };
+  if (/\bELECTRIC\s*HEAT\b/.test(t)) return { value: "electric heat", inferred: false };
+
+  // Presence detectors
+  const hasGas = /\b(?:GAS|BTU\s*INPUT|HEATING\s*INPUT|NAT\s*GAS|PROPANE|FURNACE)\b/.test(t);
+  const hasCooling = /\b(?:COOL(?:ING)?|BTUH|REFRIGERANT|R-\d+|COMP(?:RESSOR)?)\b/.test(t);
+  const hasHP = /\bREVERSING\s*VALVE\b|\bHP\b/.test(t);
+
+  // Lennox model letter encoding:
+  //   LGH = gas heat packaged; LCH = electric heat; LCA = cooling only
+  if (/^LGH/.test(m)) return { value: "gas heat", inferred: true };
+  if (/^LCH/.test(m)) return { value: "electric heat", inferred: true };
+  if (/^LCA/.test(m)) return { value: "cooling-only", inferred: true };
+
+  // Carrier: 48 = gas heat package, 50 = heat pump package
+  if (/^48/.test(m)) return { value: "gas heat", inferred: true };
+  if (/^50/.test(m)) return { value: "heat pump", inferred: true };
+
+  if (hasHP) return { value: "heat pump", inferred: true };
+  if (hasGas && hasCooling) return { value: "gas heat", inferred: true };
+  if (hasGas && !hasCooling) return { value: "gas heat", inferred: true };
+  if (hasCooling && !hasGas) return { value: "cooling-only", inferred: true };
+
+  return null;
+}
+
+// ─── Serial number → manufacture date decoder ─────────────────────────────────
+// Attempts to decode WWYY or YYWW patterns from the first 4 serial digits.
+// Returns null when the pattern is ambiguous or yields an implausible date.
+function decodeSerialDate(serial: string | null): string | null {
+  if (!serial) return null;
+
+  // Strip non-alphanumeric characters and take the first 4 digits
+  const digits = serial.replace(/\D/g, "").slice(0, 4);
+  if (digits.length < 4) return null;
+
+  const a = parseInt(digits.slice(0, 2), 10); // first pair
+  const b = parseInt(digits.slice(2, 4), 10); // second pair
+
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const weekToMonth = (ww: number) => MONTHS[Math.max(0, Math.min(11, Math.ceil(ww / 4.34) - 1))];
+  const toYear = (yy: number) => yy + (yy < 50 ? 2000 : 1900);
+  const plausibleYear = (y: number) => y >= 1990 && y <= 2040;
+
+  // Try WWYY: a=week, b=year
+  if (a >= 1 && a <= 52) {
+    const year = toYear(b);
+    if (plausibleYear(year)) return `${weekToMonth(a)} ${year}`;
+  }
+  // Try YYWW: a=year, b=week
+  if (b >= 1 && b <= 52) {
+    const year = toYear(a);
+    if (plausibleYear(year)) return `${weekToMonth(b)} ${year}`;
+  }
+
+  return null;
+}
+
+// ─── Result merge ─────────────────────────────────────────────────────────────
+// Vision result is the primary source. Server-side parser fills nulls.
+// Inference rules handle equipment/system type and manufacture date.
+function mergeExtractions(
+  vision: Record<string, unknown>,
+  parsed: FieldMap,
+  rawText: string,
+): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...vision };
+  const review = new Set<string>((vision.reviewFields ?? []) as string[]);
+
+  const STRING_FIELDS = [
+    "manufacturer", "modelNumber", "serialNumber",
+    "voltage", "phase", "hertz",
+    "mca", "mocp", "rla", "lra",
+    "refrigerantType", "refrigerantCharge",
+    "coolingCapacity", "heatingCapacity", "capacityTons",
+    "gasType", "manufactureDate",
+  ];
+
+  // Fill any null vision fields with server-side parser results
+  for (const field of STRING_FIELDS) {
+    const visionVal = out[field];
+    const parsedVal = parsed[field];
+    if (!visionVal && parsedVal) {
+      out[field] = parsedVal;
+      review.add(field);
+    }
+  }
+
+  // ── Equipment type inference ──────────────────────────────────────────────
+  if (!out.equipmentType) {
+    const inf = inferEquipmentType(out.modelNumber as string | null, rawText);
+    if (inf) {
+      out.equipmentType = inf.value;
+      if (inf.inferred) review.add("equipmentType");
+    }
+  }
+
+  // ── System type inference ─────────────────────────────────────────────────
+  if (!out.systemType) {
+    const inf = inferSystemType(out.modelNumber as string | null, rawText);
+    if (inf) {
+      out.systemType = inf.value;
+      if (inf.inferred) review.add("systemType");
+    }
+  }
+
+  // ── Manufacture date from serial ──────────────────────────────────────────
+  if (!out.manufactureDate && out.serialNumber) {
+    const decoded = decodeSerialDate(out.serialNumber as string);
+    if (decoded) {
+      out.manufactureDate = decoded;
+      review.add("manufactureDate");
+    }
+  }
+
+  // ── Voltage normalization ─────────────────────────────────────────────────
+  if (typeof out.voltage === "string") {
+    const norm = out.voltage
+      .replace(/[Oo]/g, "0")              // O → 0
+      .replace(/(\d)\s+(\d)/g, "$1/$2");  // "460 3" → "460/3"
+    if (norm !== out.voltage) {
+      out.voltage = norm;
+      review.add("voltage");
+    }
+  }
+
+  // ── Refrigerant normalization ─────────────────────────────────────────────
+  if (typeof out.refrigerantType === "string") {
+    let ref = out.refrigerantType.toUpperCase().trim();
+    if (/^R\d/.test(ref)) ref = "R-" + ref.slice(1); // ensure dash
+    ref = ref
+      .replace(/R-41OA/i, "R-410A")
+      .replace(/R-4l0A/i, "R-410A")
+      .replace(/R-4I0A/i, "R-410A");
+    if (ref !== out.refrigerantType) {
+      out.refrigerantType = ref;
+      review.add("refrigerantType");
+    }
+  }
+
+  // ── Recompute missing_fields from final merged state ──────────────────────
+  const ALL_FIELDS = [
+    "manufacturer", "modelNumber", "serialNumber", "equipmentType", "systemType",
+    "voltage", "phase", "hertz", "mca", "mocp", "rla", "lra",
+    "refrigerantType", "refrigerantCharge", "coolingCapacity", "heatingCapacity",
+    "capacityTons", "gasType", "manufactureDate",
+  ];
+  out.missing_fields = ALL_FIELDS.filter((f) => !out[f]);
+  out.reviewFields = Array.from(review).filter((f) => out[f]); // only keys that have values
+
+  return out;
+}
+
+// ─── POST /api/nameplate/ocr ──────────────────────────────────────────────────
 nameplateRouter.post(
   "/nameplate/ocr",
   uploadMiddleware,
@@ -136,22 +473,16 @@ nameplateRouter.post(
     }
 
     const { buffer, mimetype, size } = req.file;
+    req.log?.info({ mimeType: mimetype, sizeKB: Math.round(size / 1024) }, "Nameplate OCR request");
 
-    req.log?.info(
-      { mimeType: mimetype, sizeKB: Math.round(size / 1024) },
-      "Nameplate OCR request",
-    );
-
-    // Convert buffer to base64 for the OpenAI Vision API
     const imageBase64 = buffer.toString("base64");
     const dataUrl = `data:${mimetype};base64,${imageBase64}`;
 
     try {
+      // ── Pass 1: Vision API — extract rawText + structured fields ─────────
       const completion = await openai.chat.completions.create({
         model: "gpt-5.4",
-        // 1400 tokens gives the full schema (reviewFields + missing_fields + rawText)
-        // and the no-nameplate path ample headroom without truncation.
-        max_completion_tokens: 1400,
+        max_completion_tokens: 1600, // generous headroom for full schema + rawText
         messages: [
           {
             role: "user",
@@ -163,18 +494,63 @@ nameplateRouter.post(
         ],
       });
 
-      const raw = completion.choices[0]?.message?.content ?? "";
-      req.log?.info({ rawLength: raw.length }, "Nameplate OCR response received");
+      const rawResponse = completion.choices[0]?.message?.content ?? "";
+      req.log?.info({ rawLength: rawResponse.length }, "Nameplate vision response received");
 
-      let extracted: Record<string, unknown> = {};
+      // ── Parse JSON from vision response ───────────────────────────────────
+      let visionResult: Record<string, unknown> = {};
       try {
-        const jsonMatch = raw.match(/\{[\s\S]*\}/);
-        if (jsonMatch) extracted = JSON.parse(jsonMatch[0]);
+        const jsonMatch = rawResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) visionResult = JSON.parse(jsonMatch[0]);
       } catch {
-        req.log?.warn("Nameplate OCR: failed to parse JSON from model response");
+        req.log?.warn("Nameplate OCR: failed to parse JSON from vision response");
       }
 
-      res.json({ extracted, rawResponse: raw });
+      // ── Check for hard "no nameplate" result ──────────────────────────────
+      if (typeof visionResult.error === "string" && !visionResult.modelNumber) {
+        res.json({ extracted: visionResult, rawResponse, debug: { phase: "no-nameplate" } });
+        return;
+      }
+
+      const rawText = (visionResult.rawText as string) ?? "";
+
+      // ── Pass 2: Server-side HVAC regex parser on rawText ──────────────────
+      const parsedFields = parseHvacText(rawText);
+
+      req.log?.info(
+        { parsedKeys: Object.keys(parsedFields).filter((k) => parsedFields[k]) },
+        "Server-side HVAC parser result",
+      );
+
+      // ── Merge vision + parser + inferences ────────────────────────────────
+      const extracted = mergeExtractions(visionResult, parsedFields, rawText);
+
+      // ── Debug payload (appended to response for testing) ──────────────────
+      const debug = {
+        visionFieldsFound: Object.keys(visionResult).filter(
+          (k) => !["confidence","missing_fields","reviewFields","rawText"].includes(k) && visionResult[k]
+        ),
+        parserFieldsFound: Object.keys(parsedFields).filter((k) => parsedFields[k]),
+        inferredFields: (extracted.reviewFields as string[]).filter(
+          (f) => !Object.keys(parsedFields).includes(f) &&
+                 !Object.keys(visionResult).filter((k) => visionResult[k]).includes(f)
+        ),
+        confidence: extracted.confidence,
+        rawTextLength: rawText.length,
+      };
+
+      req.log?.info(
+        {
+          confidence: extracted.confidence,
+          fieldsPopulated: (extracted.missing_fields as string[]).length
+            ? 19 - (extracted.missing_fields as string[]).length
+            : "all",
+          reviewFields: extracted.reviewFields,
+        },
+        "Nameplate OCR complete",
+      );
+
+      res.json({ extracted, rawResponse, debug });
     } catch (err: any) {
       req.log?.error(err, "Nameplate OCR failed");
       res.status(500).json({ error: "OCR failed. You can enter nameplate fields manually." });
