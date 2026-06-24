@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation, useParams } from "wouter";
 import { useUser } from "@clerk/clerk-react";
 import {
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import NameplateScannerModal from "@/components/NameplateScannerModal";
+import { DuplicateModal, type DuplicateEntry } from "@/components/DuplicateModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -110,8 +111,12 @@ export default function UnitFormPage() {
   const [saving, setSaving] = useState(false);
   const [loadingUnit, setLoadingUnit] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
-
   const [scannerOpen, setScannerOpen] = useState(false);
+
+  // ── Duplicate detection state ─────────────────────────────────────────────
+  const [duplicates, setDuplicates] = useState<DuplicateEntry[]>([]);
+  const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
+
   const clientId = getClientId();
   const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
 
@@ -161,9 +166,7 @@ export default function UnitFormPage() {
     setScannerOpen(true);
   }, []);
 
-  // Called by NameplateScannerModal after crop + compress.
-  // Receives a Blob (already cropped to nameplate region) — sent as multipart/form-data
-  // to avoid the ~33% base64 inflation that causes "entity too large" errors.
+  // ── OCR capture handler ───────────────────────────────────────────────────
   const handleCapture = useCallback(async (blob: Blob, previewUrl: string) => {
     setScannerOpen(false);
     setOcrLoading(true);
@@ -179,7 +182,6 @@ export default function UnitFormPage() {
       const res = await fetch("/api/nameplate/ocr", {
         method: "POST",
         body: fd,
-        // No Content-Type header — browser sets it with the multipart boundary
       });
 
       if (!res.ok) {
@@ -198,10 +200,6 @@ export default function UnitFormPage() {
       setOcrConfidence(confidence);
       setRawOcrText(ext.rawText ?? data.rawResponse ?? null);
 
-      // Merge three sources into the "needs review" set:
-      //   reviewFields  — populated but low-confidence / OCR-corrected (new key)
-      //   uncertainFields — legacy alias
-      //   missing_fields  — fields left null (prompts user to fill them)
       const uncertain: Set<string> = new Set([
         ...(ext.reviewFields ?? ext.uncertainFields ?? []),
         ...(ext.missing_fields ?? []),
@@ -250,15 +248,15 @@ export default function UnitFormPage() {
     }
   }, []);
 
-  const handleSave = useCallback(async () => {
-    if (!isLoggedIn) return;
+  // ── Build the POST/PATCH payload from form state ──────────────────────────
+  const buildPayload = useCallback(() =>
+    Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v.trim() || null])),
+  [form]);
+
+  // ── Core POST/PATCH save (no duplicate check) ─────────────────────────────
+  const performSave = useCallback(async (payload: Record<string, unknown>) => {
     setSaving(true);
     setError(null);
-
-    const payload = Object.fromEntries(
-      Object.entries(form).map(([k, v]) => [k, v.trim() || null])
-    );
-
     try {
       let res: Response;
       if (isEdit) {
@@ -274,22 +272,92 @@ export default function UnitFormPage() {
           body: JSON.stringify({ clientId, unit: payload }),
         });
       }
-
       if (!res.ok) {
         const d = await res.json().catch(() => ({}));
         throw new Error((d as any).error ?? "Save failed");
       }
-
       const data = await res.json();
-      const savedId = data.unit?.id ?? params.id;
-      navigate(`/records/${savedId}`);
+      navigate(`/records/${data.unit?.id ?? params.id}`);
     } catch (err: any) {
       setError(err.message ?? "Save failed");
-    } finally {
       setSaving(false);
     }
-  }, [isLoggedIn, isEdit, form, clientId, params.id, navigate]);
+    // No setSaving(false) on success — navigation unmounts the component
+  }, [isEdit, params.id, clientId, navigate]);
 
+  // ── Main save handler — runs duplicate check first ────────────────────────
+  const handleSave = useCallback(async () => {
+    if (!isLoggedIn) return;
+    setSaving(true);
+    setError(null);
+
+    const payload = buildPayload();
+
+    // Run duplicate detection (fail-open: if the check itself errors, proceed with save)
+    try {
+      const checkRes = await fetch("/api/units/check-duplicate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId,
+          unit: payload,
+          ...(isEdit && params.id ? { excludeId: params.id } : {}),
+        }),
+      });
+      if (checkRes.ok) {
+        const { duplicates: found } = (await checkRes.json()) as { duplicates: DuplicateEntry[] };
+        if (found?.length > 0) {
+          setDuplicates(found);
+          setDuplicateModalOpen(true);
+          setSaving(false);
+          return; // pause — let the user decide
+        }
+      }
+    } catch {
+      // Duplicate check failed — proceed with save anyway (fail-open)
+    }
+
+    setSaving(false);
+    await performSave(payload);
+  }, [isLoggedIn, isEdit, params.id, clientId, buildPayload, performSave]);
+
+  // ── Duplicate modal: "Open Existing Unit" ─────────────────────────────────
+  const handleOpenExisting = useCallback((id: string) => {
+    setDuplicateModalOpen(false);
+    navigate(`/records/${id}`);
+  }, [navigate]);
+
+  // ── Duplicate modal: "Update Existing Unit" ───────────────────────────────
+  // PATCHes the EXISTING unit (not the current form's unit) with the current form data.
+  const handleUpdateExisting = useCallback(async (existingId: string) => {
+    setDuplicateModalOpen(false);
+    setSaving(true);
+    setError(null);
+    const payload = buildPayload();
+    try {
+      const res = await fetch(`/api/units/${existingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, unit: payload }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as any).error ?? "Update failed");
+      }
+      navigate(`/records/${existingId}`);
+    } catch (err: any) {
+      setError(err.message ?? "Update failed");
+      setSaving(false);
+    }
+  }, [clientId, navigate, buildPayload]);
+
+  // ── Duplicate modal: "Create New Anyway" / "Continue Saving" ─────────────
+  const handleCreateNew = useCallback(async () => {
+    setDuplicateModalOpen(false);
+    await performSave(buildPayload());
+  }, [performSave, buildPayload]);
+
+  // ── Guards ────────────────────────────────────────────────────────────────
   if (!isLoaded || loadingUnit) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -311,6 +379,19 @@ export default function UnitFormPage() {
 
   return (
     <div className="min-h-screen bg-slate-50 pb-24">
+
+      {/* Duplicate detection modal */}
+      {duplicateModalOpen && duplicates.length > 0 && (
+        <DuplicateModal
+          duplicates={duplicates}
+          isEdit={isEdit}
+          onOpenExisting={handleOpenExisting}
+          onUpdateExisting={handleUpdateExisting}
+          onCreateNew={handleCreateNew}
+          onClose={() => setDuplicateModalOpen(false)}
+        />
+      )}
+
       {/* Header */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
@@ -364,7 +445,6 @@ export default function UnitFormPage() {
             </Button>
           </div>
 
-          {/* Scanning indicator */}
           {ocrLoading && (
             <div className="mt-3 bg-blue-500/40 rounded-xl p-3 text-xs text-blue-100 flex items-center gap-2">
               <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
@@ -372,7 +452,6 @@ export default function UnitFormPage() {
             </div>
           )}
 
-          {/* Error */}
           {ocrError && (
             <div className="mt-3 bg-red-500/20 border border-red-400/30 rounded-xl p-3 text-xs text-red-100 flex items-start gap-2">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
@@ -380,7 +459,6 @@ export default function UnitFormPage() {
             </div>
           )}
 
-          {/* Success summary */}
           {scanSucceeded && (
             <div className="mt-3 bg-green-500/20 border border-green-400/30 rounded-xl p-3 text-xs text-green-100 flex items-start gap-2">
               <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
@@ -392,7 +470,6 @@ export default function UnitFormPage() {
             </div>
           )}
 
-          {/* Uncertain fields notice */}
           {uncertainFields.size > 0 && !ocrLoading && (
             <div className="mt-2 bg-amber-400/20 border border-amber-400/30 rounded-xl p-3 text-xs text-amber-100 flex items-center gap-2">
               <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />
@@ -400,7 +477,6 @@ export default function UnitFormPage() {
             </div>
           )}
 
-          {/* Raw OCR text toggle */}
           {rawOcrText && !ocrLoading && (
             <details className="mt-3">
               <summary className="text-xs text-blue-200 cursor-pointer hover:text-white select-none">
