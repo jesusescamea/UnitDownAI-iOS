@@ -5,11 +5,13 @@ import {
   Building2, Search, Plus, ChevronRight, Wrench,
   History, ThermometerSnowflake, CheckCircle2,
   AlertCircle, Clock, CircleDot, X, Star, Package,
-  Phone, Calendar, Filter,
+  Phone, Calendar, Filter, Bell, Activity, Settings,
+  TrendingUp, CheckCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import ScheduledEventModal, { type ScheduledEvent } from "@/components/ScheduledEventModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -23,6 +25,7 @@ interface UnitRecord {
   serialNumber: string | null;
   equipmentType: string | null;
   systemType: string | null;
+  manufactureDate: string | null;
   isArchived: boolean;
   isFavorite: boolean;
   updatedAt: string;
@@ -81,15 +84,64 @@ function statusConfig(status: string) {
   }
 }
 
+function scheduledEventTypeConfig(eventType: string) {
+  switch (eventType) {
+    case "return-visit":   return { label: "Return Visit",    Icon: Calendar,   bg: "bg-orange-50",  color: "text-orange-600",  border: "border-orange-200" };
+    case "pm-due":         return { label: "PM Due",          Icon: Wrench,     bg: "bg-emerald-50", color: "text-emerald-600", border: "border-emerald-200" };
+    case "callback":       return { label: "Callback",        Icon: Phone,      bg: "bg-rose-50",    color: "text-rose-600",    border: "border-rose-200" };
+    case "inspection":     return { label: "Inspection",      Icon: Search,     bg: "bg-blue-50",    color: "text-blue-600",    border: "border-blue-200" };
+    case "parts-followup": return { label: "Parts Follow-Up", Icon: Package,    bg: "bg-purple-50",  color: "text-purple-600",  border: "border-purple-200" };
+    default:               return { label: "Reminder",        Icon: Bell,       bg: "bg-slate-50",   color: "text-slate-600",   border: "border-slate-200" };
+  }
+}
+
+function getGreeting(firstName?: string | null): string {
+  const h = new Date().getHours();
+  const greet = h < 12 ? "Good morning" : h < 17 ? "Good afternoon" : "Good evening";
+  return firstName ? `${greet}, ${firstName}` : greet;
+}
+
 function formatDate(ts: number | string) {
   const d = typeof ts === "number" ? new Date(ts) : new Date(ts);
-  const now = Date.now();
-  const diff = now - d.getTime();
+  const diff = Date.now() - d.getTime();
   const days = Math.floor(diff / 86400000);
   if (days === 0) return "Today";
   if (days === 1) return "Yesterday";
   if (days < 7) return `${days}d ago`;
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function formatScheduleDate(ts: number): string {
+  const d = new Date(ts);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const eventDay = new Date(d);
+  eventDay.setHours(0, 0, 0, 0);
+  const diff = Math.round((eventDay.getTime() - today.getTime()) / 86400000);
+  if (diff < -1) return `${Math.abs(diff)}d overdue`;
+  if (diff === -1) return "Yesterday";
+  if (diff === 0) return "Today";
+  if (diff === 1) return "Tomorrow";
+  if (diff < 7) return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function computeHealthScore(unitId: string, logs: DiagnosticLog[]): number {
+  const ul = logs.filter((l) => l.unitId === unitId);
+  if (ul.length === 0) return 100;
+  let score = 100;
+  score -= ul.filter((l) => l.status === "unresolved").length * 25;
+  score -= ul.filter((l) => l.status === "monitoring").length * 12;
+  score -= ul.filter((l) => l.status === "waiting-on-parts").length * 18;
+  score -= ul.filter((l) => l.status === "return-visit").length * 10;
+  score -= ul.filter((l) => l.status === "customer-callback").length * 8;
+  return Math.max(0, Math.min(100, score));
+}
+
+function healthColor(score: number) {
+  if (score >= 80) return { text: "text-emerald-700", bg: "bg-emerald-50", border: "border-emerald-200" };
+  if (score >= 60) return { text: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200" };
+  return { text: "text-red-700", bg: "bg-red-50", border: "border-red-200" };
 }
 
 function getResolutionCategory(log: DiagnosticLog): string {
@@ -102,47 +154,120 @@ function getResolutionCategory(log: DiagnosticLog): string {
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function OverviewCard({ value, label, color }: { value: number; label: string; color: string }) {
+function StatChip({
+  value, label, active, color, dimColor, onClick,
+}: {
+  value: number;
+  label: string;
+  active: boolean;
+  color: string;
+  dimColor: string;
+  onClick?: () => void;
+}) {
   return (
-    <div className={`${color} rounded-2xl p-4 flex flex-col`}>
-      <span className="text-2xl font-extrabold leading-none">{value}</span>
-      <span className="text-xs font-semibold mt-1.5 opacity-70">{label}</span>
-    </div>
+    <button
+      onClick={onClick}
+      className={`flex flex-col items-center px-4 py-3 rounded-2xl border flex-shrink-0 min-w-[82px] transition-all active:scale-95 ${
+        active ? color : dimColor
+      }`}
+    >
+      <span className="text-xl font-extrabold leading-none">{value}</span>
+      <span className="text-[11px] font-semibold mt-1 opacity-80 whitespace-nowrap">{label}</span>
+    </button>
   );
 }
 
 function SectionHeader({
-  title, count, open, onToggle, icon: Icon,
+  title, count, open, onToggle, icon: Icon, accent,
 }: {
   title: string;
   count?: number;
   open: boolean;
   onToggle: () => void;
   icon: React.ElementType;
+  accent?: boolean;
 }) {
   return (
     <button onClick={onToggle} className="w-full flex items-center justify-between py-1 group">
       <div className="flex items-center gap-2">
-        <Icon className="w-4 h-4 text-slate-400" />
+        <Icon className={`w-4 h-4 ${accent ? "text-blue-500" : "text-slate-400"}`} />
         <span className="font-bold text-slate-900 text-sm">{title}</span>
         {count !== undefined && count > 0 && (
           <span className="bg-slate-100 text-slate-600 text-xs font-bold px-1.5 py-0.5 rounded-full">{count}</span>
         )}
       </div>
-      <ChevronRight
-        className={`w-4 h-4 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`}
-      />
+      <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${open ? "rotate-90" : ""}`} />
     </button>
   );
 }
 
+function ScheduleCard({
+  event, unitMap, onMarkDone, onDelete,
+}: {
+  event: ScheduledEvent;
+  unitMap: Record<string, UnitRecord>;
+  onMarkDone: () => void;
+  onDelete: () => void;
+}) {
+  const unit = event.unitId ? unitMap[event.unitId] : null;
+  const cfg = scheduledEventTypeConfig(event.eventType);
+  const dateLabel = formatScheduleDate(event.scheduledDate);
+  const isOverdue = event.scheduledDate < Date.now();
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+      <div className="flex items-start gap-3">
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${cfg.bg}`}>
+          <cfg.Icon className={`w-4 h-4 ${cfg.color}`} />
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="font-bold text-slate-900 text-sm line-clamp-1">{event.title}</p>
+          {unit && (
+            <p className="text-xs text-blue-600 font-medium mt-0.5 truncate">
+              {unit.nickname ?? unit.modelNumber ?? "Unit"}
+            </p>
+          )}
+          <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+            <span className={`text-xs font-semibold ${isOverdue ? "text-red-600" : "text-slate-500"}`}>
+              {dateLabel}
+            </span>
+            {event.recurrence && (
+              <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">
+                ↻ {event.recurrence}
+              </span>
+            )}
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5 flex-shrink-0">
+          <button
+            onClick={onMarkDone}
+            className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl px-2.5 py-1 font-semibold hover:bg-emerald-100 transition-colors whitespace-nowrap"
+          >
+            ✓ Done
+          </button>
+          <button
+            onClick={onDelete}
+            className="text-xs text-slate-400 hover:text-red-500 rounded-xl px-2.5 py-1 font-semibold transition-colors text-center"
+          >
+            Delete
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function CompactUnitCard({
-  unit, onClick, onToggleFavorite,
+  unit, healthScore, onClick, onToggleFavorite,
 }: {
   unit: UnitRecord;
+  healthScore?: number;
   onClick: () => void;
   onToggleFavorite?: (e: React.MouseEvent) => void;
 }) {
+  const hs = healthScore ?? 100;
+  const hc = healthColor(hs);
+
   return (
     <button
       onClick={onClick}
@@ -156,7 +281,7 @@ function CompactUnitCard({
           {unit.siteCustomerName && (
             <p className="text-xs text-slate-500 truncate mt-0.5">{unit.siteCustomerName}</p>
           )}
-          <div className="flex flex-wrap gap-1 mt-1.5">
+          <div className="flex flex-wrap gap-1 mt-1.5 items-center">
             {unit.manufacturer && (
               <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">
                 {unit.manufacturer}
@@ -165,6 +290,11 @@ function CompactUnitCard({
             {unit.equipmentType && (
               <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">
                 {unit.equipmentType}
+              </span>
+            )}
+            {hs < 100 && (
+              <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full border ${hc.bg} ${hc.text} ${hc.border}`}>
+                {hs}
               </span>
             )}
           </div>
@@ -187,12 +317,16 @@ function CompactUnitCard({
 }
 
 function UnitCard({
-  unit, onClick, onToggleFavorite,
+  unit, healthScore, onClick, onToggleFavorite,
 }: {
   unit: UnitRecord;
+  healthScore?: number;
   onClick: () => void;
   onToggleFavorite?: (e: React.MouseEvent) => void;
 }) {
+  const hs = healthScore ?? 100;
+  const hc = healthColor(hs);
+
   return (
     <button
       onClick={onClick}
@@ -214,7 +348,7 @@ function UnitCard({
           {unit.location && (
             <p className="text-xs text-slate-400 ml-9 mt-0.5">{unit.location}</p>
           )}
-          <div className="flex flex-wrap gap-1.5 mt-2 ml-9">
+          <div className="flex flex-wrap gap-1.5 mt-2 ml-9 items-center">
             {unit.manufacturer && (
               <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">
                 {unit.manufacturer}
@@ -228,17 +362,24 @@ function UnitCard({
             <span className="text-xs text-slate-400">{formatDate(unit.updatedAt)}</span>
           </div>
         </div>
-        <div className="flex items-center gap-0.5 flex-shrink-0 mt-0.5">
-          {onToggleFavorite && (
-            <button
-              onClick={onToggleFavorite}
-              className={`p-1.5 rounded-xl transition-colors ${unit.isFavorite ? "text-yellow-500" : "text-slate-300 hover:text-yellow-400"}`}
-              aria-label={unit.isFavorite ? "Remove from favorites" : "Add to favorites"}
-            >
-              <Star className={`w-3.5 h-3.5 ${unit.isFavorite ? "fill-yellow-400" : ""}`} />
-            </button>
+        <div className="flex flex-col items-end gap-2 flex-shrink-0 mt-0.5">
+          <div className="flex items-center gap-0.5">
+            {onToggleFavorite && (
+              <button
+                onClick={onToggleFavorite}
+                className={`p-1.5 rounded-xl transition-colors ${unit.isFavorite ? "text-yellow-500" : "text-slate-300 hover:text-yellow-400"}`}
+                aria-label={unit.isFavorite ? "Remove from favorites" : "Add to favorites"}
+              >
+                <Star className={`w-3.5 h-3.5 ${unit.isFavorite ? "fill-yellow-400" : ""}`} />
+              </button>
+            )}
+            <ChevronRight className="w-4 h-4 text-slate-400" />
+          </div>
+          {hs < 100 && (
+            <span className={`text-xs font-extrabold px-2 py-0.5 rounded-full border ${hc.bg} ${hc.text} ${hc.border}`}>
+              {hs}
+            </span>
           )}
-          <ChevronRight className="w-4 h-4 text-slate-400" />
         </div>
       </div>
     </button>
@@ -297,13 +438,19 @@ export default function RecordsPage() {
 
   const [units, setUnits] = useState<UnitRecord[]>([]);
   const [logs, setLogs] = useState<DiagnosticLog[]>([]);
+  const [scheduledEvents, setScheduledEvents] = useState<ScheduledEvent[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Section collapse state
+  const [scheduleOpen, setScheduleOpen] = useState(true);
   const [unitsOpen, setUnitsOpen] = useState(true);
   const [diagOpen, setDiagOpen] = useState(true);
   const [libOpen, setLibOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false);
+
+  // Modals
+  const [showAddEvent, setShowAddEvent] = useState(false);
 
   // Saved Units filters
   const [q, setQ] = useState("");
@@ -319,13 +466,15 @@ export default function RecordsPage() {
     setLoading(true);
     try {
       const cid = encodeURIComponent(clientId);
-      const [uRes, lRes] = await Promise.all([
+      const [uRes, lRes, seRes] = await Promise.all([
         fetch(`/api/units?clientId=${cid}`),
         fetch(`/api/diagnostic-logs?clientId=${cid}`),
+        fetch(`/api/scheduled-events?clientId=${cid}&upcoming=true`),
       ]);
-      const [uData, lData] = await Promise.all([uRes.json(), lRes.json()]);
+      const [uData, lData, seData] = await Promise.all([uRes.json(), lRes.json(), seRes.json()]);
       setUnits(uData.units ?? []);
       setLogs(lData.logs ?? []);
+      setScheduledEvents(seData.events ?? []);
     } catch {
       setError("Failed to load data");
     } finally {
@@ -354,6 +503,32 @@ export default function RecordsPage() {
     }
   }, [clientId]);
 
+  // ─── Schedule event actions ───────────────────────────────────────────────────
+
+  const markEventDone = useCallback(async (eventId: string) => {
+    setScheduledEvents((prev) => prev.filter((e) => e.id !== eventId));
+    try {
+      await fetch(`/api/scheduled-events/${eventId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, isCompleted: true }),
+      });
+    } catch {
+      loadData();
+    }
+  }, [clientId, loadData]);
+
+  const deleteEvent = useCallback(async (eventId: string) => {
+    setScheduledEvents((prev) => prev.filter((e) => e.id !== eventId));
+    try {
+      await fetch(`/api/scheduled-events/${eventId}?clientId=${encodeURIComponent(clientId)}`, {
+        method: "DELETE",
+      });
+    } catch {
+      loadData();
+    }
+  }, [clientId, loadData]);
+
   // ─── Derived data ─────────────────────────────────────────────────────────────
 
   const unitMap = useMemo(() => {
@@ -370,12 +545,29 @@ export default function RecordsPage() {
   }, [unitMap]);
 
   const activeWork = useMemo(() =>
-    logs.filter((l) => ACTIVE_STATUSES.has(l.status)).slice(0, 8),
+    logs.filter((l) => ACTIVE_STATUSES.has(l.status)),
+  [logs]);
+
+  const partsWaiting = useMemo(() =>
+    logs.filter((l) => l.status === "waiting-on-parts"),
   [logs]);
 
   const unresolvedCount = useMemo(() =>
-    logs.filter((l) => ACTIVE_STATUSES.has(l.status)).length,
+    logs.filter((l) => l.status === "unresolved").length,
   [logs]);
+
+  const monitoringCount = useMemo(() =>
+    logs.filter((l) => l.status === "monitoring").length,
+  [logs]);
+
+  const returnVisitCount = useMemo(() =>
+    logs.filter((l) => l.status === "return-visit" || l.status === "customer-callback").length,
+  [logs]);
+
+  const resolvedThisWeek = useMemo(() => {
+    const cutoff = Date.now() - 7 * 86400000;
+    return logs.filter((l) => l.status === "resolved" && l.timestamp > cutoff).length;
+  }, [logs]);
 
   const recentDiags = useMemo(() => logs.slice(0, 10), [logs]);
 
@@ -417,6 +609,29 @@ export default function RecordsPage() {
     return groups;
   }, [resolvedLogs]);
 
+  // Stats
+  const avgConfidence = useMemo(() => {
+    const withConf = logs.filter((l) => l.confidencePercent != null);
+    if (!withConf.length) return null;
+    return Math.round(withConf.reduce((s, l) => s + (l.confidencePercent ?? 0), 0) / withConf.length);
+  }, [logs]);
+
+  const topDiagnosis = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const l of logs) {
+      if (l.diagnosisTitle) counts[l.diagnosisTitle] = (counts[l.diagnosisTitle] ?? 0) + 1;
+    }
+    const entries = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+    return entries[0] ?? null;
+  }, [logs]);
+
+  // Health score map
+  const healthScoreMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    units.forEach((u) => { map[u.id] = computeHealthScore(u.id, logs); });
+    return map;
+  }, [units, logs]);
+
   // ─── Auth guards ──────────────────────────────────────────────────────────────
 
   if (!isLoaded) {
@@ -452,10 +667,13 @@ export default function RecordsPage() {
 
   // ─── Render ───────────────────────────────────────────────────────────────────
 
+  const activeJobCount = activeWork.length;
+  const scheduleCount = scheduledEvents.length;
+
   return (
     <div className="min-h-screen bg-slate-50">
 
-      {/* ── Sticky Header ──────────────────────────────────────────────────────── */}
+      {/* ── Sticky Header ────────────────────────────────────────────────────── */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -485,108 +703,221 @@ export default function RecordsPage() {
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-7">
 
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm">{error}</div>
+          <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            {error}
+          </div>
         )}
 
         {loading ? (
           <div className="space-y-3">
-            {[1, 2, 3, 4].map((i) => (
+            {[1, 2, 3, 4, 5].map((i) => (
               <div key={i} className="bg-white rounded-2xl border border-slate-200 p-4 animate-pulse h-16" />
             ))}
           </div>
         ) : (
           <>
 
-            {/* ── 1. Overview ──────────────────────────────────────────────────── */}
-            <section aria-label="Overview">
-              <div className="grid grid-cols-2 gap-3">
-                <OverviewCard
+            {/* ── Greeting ─────────────────────────────────────────────────────── */}
+            <section>
+              <p className="text-xl font-extrabold text-slate-900 leading-tight">
+                {getGreeting(clerkUser?.firstName)}
+              </p>
+              <p className="text-sm text-slate-500 mt-0.5">
+                {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+              </p>
+            </section>
+
+            {/* ── Stats Strip ──────────────────────────────────────────────────── */}
+            <section aria-label="Dashboard summary">
+              <div className="flex gap-2.5 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-hide">
+                <StatChip
+                  value={activeJobCount}
+                  label="Active Jobs"
+                  active={activeJobCount > 0}
+                  color="bg-amber-50 text-amber-800 border-amber-200"
+                  dimColor="bg-slate-50 text-slate-500 border-slate-200"
+                />
+                <StatChip
+                  value={partsWaiting.length}
+                  label="On Parts"
+                  active={partsWaiting.length > 0}
+                  color="bg-purple-50 text-purple-800 border-purple-200"
+                  dimColor="bg-slate-50 text-slate-500 border-slate-200"
+                />
+                <StatChip
+                  value={monitoringCount}
+                  label="Monitoring"
+                  active={monitoringCount > 0}
+                  color="bg-blue-50 text-blue-800 border-blue-200"
+                  dimColor="bg-slate-50 text-slate-500 border-slate-200"
+                />
+                <StatChip
+                  value={returnVisitCount}
+                  label="Return Visits"
+                  active={returnVisitCount > 0}
+                  color="bg-orange-50 text-orange-800 border-orange-200"
+                  dimColor="bg-slate-50 text-slate-500 border-slate-200"
+                />
+                <StatChip
+                  value={resolvedThisWeek}
+                  label="Done / Week"
+                  active={resolvedThisWeek > 0}
+                  color="bg-emerald-50 text-emerald-800 border-emerald-200"
+                  dimColor="bg-slate-50 text-slate-500 border-slate-200"
+                />
+                <StatChip
                   value={units.length}
-                  label="Saved Units"
-                  color="bg-blue-50 text-blue-900"
+                  label="Units"
+                  active={false}
+                  color="bg-blue-50 text-blue-800 border-blue-200"
+                  dimColor="bg-slate-50 text-slate-500 border-slate-200"
                 />
-                <OverviewCard
-                  value={logs.length}
-                  label="Diagnostics"
-                  color="bg-slate-100 text-slate-800"
-                />
-                <OverviewCard
-                  value={unresolvedCount}
-                  label="Unresolved"
-                  color={unresolvedCount > 0 ? "bg-amber-50 text-amber-900" : "bg-slate-100 text-slate-700"}
-                />
-                <OverviewCard
-                  value={favorites.length}
-                  label="Favorites"
-                  color={favorites.length > 0 ? "bg-yellow-50 text-yellow-900" : "bg-slate-100 text-slate-700"}
+                <StatChip
+                  value={scheduleCount}
+                  label="Scheduled"
+                  active={scheduleCount > 0}
+                  color="bg-indigo-50 text-indigo-800 border-indigo-200"
+                  dimColor="bg-slate-50 text-slate-500 border-slate-200"
                 />
               </div>
+            </section>
+
+            {/* ── 1. Upcoming Schedule ─────────────────────────────────────────── */}
+            <section aria-label="Upcoming Schedule">
+              <SectionHeader
+                title="Schedule"
+                count={scheduleCount}
+                open={scheduleOpen}
+                onToggle={() => setScheduleOpen((v) => !v)}
+                icon={Calendar}
+                accent
+              />
+              {scheduleOpen && (
+                <div className="mt-3 space-y-2.5">
+                  {scheduledEvents.length === 0 ? (
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
+                      <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-slate-500">No upcoming reminders</p>
+                      <p className="text-xs text-slate-400 mt-1 mb-4">
+                        Add reminders from any unit page or here.
+                      </p>
+                      <button
+                        onClick={() => setShowAddEvent(true)}
+                        className="text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-xl px-3 py-1.5 font-semibold hover:bg-blue-100 transition-colors"
+                      >
+                        <Plus className="w-3 h-3 inline mr-1" />
+                        Add Reminder
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      {scheduledEvents.map((ev) => (
+                        <ScheduleCard
+                          key={ev.id}
+                          event={ev}
+                          unitMap={unitMap}
+                          onMarkDone={() => markEventDone(ev.id)}
+                          onDelete={() => deleteEvent(ev.id)}
+                        />
+                      ))}
+                      <button
+                        onClick={() => setShowAddEvent(true)}
+                        className="w-full flex items-center justify-center gap-1.5 text-xs text-slate-500 hover:text-blue-600 py-2 border border-dashed border-slate-200 rounded-2xl hover:border-blue-300 transition-colors font-semibold"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Add Reminder
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </section>
 
             {/* ── 2. Active Work ───────────────────────────────────────────────── */}
             <section aria-label="Active Work">
               <div className="flex items-center gap-2 mb-3">
-                <AlertCircle className={`w-4 h-4 ${unresolvedCount > 0 ? "text-amber-500" : "text-slate-400"}`} />
+                <AlertCircle className={`w-4 h-4 ${activeJobCount > 0 ? "text-amber-500" : "text-slate-400"}`} />
                 <h2 className="font-bold text-slate-900 text-sm">Active Work</h2>
-                {activeWork.length > 0 && (
+                {activeJobCount > 0 && (
                   <span className="bg-amber-100 text-amber-800 text-xs font-bold px-1.5 py-0.5 rounded-full">
-                    {activeWork.length}
+                    {activeJobCount}
                   </span>
                 )}
               </div>
               {activeWork.length === 0 ? (
                 <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
                   <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-slate-500">No active follow-ups</p>
-                  <p className="text-xs text-slate-400 mt-1">Unresolved diagnostics will appear here.</p>
+                  <p className="text-sm font-semibold text-slate-500">All clear</p>
+                  <p className="text-xs text-slate-400 mt-1">No active follow-ups.</p>
                 </div>
               ) : (
                 <div className="space-y-2.5">
-                  {activeWork.map((l) => (
-                    <LogCard key={l.id} log={l} unitMap={unitMap} onClick={() => navigate(`/logs/${l.id}`)} />
+                  {partsWaiting.length > 0 && (
+                    <div className="bg-purple-50 border border-purple-200 rounded-2xl px-4 py-2.5 flex items-center gap-2">
+                      <Package className="w-3.5 h-3.5 text-purple-600" />
+                      <span className="text-xs font-bold text-purple-800">
+                        {partsWaiting.length} job{partsWaiting.length !== 1 ? "s" : ""} waiting on parts
+                      </span>
+                    </div>
+                  )}
+                  {activeWork
+                    .filter((l) => l.status !== "waiting-on-parts")
+                    .slice(0, 6)
+                    .map((l) => (
+                      <LogCard
+                        key={l.id}
+                        log={l}
+                        unitMap={unitMap}
+                        onClick={() => navigate(`/records/log/${l.id}`)}
+                      />
+                    ))}
+                  {partsWaiting.slice(0, 3).map((l) => (
+                    <LogCard
+                      key={l.id}
+                      log={l}
+                      unitMap={unitMap}
+                      onClick={() => navigate(`/records/log/${l.id}`)}
+                    />
                   ))}
+                  {activeWork.length > 9 && (
+                    <p className="text-xs text-center text-slate-400 py-1">
+                      +{activeWork.length - 9} more · scroll below to view all
+                    </p>
+                  )}
                 </div>
               )}
             </section>
 
             {/* ── 3. Favorites ─────────────────────────────────────────────────── */}
-            <section aria-label="Favorites">
-              <div className="flex items-center gap-2 mb-3">
-                <Star className={`w-4 h-4 ${favorites.length > 0 ? "text-yellow-500 fill-yellow-400" : "text-slate-400"}`} />
-                <h2 className="font-bold text-slate-900 text-sm">Favorites</h2>
-                {favorites.length > 0 && (
+            {favorites.length > 0 && (
+              <section aria-label="Favorites">
+                <div className="flex items-center gap-2 mb-3">
+                  <Star className="w-4 h-4 text-yellow-500 fill-yellow-400" />
+                  <h2 className="font-bold text-slate-900 text-sm">Favorites</h2>
                   <span className="bg-yellow-100 text-yellow-800 text-xs font-bold px-1.5 py-0.5 rounded-full">
                     {favorites.length}
                   </span>
-                )}
-              </div>
-              {favorites.length === 0 ? (
-                <div className="bg-white border border-slate-200 rounded-2xl p-5 text-center">
-                  <Star className="w-7 h-7 text-slate-300 mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-slate-400">No favorites yet</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    Tap the ★ on any unit card or the unit detail page to pin it here.
-                  </p>
                 </div>
-              ) : (
                 <div className="space-y-2.5">
                   {favorites.map((u) => (
                     <CompactUnitCard
                       key={u.id}
                       unit={u}
-                      onClick={() => navigate(`/records/${u.id}`)}
+                      healthScore={healthScoreMap[u.id]}
+                      onClick={() => navigate(`/records/unit/${u.id}`)}
                       onToggleFavorite={(e) => toggleFavorite(u, e)}
                     />
                   ))}
                 </div>
-              )}
-            </section>
+              </section>
+            )}
 
             {/* ── 4. Recently Viewed ───────────────────────────────────────────── */}
             {recentlyViewed.length > 0 && (
               <section aria-label="Recently Viewed">
                 <div className="flex items-center gap-2 mb-3">
-                  <Clock className="w-4 h-4 text-slate-400" />
+                  <History className="w-4 h-4 text-slate-400" />
                   <h2 className="font-bold text-slate-900 text-sm">Recently Viewed</h2>
                 </div>
                 <div className="space-y-2.5">
@@ -594,8 +925,8 @@ export default function RecordsPage() {
                     <CompactUnitCard
                       key={u.id}
                       unit={u}
-                      onClick={() => navigate(`/records/${u.id}`)}
-                      onToggleFavorite={(e) => toggleFavorite(u, e)}
+                      healthScore={healthScoreMap[u.id]}
+                      onClick={() => navigate(`/records/unit/${u.id}`)}
                     />
                   ))}
                 </div>
@@ -609,70 +940,67 @@ export default function RecordsPage() {
                 count={units.length}
                 open={unitsOpen}
                 onToggle={() => setUnitsOpen((v) => !v)}
-                icon={Wrench}
+                icon={Building2}
               />
               {unitsOpen && (
                 <div className="mt-3 space-y-3">
-                  {/* Search + brand filter */}
+                  {/* Search + filter */}
                   <div className="flex gap-2">
                     <div className="relative flex-1">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                       <Input
                         value={q}
                         onChange={(e) => setQ(e.target.value)}
-                        placeholder="Search units…"
-                        className="pl-9 bg-white rounded-xl border-slate-200 h-10 text-sm"
+                        placeholder="Search units, customers, models…"
+                        className="pl-8 rounded-xl border-slate-200 text-sm h-9"
                       />
                       {q && (
-                        <button onClick={() => setQ("")} className="absolute right-3 top-1/2 -translate-y-1/2">
-                          <X className="w-3.5 h-3.5 text-slate-400" />
+                        <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400">
+                          <X className="w-3.5 h-3.5" />
                         </button>
                       )}
                     </div>
                     {manufacturers.length > 1 && (
                       <div className="relative">
-                        <Filter className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
                         <select
                           value={mfgFilter}
                           onChange={(e) => setMfgFilter(e.target.value)}
-                          className="h-10 pl-8 pr-3 rounded-xl border border-slate-200 bg-white text-sm text-slate-700 font-medium appearance-none max-w-[120px]"
+                          className="h-9 appearance-none text-xs text-slate-700 bg-white border border-slate-200 rounded-xl pl-3 pr-7 cursor-pointer font-semibold"
                         >
                           <option value="">All</option>
                           {manufacturers.map((m) => <option key={m} value={m}>{m}</option>)}
                         </select>
+                        <Filter className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
                       </div>
                     )}
                   </div>
 
-                  {filteredUnits.length === 0 ? (
-                    <div className="text-center py-10">
+                  {units.length === 0 ? (
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
                       <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                      <p className="font-bold text-slate-400 text-sm">
-                        {q || mfgFilter ? "No units match" : "No saved units yet"}
+                      <p className="text-sm font-semibold text-slate-500">No units saved yet</p>
+                      <p className="text-xs text-slate-400 mt-1 mb-4">
+                        Save units to track service history.
                       </p>
-                      {!q && !mfgFilter && (
-                        <>
-                          <p className="text-xs text-slate-400 mt-1">
-                            Scan a nameplate or add a unit manually.
-                          </p>
-                          <Button
-                            onClick={() => navigate("/records/new")}
-                            className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
-                            size="sm"
-                          >
-                            <Plus className="w-4 h-4 mr-1.5" />
-                            Add First Unit
-                          </Button>
-                        </>
-                      )}
+                      <Button
+                        onClick={() => navigate("/records/new")}
+                        size="sm"
+                        className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
+                      >
+                        <Plus className="w-3.5 h-3.5 mr-1" />
+                        Add First Unit
+                      </Button>
                     </div>
+                  ) : filteredUnits.length === 0 ? (
+                    <p className="text-sm text-slate-400 text-center py-4">No matches for "{q}"</p>
                   ) : (
                     <div className="space-y-2.5">
                       {filteredUnits.map((u) => (
                         <UnitCard
                           key={u.id}
                           unit={u}
-                          onClick={() => navigate(`/records/${u.id}`)}
+                          healthScore={healthScoreMap[u.id]}
+                          onClick={() => navigate(`/records/unit/${u.id}`)}
                           onToggleFavorite={(e) => toggleFavorite(u, e)}
                         />
                       ))}
@@ -682,36 +1010,32 @@ export default function RecordsPage() {
               )}
             </section>
 
-            {/* ── 6. Recent Diagnostics ────────────────────────────────────────── */}
+            {/* ── 6. Recent Diagnostics ─────────────────────────────────────────── */}
             <section aria-label="Recent Diagnostics">
               <SectionHeader
                 title="Recent Diagnostics"
                 count={logs.length}
                 open={diagOpen}
                 onToggle={() => setDiagOpen((v) => !v)}
-                icon={History}
+                icon={Activity}
               />
               {diagOpen && (
                 <div className="mt-3">
                   {recentDiags.length === 0 ? (
-                    <div className="text-center py-10">
-                      <History className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                      <p className="font-bold text-slate-400 text-sm">No diagnostic history yet</p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Run a diagnosis and results will appear here.
-                      </p>
-                      <Button
-                        onClick={() => navigate("/")}
-                        className="mt-4 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl"
-                        size="sm"
-                      >
-                        Start Diagnosis
-                      </Button>
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
+                      <Activity className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                      <p className="text-sm font-semibold text-slate-500">No diagnostics yet</p>
+                      <p className="text-xs text-slate-400 mt-1">Run a diagnosis to see results here.</p>
                     </div>
                   ) : (
                     <div className="space-y-2.5">
                       {recentDiags.map((l) => (
-                        <LogCard key={l.id} log={l} unitMap={unitMap} onClick={() => navigate(`/logs/${l.id}`)} />
+                        <LogCard
+                          key={l.id}
+                          log={l}
+                          unitMap={unitMap}
+                          onClick={() => navigate(`/records/log/${l.id}`)}
+                        />
                       ))}
                     </div>
                   )}
@@ -719,47 +1043,84 @@ export default function RecordsPage() {
               )}
             </section>
 
-            {/* ── 7. Resolution Library ────────────────────────────────────────── */}
+            {/* ── 7. My Stats ──────────────────────────────────────────────────── */}
+            <section aria-label="My Stats">
+              <SectionHeader
+                title="My Stats"
+                open={statsOpen}
+                onToggle={() => setStatsOpen((v) => !v)}
+                icon={TrendingUp}
+              />
+              {statsOpen && (
+                <div className="mt-3 grid grid-cols-2 gap-3">
+                  <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                    <span className="text-2xl font-extrabold text-slate-900 leading-none">{logs.length}</span>
+                    <p className="text-xs font-semibold text-slate-400 mt-1.5">Total Diagnoses</p>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                    <span className="text-2xl font-extrabold text-emerald-700 leading-none">{resolvedThisWeek}</span>
+                    <p className="text-xs font-semibold text-slate-400 mt-1.5">Resolved This Week</p>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                    <span className="text-2xl font-extrabold text-blue-700 leading-none">
+                      {avgConfidence != null ? `${avgConfidence}%` : "—"}
+                    </span>
+                    <p className="text-xs font-semibold text-slate-400 mt-1.5">Avg. AI Confidence</p>
+                  </div>
+                  <div className="bg-white border border-slate-200 rounded-2xl p-4">
+                    <span className="text-2xl font-extrabold text-slate-900 leading-none">{resolvedLogs.length}</span>
+                    <p className="text-xs font-semibold text-slate-400 mt-1.5">Total Resolved</p>
+                  </div>
+                  {topDiagnosis && (
+                    <div className="col-span-2 bg-white border border-slate-200 rounded-2xl p-4">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Top Diagnosis</p>
+                      <p className="text-sm font-bold text-slate-900 line-clamp-1">{topDiagnosis[0]}</p>
+                      <p className="text-xs text-slate-400 mt-0.5">{topDiagnosis[1]}× diagnosed</p>
+                    </div>
+                  )}
+                </div>
+              )}
+            </section>
+
+            {/* ── 8. Resolution Library ─────────────────────────────────────────── */}
             <section aria-label="Resolution Library">
               <SectionHeader
                 title="Resolution Library"
                 count={resolvedLogs.length}
                 open={libOpen}
                 onToggle={() => setLibOpen((v) => !v)}
-                icon={CheckCircle2}
+                icon={CheckCheck}
               />
               {libOpen && (
                 <div className="mt-3">
                   {resolvedLogs.length === 0 ? (
-                    <div className="text-center py-10">
+                    <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
                       <CheckCircle2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                      <p className="font-bold text-slate-400 text-sm">No resolved repairs yet</p>
-                      <p className="text-xs text-slate-400 mt-1">
-                        Resolved diagnostics will appear here after you close out issues.
-                      </p>
+                      <p className="text-sm font-semibold text-slate-500">No resolved cases yet</p>
                     </div>
                   ) : (
                     <div className="space-y-4">
                       {/* Category chips */}
                       <div className="flex flex-wrap gap-2">
-                        {RESOLUTION_CATEGORIES.filter((c) => resolutionGroups[c.key]?.length).map((cat) => (
-                          <span
-                            key={cat.key}
-                            className="bg-emerald-50 text-emerald-800 text-xs font-semibold px-2.5 py-1 rounded-full border border-emerald-200"
-                          >
-                            {cat.label} ({resolutionGroups[cat.key].length})
-                          </span>
-                        ))}
-                        {resolutionGroups["other"]?.length ? (
-                          <span className="bg-slate-100 text-slate-600 text-xs font-semibold px-2.5 py-1 rounded-full border border-slate-200">
-                            Other ({resolutionGroups["other"].length})
-                          </span>
-                        ) : null}
+                        {Object.entries(resolutionGroups)
+                          .sort((a, b) => b[1].length - a[1].length)
+                          .map(([key, items]) => {
+                            const cat = RESOLUTION_CATEGORIES.find((c) => c.key === key);
+                            return (
+                              <span key={key} className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-semibold">
+                                {cat?.label ?? "Other"} ({items.length})
+                              </span>
+                            );
+                          })}
                       </div>
-                      {/* Log list */}
                       <div className="space-y-2.5">
                         {resolvedLogs.slice(0, 10).map((l) => (
-                          <LogCard key={l.id} log={l} unitMap={unitMap} onClick={() => navigate(`/logs/${l.id}`)} />
+                          <LogCard
+                            key={l.id}
+                            log={l}
+                            unitMap={unitMap}
+                            onClick={() => navigate(`/records/log/${l.id}`)}
+                          />
                         ))}
                       </div>
                     </div>
@@ -772,7 +1133,14 @@ export default function RecordsPage() {
         )}
       </div>
 
-      <div className="h-10" />
+      {/* ── Add Reminder Modal ───────────────────────────────────────────────── */}
+      {showAddEvent && (
+        <ScheduledEventModal
+          clientId={clientId}
+          onClose={() => setShowAddEvent(false)}
+          onCreated={(ev) => setScheduledEvents((prev) => [ev, ...prev])}
+        />
+      )}
     </div>
   );
 }

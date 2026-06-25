@@ -5,13 +5,14 @@ import {
   ChevronRight, Wrench, ThermometerSnowflake, Edit2, Trash2, Pencil,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
   MapPin, Activity, Loader2, FileText, Settings, Camera, Search,
-  ZoomIn, X, Star,
+  ZoomIn, X, Star, Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import TimelineAddModal from "@/components/TimelineAddModal";
 import EquipmentResources from "@/components/EquipmentResources";
 import PhotoAlbum from "@/components/PhotoAlbum";
+import ScheduledEventModal, { type ScheduledEvent } from "@/components/ScheduledEventModal";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,6 +41,15 @@ interface UnitRecord {
   isFavorite: boolean;
   isArchived: boolean;
   updatedAt: string;
+}
+
+interface DiagnosticLog {
+  id: string;
+  unitId: string | null;
+  diagnosisTitle: string | null;
+  status: string;
+  confidencePercent: number | null;
+  timestamp: number;
 }
 
 interface TimelineEvent {
@@ -399,10 +409,13 @@ export default function UnitDetailPage() {
 
   const [unit, setUnit] = useState<UnitRecord | null>(null);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
+  const [unitLogs, setUnitLogs] = useState<DiagnosticLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [archiving, setArchiving] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showReminderModal, setShowReminderModal] = useState(false);
+  const [progressOpen, setProgressOpen] = useState(true);
 
   // Timeline UI state
   const [activeFilter, setActiveFilter] = useState("all");
@@ -424,8 +437,9 @@ export default function UnitDetailPage() {
     Promise.all([
       fetch(`/api/units/${params.id}?clientId=${cid}`).then((r) => r.json()),
       fetch(`/api/units/${params.id}/timeline?clientId=${cid}`).then((r) => r.json()),
+      fetch(`/api/diagnostic-logs?clientId=${cid}&unitId=${params.id}`).then((r) => r.json()),
     ])
-      .then(([uData, tlData]) => {
+      .then(([uData, tlData, logsData]) => {
         if (uData.unit) {
           setUnit(uData.unit);
           // Track recently viewed (localStorage, max 5)
@@ -439,6 +453,7 @@ export default function UnitDetailPage() {
           setError("Unit not found");
         }
         setEvents(tlData.events ?? []);
+        setUnitLogs(logsData.logs ?? []);
       })
       .catch(() => setError("Failed to load unit"))
       .finally(() => setLoading(false));
@@ -465,6 +480,25 @@ export default function UnitDetailPage() {
     }
     return counts;
   }, [events]);
+
+  // Repair progress checklist — auto-computed, never manual
+  const progressSteps = useMemo(() => {
+    if (!unit) return [];
+    const hasRepairOrMaint = events.some((e) => e.source === "manual" && ["repair", "maintenance"].includes(e.eventType));
+    const hasPartsWaiting = unitLogs.some((l) => l.status === "waiting-on-parts");
+    const hasResolved = unitLogs.some((l) => l.status === "resolved") || events.some((e) => e.status === "resolved");
+    return [
+      { label: "Customer / Site Added",      done: !!unit.siteCustomerName },
+      { label: "Nameplate Scanned",           done: !!unit.nameplateImageUrl },
+      { label: "Equipment Info Recorded",     done: !!(unit.manufacturer && unit.equipmentType) },
+      { label: "Symptoms Documented",         done: unitLogs.length > 0 },
+      { label: "AI Diagnosis Run",            done: unitLogs.some((l) => !!l.diagnosisTitle) },
+      { label: "Field Measurements Recorded", done: !!(unit.mca || unit.mocp || unit.rla) },
+      { label: "Service Timeline Started",    done: events.filter((e) => e.source === "manual").length > 0 },
+      { label: "Repair / Parts Tracked",      done: hasRepairOrMaint || hasPartsWaiting },
+      { label: "Issue Resolved",              done: hasResolved },
+    ];
+  }, [unit, events, unitLogs]);
 
   // Handlers
   const handleArchive = useCallback(async () => {
@@ -711,6 +745,68 @@ export default function UnitDetailPage() {
           <PhotoAlbum unitId={unit.id} clientId={clientId} />
         </div>
 
+        {/* ── Repair Progress Tracker ──────────────────────────────────── */}
+        {progressSteps.length > 0 && (
+          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+            <button
+              onClick={() => setProgressOpen((v) => !v)}
+              className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-6 h-6 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                </div>
+                <div className="min-w-0">
+                  <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wide">
+                    Repair Progress
+                  </span>
+                  <span className="text-xs text-slate-400 ml-2">
+                    {progressSteps.filter((s) => s.done).length}/{progressSteps.length}
+                  </span>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <span className={`text-xs font-extrabold ${
+                  Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100) === 100
+                    ? "text-emerald-600"
+                    : "text-slate-500"
+                }`}>
+                  {Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100)}%
+                </span>
+                <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${progressOpen ? "rotate-90" : ""}`} />
+              </div>
+            </button>
+            {/* Progress bar */}
+            <div className="px-4 pb-2">
+              <div className="w-full bg-slate-100 rounded-full h-1.5">
+                <div
+                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+                  style={{ width: `${Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100)}%` }}
+                />
+              </div>
+            </div>
+            {progressOpen && (
+              <div className="px-4 pb-4 pt-2 space-y-1.5 border-t border-slate-100">
+                {progressSteps.map((step) => (
+                  <div key={step.label} className="flex items-center gap-2.5">
+                    <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${
+                      step.done ? "bg-emerald-100" : "bg-slate-100"
+                    }`}>
+                      {step.done
+                        ? <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        : <div className="w-2 h-2 rounded-full bg-slate-300" />
+                      }
+                    </div>
+                    <span className={`text-xs font-medium ${step.done ? "text-slate-700" : "text-slate-400"}`}>
+                      {step.label}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Equipment Timeline ───────────────────────────────────────── */}
         <div>
           {/* Section header */}
@@ -729,7 +825,7 @@ export default function UnitDetailPage() {
           </div>
 
           {/* Quick-add shortcuts */}
-          <div className="flex gap-2 mb-3">
+          <div className="flex gap-2 mb-3 flex-wrap">
             {(
               [
                 { type: "note" as const,        Icon: FileText,  label: "Note" },
@@ -746,6 +842,13 @@ export default function UnitDetailPage() {
                 {label}
               </button>
             ))}
+            <button
+              onClick={() => setShowReminderModal(true)}
+              className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors"
+            >
+              <Bell className="w-3.5 h-3.5" />
+              Reminder
+            </button>
           </div>
 
           {/* Filter tabs */}
@@ -841,6 +944,17 @@ export default function UnitDetailPage() {
           onSave={handleAddEvent}
           onUpdate={handleUpdateEvent}
           onClose={() => setEditingEvent(null)}
+        />
+      )}
+
+      {/* Add Reminder modal */}
+      {showReminderModal && (
+        <ScheduledEventModal
+          unitId={unit.id}
+          unitName={unit.nickname ?? unit.modelNumber ?? unit.manufacturer ?? "Unit"}
+          clientId={clientId}
+          onClose={() => setShowReminderModal(false)}
+          onCreated={(_ev: ScheduledEvent) => setShowReminderModal(false)}
         />
       )}
     </div>

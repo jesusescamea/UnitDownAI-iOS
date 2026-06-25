@@ -14,6 +14,7 @@ import timelineRouter from "./timeline";
 import resourcesRouter from "./resources";
 import storageRouter from "./storage";
 import unitPhotosRouter from "./unitPhotos";
+import scheduledEventsRouter from "./scheduledEvents";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(timelineRouter);
 router.use(resourcesRouter);
 router.use(storageRouter);
 router.use(unitPhotosRouter);
+router.use(scheduledEventsRouter);
 
 export default router;
