@@ -1,0 +1,127 @@
+Proceed with the new UnitDown home page layout and Pro icon upgrade system.
+
+Do not touch auth, Clerk secrets, login flow, scanner, OCR, diagnostics engine, IAP product IDs, subscriptions logic, payment logic, build settings, or unrelated features.
+
+Goal:
+Upgrade the UnitDown home page so it reflects the current product direction:
+- AI diagnostics
+- Field Hub
+- saved equipment records
+- service reminders
+- nameplate scanner
+- diagnostic history
+- photo/notes
+- Pro experience
+
+Also integrate the new official UnitDown Pro icon/logo assets.
+
+Brand assets:
+Use the organized files in:
+
+/public/brand/
+
+Expected files:
+- unitdown-logo.png
+- unitdown-pro-logo.png
+
+If paths differ, locate the files in /public/brand/ and use the correct paths.
+Do not generate fake logos.
+Do not use placeholder icons.
+Do not overwrite uploaded assets.
+
+Home page updates:
+1. Replace outdated MVP messaging.
+2. Remove outdated “4 free diagnostics” language.
+3. Position UnitDown as:
+   “Commercial HVAC intelligence built for the field.”
+4. Hero should highlight:
+   - Diagnose faster
+   - Save equipment history
+   - Track repairs
+   - Manage follow-ups
+   - Use Field Hub
+5. Keep the main diagnostic input prominent.
+6. Add quick-entry cards:
+   - Run Diagnosis
+   - Open Field Hub
+   - Scan Nameplate
+   - Add Reminder
+7. Add Pro trial/credit status subtly:
+   Example:
+   “Pro Trial · 7 days left · 30 diagnostics”
+8. Make Pro status feel premium but not flashy.
+
+Pro icon/logo behavior:
+1. Standard users:
+   - Use unitdown-logo.png
+   - Show normal UnitDown branding
+
+2. Pro users:
+   - Use unitdown-pro-logo.png in appropriate premium areas:
+     - Account page
+     - Subscription page
+     - Pro badge area
+     - Optional home header badge
+     - Footer Pro status
+   - Do NOT replace the main app identity everywhere with Pro.
+   - Do NOT change the installed app icon.
+   - Use Pro logo as an account/subscription status indicator.
+
+3. Pro badge:
+   Replace “Join Premium” for active Pro users with:
+   “Pro Active”
+   or
+   “UnitDown Pro”
+
+4. Non-Pro users:
+   Keep “Join Premium” or “Start Pro Trial,” depending on current account state.
+
+Footer updates:
+1. Match new platform direction.
+2. Remove “4 Free Diagnostics.”
+3. Use updated feature badges:
+   - AI Diagnostics
+   - Field Hub
+   - Equipment Records
+   - Nameplate Scanner
+   - Service Reminders
+   - Diagnostic History
+   - Photo Notes
+   - Cross-Device Sync
+4. Use unitdown-logo.png normally.
+5. If user is Pro, show a subtle Pro Active badge/icon using unitdown-pro-logo.png.
+
+Design style:
+- UnitDown blue
+- White
+- Dark navy
+- Slate gray
+- Subtle premium glow for Pro only
+- Mobile-first
+- Dark mode compatible
+- Clean, premium SaaS look
+- No clutter
+- No red Pro theme
+- No gold theme
+- No fake icons
+
+Testing:
+- Home page loads for logged-out user
+- Home page loads for free user
+- Home page loads for trial user
+- Home page loads for Pro user
+- Pro user sees Pro Active instead of Join Premium
+- Free user still sees upgrade CTA
+- Footer no longer says 4 free diagnostics
+- Correct logo appears
+- Correct Pro logo appears only in Pro contexts
+- Dark mode works
+- Mobile layout works
+
+Return:
+- Files changed
+- Logo paths used
+- Home page layout changes
+- Pro icon behavior
+- Footer changes
+- Test results

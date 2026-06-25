@@ -91,6 +91,12 @@ import {
   Moon,
   Sun,
   Smartphone,
+  Bell,
+  ScanLine,
+  Camera,
+  LayoutGrid,
+  Archive,
+  CalendarPlus,
 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -244,12 +250,14 @@ const exampleSymptomsB = [
 ];
 
 const trustBadges = [
-  { icon: ShieldCheck, label: "10 Diagnostic Categories" },
-  { icon: Cpu, label: "Rule-Based + AI Engine" },
-  { icon: Zap, label: "Instant Results" },
-  { icon: WrenchIcon, label: "Used by HVAC Professionals" },
-  { icon: MapPin, label: "Used by Technicians Worldwide" },
-  { icon: CheckCircle2, label: "4 Free Diagnostics" },
+  { icon: Cpu,        label: "AI Diagnostics" },
+  { icon: LayoutGrid, label: "Field Hub" },
+  { icon: Archive,    label: "Equipment Records" },
+  { icon: ScanLine,   label: "Nameplate Scanner" },
+  { icon: History,    label: "Diagnostic History" },
+  { icon: Bell,       label: "Service Reminders" },
+  { icon: Camera,     label: "Photo Notes" },
+  { icon: RotateCcw,  label: "Cross-Device Sync" },
 ];
 
 const equipmentTypes = [
@@ -2382,7 +2390,7 @@ function Home() {
               className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1]"
             >
               Commercial HVAC <br className="hidden md:block" />
-              Problems <span className="text-blue-600">Solved Faster</span>
+              Intelligence <span className="text-blue-600">Built for the Field</span>
             </motion.h1>
             <motion.p
               initial={{ opacity: 0, y: 20 }}
@@ -2390,7 +2398,7 @@ function Home() {
               transition={{ delay: 0.1 }}
               className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto font-medium"
             >
-              Commercial HVAC diagnostic support built for technicians worldwide.
+              Diagnose faster. Save equipment history. Track repairs. Manage follow-ups. One platform built for commercial HVAC professionals.
             </motion.p>
 
             <motion.div
@@ -2520,6 +2528,60 @@ function Home() {
                 ))}
               </div>
             </motion.div>
+
+            {/* Quick-entry cards — logged-in users only */}
+            {clerkLoaded && clerkUser && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.45 }}
+                className="pt-2 max-w-3xl mx-auto"
+              >
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-left">
+                  {[
+                    {
+                      icon: Activity,
+                      label: "Run Diagnosis",
+                      sub: "Diagnose a unit",
+                      action: () => document.querySelector<HTMLTextAreaElement>('[data-testid="hero-input-symptoms"]')?.focus(),
+                    },
+                    {
+                      icon: LayoutGrid,
+                      label: "Field Hub",
+                      sub: "Equipment & records",
+                      action: () => navigate("/records"),
+                    },
+                    {
+                      icon: ScanLine,
+                      label: "Scan Nameplate",
+                      sub: "OCR nameplate data",
+                      action: () => navigate("/records"),
+                    },
+                    {
+                      icon: Bell,
+                      label: "Add Reminder",
+                      sub: "Schedule follow-up",
+                      action: () => navigate("/records"),
+                    },
+                  ].map(({ icon: Icon, label, sub, action }) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={action}
+                      className="flex flex-col items-start gap-2 bg-white border border-slate-200 rounded-2xl px-4 py-3.5 hover:border-blue-300 hover:shadow-md hover:shadow-blue-500/5 transition-all group text-left"
+                    >
+                      <div className="w-8 h-8 rounded-xl bg-blue-50 flex items-center justify-center group-hover:bg-blue-100 transition-colors flex-shrink-0">
+                        <Icon className="w-4 h-4 text-blue-600" />
+                      </div>
+                      <div>
+                        <p className="text-sm font-bold text-slate-800 leading-tight">{label}</p>
+                        <p className="text-[11px] text-slate-400 mt-0.5">{sub}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </motion.div>
+            )}
           </div>
         </section>
 
@@ -3334,14 +3396,13 @@ function Home() {
           <div className="flex flex-wrap gap-2">
             {[
               "AI Diagnostics",
+              "Field Hub",
               "Equipment Records",
-              "Smart Nameplate OCR",
-              "Diagnostic History",
-              "Return Visit Scheduling",
+              "Nameplate Scanner",
               "Service Reminders",
-              "Commercial HVAC Only",
-              "Cross Device Sync",
-              "Secure Cloud Storage",
+              "Diagnostic History",
+              "Photo Notes",
+              "Cross-Device Sync",
             ].map((badge) => (
               <span
                 key={badge}
