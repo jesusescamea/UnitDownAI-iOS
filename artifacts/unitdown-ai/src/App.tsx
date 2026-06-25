@@ -2193,7 +2193,7 @@ function Home() {
                 data-testid="nav-records"
               >
                 <Wrench className="w-4 h-4" />
-                <span className="hidden sm:inline">Records</span>
+                <span className="hidden sm:inline">Field Hub</span>
               </button>
             )}
           </nav>

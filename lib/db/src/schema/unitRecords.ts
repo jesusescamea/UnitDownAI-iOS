@@ -35,6 +35,7 @@ export const unitRecords = pgTable(
     nameplateImageUrl: text("nameplate_image_url"),
     nameplatePreviewUrl: text("nameplate_preview_url"),
 
+    isFavorite: boolean("is_favorite").notNull().default(false),
     isArchived: boolean("is_archived").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

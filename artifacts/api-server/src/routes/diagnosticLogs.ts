@@ -94,7 +94,7 @@ diagnosticLogsRouter.post("/diagnostic-logs", async (req: Request, res: Response
     confidencePercent: typeof log.confidencePercent === "number" ? log.confidencePercent : null,
     result: log.result ?? null,
     technicianNotes: typeof log.technicianNotes === "string" ? log.technicianNotes.slice(0, 4000) : null,
-    status: (typeof log.status === "string" && ["unresolved","monitoring","resolved"].includes(log.status))
+    status: (typeof log.status === "string" && ["unresolved","monitoring","resolved","waiting-on-parts","return-visit","customer-callback"].includes(log.status))
       ? log.status : "unresolved",
     resolutionNotes: typeof log.resolutionNotes === "string" ? log.resolutionNotes.slice(0, 4000) : null,
     timestamp: typeof log.timestamp === "number" ? log.timestamp : Date.now(),
@@ -121,7 +121,7 @@ diagnosticLogsRouter.patch("/diagnostic-logs/:id", async (req: Request, res: Res
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof fields.technicianNotes === "string") updates.technicianNotes = fields.technicianNotes.slice(0, 4000);
   if (typeof fields.resolutionNotes === "string") updates.resolutionNotes = fields.resolutionNotes.slice(0, 4000);
-  if (typeof fields.status === "string" && ["unresolved","monitoring","resolved"].includes(fields.status)) {
+  if (typeof fields.status === "string" && ["unresolved","monitoring","resolved","waiting-on-parts","return-visit","customer-callback"].includes(fields.status)) {
     updates.status = fields.status;
   }
   if (typeof fields.unitId === "string" || fields.unitId === null) updates.unitId = fields.unitId;

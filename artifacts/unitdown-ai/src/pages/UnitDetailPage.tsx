@@ -5,7 +5,7 @@ import {
   ChevronRight, Wrench, ThermometerSnowflake, Edit2, Trash2, Pencil,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
   MapPin, Activity, Loader2, FileText, Settings, Camera, Search,
-  ZoomIn, X,
+  ZoomIn, X, Star,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -37,6 +37,7 @@ interface UnitRecord {
   notes: string | null;
   nameplateImageUrl: string | null;
   nameplatePreviewUrl: string | null;
+  isFavorite: boolean;
   isArchived: boolean;
   updatedAt: string;
 }
@@ -400,6 +401,7 @@ export default function UnitDetailPage() {
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [archiving, setArchiving] = useState(false);
+  const [favLoading, setFavLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Timeline UI state
@@ -424,8 +426,18 @@ export default function UnitDetailPage() {
       fetch(`/api/units/${params.id}/timeline?clientId=${cid}`).then((r) => r.json()),
     ])
       .then(([uData, tlData]) => {
-        if (uData.unit) setUnit(uData.unit);
-        else setError("Unit not found");
+        if (uData.unit) {
+          setUnit(uData.unit);
+          // Track recently viewed (localStorage, max 5)
+          try {
+            const key = "unitdown_recently_viewed";
+            const stored = JSON.parse(localStorage.getItem(key) ?? "[]") as string[];
+            const updated = [uData.unit.id as string, ...stored.filter((x: string) => x !== uData.unit.id)].slice(0, 5);
+            localStorage.setItem(key, JSON.stringify(updated));
+          } catch {}
+        } else {
+          setError("Unit not found");
+        }
         setEvents(tlData.events ?? []);
       })
       .catch(() => setError("Failed to load unit"))
@@ -516,6 +528,26 @@ export default function UnitDetailPage() {
     setShowAddModal(true);
   }, []);
 
+  const handleToggleFavorite = useCallback(async () => {
+    if (!unit || favLoading) return;
+    const newVal = !unit.isFavorite;
+    setUnit((u) => u ? { ...u, isFavorite: newVal } : u);
+    setFavLoading(true);
+    try {
+      const res = await fetch(`/api/units/${unit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clientId, unit: { isFavorite: newVal } }),
+      });
+      const d = await res.json();
+      if (d.unit) setUnit(d.unit);
+    } catch {
+      setUnit((u) => u ? { ...u, isFavorite: !newVal } : u);
+    } finally {
+      setFavLoading(false);
+    }
+  }, [unit, clientId, favLoading]);
+
   // ─── Render ────────────────────────────────────────────────────────────────
 
   if (!isLoaded || loading) {
@@ -560,6 +592,18 @@ export default function UnitDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            <button
+              onClick={handleToggleFavorite}
+              disabled={favLoading}
+              aria-label={unit.isFavorite ? "Remove from favorites" : "Add to favorites"}
+              className={`p-1.5 rounded-xl transition-colors disabled:opacity-50 ${
+                unit.isFavorite
+                  ? "text-yellow-500 hover:text-yellow-600 hover:bg-yellow-50"
+                  : "text-slate-400 hover:text-yellow-500 hover:bg-yellow-50"
+              }`}
+            >
+              <Star className={`w-4 h-4 ${unit.isFavorite ? "fill-yellow-400" : ""}`} />
+            </button>
             <button
               onClick={() => navigate(`/records/${unit.id}/edit`)}
               className="text-slate-500 hover:text-slate-800 p-1.5 rounded-xl hover:bg-slate-100"

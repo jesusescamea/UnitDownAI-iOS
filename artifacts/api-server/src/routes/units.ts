@@ -229,6 +229,8 @@ unitsRouter.post("/units", async (req: Request, res: Response) => {
     manufactureDate: unit.manufactureDate ?? null,
     notes: unit.notes ?? null,
     nameplateImageUrl: unit.nameplateImageUrl ?? null,
+    nameplatePreviewUrl: unit.nameplatePreviewUrl ?? null,
+    isFavorite: typeof unit.isFavorite === "boolean" ? unit.isFavorite : false,
   };
 
   try {
@@ -253,7 +255,8 @@ unitsRouter.patch("/units/:id", async (req: Request, res: Response) => {
   const allowed = [
     "siteCustomerName","nickname","location","manufacturer","modelNumber","serialNumber",
     "equipmentType","systemType","refrigerantType","voltage","phase","mca","mocp","rla",
-    "lra","capacityTons","manufactureDate","notes","nameplateImageUrl",
+    "lra","capacityTons","manufactureDate","notes","nameplateImageUrl","nameplatePreviewUrl",
+    "isFavorite",
   ];
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   for (const key of allowed) {
