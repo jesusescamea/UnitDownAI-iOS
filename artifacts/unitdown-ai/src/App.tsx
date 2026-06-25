@@ -205,6 +205,23 @@ function incrementDiagCount(): number {
   return next;
 }
 
+// ─── Upsell dismissal helpers ───────────────────────────────────────────────────
+
+const UPSELL_DISMISSED_KEY = "unitdown_upsell_dismissed_at";
+const UPSELL_COOLDOWN_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+function loadUpsellDismissedAt(): number {
+  try { return parseInt(localStorage.getItem(UPSELL_DISMISSED_KEY) ?? "0", 10) || 0; } catch { return 0; }
+}
+function saveUpsellDismissedAt(): void {
+  try { localStorage.setItem(UPSELL_DISMISSED_KEY, String(Date.now())); } catch {}
+}
+function isUpsellOnCooldown(): boolean {
+  const ts = loadUpsellDismissedAt();
+  if (!ts) return false;
+  return Date.now() - ts < UPSELL_COOLDOWN_MS;
+}
+
 // ─── Static data ────────────────────────────────────────────────────────────────
 
 const exampleSymptoms = [
@@ -1169,9 +1186,10 @@ function LockedSection({ children, label }: { children: React.ReactNode; label: 
 
 // ─── UpgradeOverlay ─────────────────────────────────────────────────────────────
 
-function UpgradeOverlay({ diagCount, onUpgrade }: { diagCount: number; onUpgrade: () => void }) {
+function UpgradeOverlay({ diagCount, onUpgrade, onDismiss }: { diagCount: number; onUpgrade: () => void; onDismiss: (permanent: boolean) => void }) {
   const remaining = Math.max(0, FREE_DIAGNOSES - (diagCount - 1));
   const appleIAP = shouldUseAppleIAP();
+  const [showDismissOptions, setShowDismissOptions] = useState(false);
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.97, y: 16 }}
@@ -1187,6 +1205,14 @@ function UpgradeOverlay({ diagCount, onUpgrade }: { diagCount: number; onUpgrade
         {!appleIAP && (
           <span className="ml-auto text-xs font-bold bg-blue-800/60 text-blue-100 rounded-full px-3 py-0.5">From $7.99/month</span>
         )}
+        <button
+          onClick={() => setShowDismissOptions(true)}
+          className="ml-2 flex-shrink-0 text-blue-300 hover:text-white transition-colors"
+          aria-label="Dismiss upgrade prompt"
+          data-testid="upgrade-overlay-dismiss"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
 
       {/* Body */}
@@ -1344,6 +1370,47 @@ function UpgradeOverlay({ diagCount, onUpgrade }: { diagCount: number; onUpgrade
           </div>
         ))}
       </div>
+
+      {/* Dismiss options */}
+      <AnimatePresence>
+        {showDismissOptions && (
+          <motion.div
+            key="dismiss-panel"
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.18 }}
+            className="overflow-hidden border-t border-slate-100 bg-white"
+          >
+            <div className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <p className="text-xs font-semibold text-slate-500">Not ready to upgrade?</p>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => onDismiss(false)}
+                  className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-100"
+                  data-testid="upgrade-overlay-maybe-later"
+                >
+                  Maybe later
+                </button>
+                <button
+                  onClick={() => onDismiss(true)}
+                  className="text-xs font-semibold text-slate-500 hover:text-slate-800 transition-colors px-3 py-1.5 rounded-lg hover:bg-slate-100"
+                  data-testid="upgrade-overlay-dont-show"
+                >
+                  Don't show for 7 days
+                </button>
+                <button
+                  onClick={() => { setShowDismissOptions(false); onUpgrade(); }}
+                  className="text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors px-3 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100"
+                  data-testid="upgrade-overlay-view-premium"
+                >
+                  View Premium →
+                </button>
+              </div>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }
@@ -1967,6 +2034,15 @@ function Home() {
   }, [clientId, refreshUsageStatus]);
 
   const diagnose = useDiagnoseHvac();
+
+  // Track whether the upsell overlay has been dismissed this session or is on
+  // cooldown from a previous "Don't show for 7 days" selection.
+  const [upsellDismissed, setUpsellDismissed] = useState(() => isUpsellOnCooldown());
+
+  const handleUpsellDismiss = useCallback((permanent: boolean) => {
+    if (permanent) saveUpsellDismissedAt();
+    setUpsellDismissed(true);
+  }, []);
 
   const openModal = useCallback(() => setModalOpen(true), []);
 
@@ -3114,7 +3190,9 @@ function Home() {
 
                             {/* Upgrade Overlay */}
                             <motion.div variants={fadeUp}>
-                              <UpgradeOverlay diagCount={diagCount} onUpgrade={openModal} />
+                              {!upsellDismissed && (
+                                <UpgradeOverlay diagCount={diagCount} onUpgrade={openModal} onDismiss={handleUpsellDismiss} />
+                              )}
                             </motion.div>
                           </>
                         )}
