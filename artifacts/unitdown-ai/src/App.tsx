@@ -2313,10 +2313,10 @@ function Home() {
                   <>
                     <button
                       onClick={() => navigate("/account")}
-                      className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-3 py-1.5 hover:bg-emerald-100 transition-colors"
+                      className="flex items-center gap-1.5 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-full px-2 py-1 hover:bg-emerald-100 transition-colors"
                       data-testid="nav-pro-badge"
                     >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <img src="/brand/unitdown-pro-logo.png" alt="UnitDown Pro" className="w-5 h-5 rounded-sm object-cover flex-shrink-0" />
                       <span className="hidden sm:inline">Pro Member</span>
                       <span className="sm:hidden">Pro</span>
                     </button>
@@ -3231,8 +3231,8 @@ function Home() {
                 AI diagnostics, equipment records, service history, reminders, and field management built for commercial HVAC professionals.
               </p>
               {isPro && (
-                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 rounded-full px-3 py-1" data-testid="footer-pro-badge">
-                  <CheckCircle2 className="w-3.5 h-3.5" />
+                <span className="inline-flex items-center gap-2 text-[11px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 rounded-full pl-1.5 pr-3 py-1" data-testid="footer-pro-badge">
+                  <img src="/brand/unitdown-pro-logo.png" alt="UnitDown Pro" className="w-5 h-5 rounded-sm object-cover flex-shrink-0" />
                   Active Pro Member
                 </span>
               )}

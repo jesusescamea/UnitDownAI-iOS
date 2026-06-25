@@ -492,8 +492,9 @@ export default function AccountPage() {
                     : (user?.fullName || user?.primaryEmailAddress?.emailAddress?.split("@")[0] || "User")}
                 </h1>
                 {isPro ? (
-                  <span className="flex items-center gap-1 px-2.5 py-0.5 bg-emerald-500/20 border border-emerald-400/30 rounded-full text-xs font-bold text-emerald-300">
-                    <CheckCircle2 className="w-3 h-3" /> Pro
+                  <span className="flex items-center gap-1.5 pl-1 pr-2.5 py-0.5 bg-emerald-500/20 border border-emerald-400/30 rounded-full text-xs font-bold text-emerald-300">
+                    <img src="/brand/unitdown-pro-logo.png" alt="Pro" className="w-4 h-4 rounded-sm object-cover flex-shrink-0" />
+                    Pro
                   </span>
                 ) : (
                   <span className="px-2.5 py-0.5 bg-white/10 border border-white/20 rounded-full text-xs font-semibold text-slate-400">
@@ -545,13 +546,18 @@ export default function AccountPage() {
                 </p>
               </div>
               <span
-                className={`flex-shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold border ${
+                className={`flex-shrink-0 flex items-center gap-1.5 rounded-full text-xs font-bold border ${
                   isPro
-                    ? "bg-emerald-100 border-emerald-200 text-emerald-700"
-                    : "bg-slate-100 border-slate-200 text-slate-500"
+                    ? "pl-1.5 pr-3 py-1 bg-emerald-100 border-emerald-200 text-emerald-700"
+                    : "px-3 py-1.5 bg-slate-100 border-slate-200 text-slate-500"
                 }`}
               >
-                {isPro ? <><CheckCircle2 className="w-3.5 h-3.5" /> Active</> : "Free"}
+                {isPro ? (
+                  <>
+                    <img src="/brand/unitdown-pro-logo.png" alt="Pro" className="w-5 h-5 rounded-sm object-cover flex-shrink-0" />
+                    Active
+                  </>
+                ) : "Free"}
               </span>
             </div>
 
