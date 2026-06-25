@@ -37,15 +37,17 @@ interface UnitFormData {
   manufactureDate: string;
   notes: string;
   nameplateImageUrl: string;
+  nameplatePreviewUrl: string;
 }
 
 const emptyForm = (): UnitFormData => ({
   siteCustomerName: "", nickname: "", location: "",
   manufacturer: "", modelNumber: "", serialNumber: "",
+  // nameplatePreviewUrl/nameplateImageUrl populated after scan/upload
   equipmentType: "", systemType: "", refrigerantType: "",
   voltage: "", phase: "", mca: "", mocp: "",
   rla: "", lra: "", capacityTons: "", manufactureDate: "",
-  notes: "", nameplateImageUrl: "",
+  notes: "", nameplateImageUrl: "", nameplatePreviewUrl: "",
 });
 
 function getClientId(): string {
@@ -56,8 +58,44 @@ function getClientId(): string {
 // Uploads the captured blob to object storage and returns a persistent URL
 // that is valid across all devices and sessions.
 // Throws on failure so the caller can fall back gracefully.
-async function uploadNameplateBlob(blob: Blob): Promise<string> {
-  const file = new File([blob], "nameplate.jpg", { type: "image/jpeg" });
+
+/**
+ * Generates a compressed WebP (or JPEG fallback) preview of a nameplate blob.
+ * Resizes to maxPx on the longest side.  Never throws — returns original on failure.
+ */
+async function generateNameplatePreview(blob: Blob, maxPx = 900, quality = 0.72): Promise<Blob> {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(blob);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      const s = Math.min(1, maxPx / Math.max(img.width || 1, img.height || 1));
+      const w = Math.max(1, Math.round(img.width * s));
+      const h = Math.max(1, Math.round(img.height * s));
+      const cvs = document.createElement("canvas");
+      cvs.width = w;
+      cvs.height = h;
+      const ctx = cvs.getContext("2d");
+      if (!ctx) { resolve(blob); return; }
+      ctx.drawImage(img, 0, 0, w, h);
+      cvs.toBlob(
+        (b) => {
+          if (b && b.size > 0) { resolve(b); return; }
+          // WebP unsupported — fall back to JPEG
+          cvs.toBlob((bj) => resolve(bj ?? blob), "image/jpeg", quality);
+        },
+        "image/webp",
+        quality,
+      );
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(blob); };
+    img.src = url;
+  });
+}
+
+async function uploadNameplateBlob(blob: Blob, filename = "nameplate.jpg"): Promise<string> {
+  const contentType = blob.type || "image/jpeg";
+  const file = new File([blob], filename, { type: contentType });
 
   // 1. Request a presigned GCS upload URL
   const urlRes = await fetch("/api/storage/uploads/request-url", {
@@ -180,6 +218,7 @@ export default function UnitFormPage() {
             manufactureDate: u.manufactureDate ?? "",
             notes: u.notes ?? "",
             nameplateImageUrl: u.nameplateImageUrl ?? "",
+            nameplatePreviewUrl: u.nameplatePreviewUrl ?? "",
           });
         }
       })
@@ -216,7 +255,7 @@ export default function UnitFormPage() {
       fd.append("file", blob, "nameplate.jpg");
 
       // Run OCR and storage upload in parallel — neither depends on the other
-      const [ocrResult, storageResult] = await Promise.allSettled([
+      const [ocrResult, storageResult, previewStorageResult] = await Promise.allSettled([
         fetch("/api/nameplate/ocr", { method: "POST", body: fd }).then(async (res) => {
           if (!res.ok) {
             const d = await res.json().catch(() => ({}));
@@ -224,7 +263,10 @@ export default function UnitFormPage() {
           }
           return res.json();
         }),
-        uploadNameplateBlob(blob),
+        uploadNameplateBlob(blob, "nameplate.jpg"),
+        generateNameplatePreview(blob).then((preview) =>
+          uploadNameplateBlob(preview, "nameplate-preview.webp")
+        ),
       ]);
 
       // Replace the temporary blob URL with the persistent storage URL.
@@ -233,6 +275,9 @@ export default function UnitFormPage() {
         setForm((prev) => ({ ...prev, nameplateImageUrl: storageResult.value }));
       } else {
         console.error("[Nameplate] Storage upload failed — blob URL used (not persistent):", storageResult.reason);
+      }
+      if (previewStorageResult.status === "fulfilled") {
+        setForm((prev) => ({ ...prev, nameplatePreviewUrl: previewStorageResult.value }));
       }
 
       if (ocrResult.status === "rejected") {

@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { useUser } from "@clerk/clerk-react";
 import {
   ChevronRight, Wrench, ThermometerSnowflake, Edit2, Trash2, Pencil,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
   MapPin, Activity, Loader2, FileText, Settings, Camera, Search,
+  ZoomIn, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -35,6 +36,7 @@ interface UnitRecord {
   manufactureDate: string | null;
   notes: string | null;
   nameplateImageUrl: string | null;
+  nameplatePreviewUrl: string | null;
   isArchived: boolean;
   updatedAt: string;
 }
@@ -256,6 +258,137 @@ const FILTER_TABS = [
   { id: "scan",        label: "Scans" },
 ];
 
+// ─── Nameplate viewer ──────────────────────────────────────────────────────────
+// Shows a compressed preview card; tap → full-screen lightbox with pinch-zoom.
+
+function NameplateViewer({
+  previewUrl,
+  fullUrl,
+}: {
+  previewUrl: string;
+  fullUrl: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [scale, setScale] = useState(1);
+  const [previewFailed, setPreviewFailed] = useState(false);
+  const touchRef = useRef<{ dist: number } | null>(null);
+
+  const displayUrl = previewFailed ? fullUrl : previewUrl;
+
+  function openLightbox() { setOpen(true); }
+  function closeLightbox() { setOpen(false); setScale(1); }
+
+  function onWheel(e: React.WheelEvent) {
+    e.preventDefault();
+    setScale((s) => Math.min(5, Math.max(1, s - e.deltaY * 0.005)));
+  }
+
+  function onTouchStart(e: React.TouchEvent) {
+    if (e.touches.length === 2) {
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      touchRef.current = { dist: Math.hypot(dx, dy) };
+    }
+  }
+
+  function onTouchMove(e: React.TouchEvent) {
+    if (e.touches.length === 2 && touchRef.current) {
+      e.preventDefault();
+      const dx = e.touches[1].clientX - e.touches[0].clientX;
+      const dy = e.touches[1].clientY - e.touches[0].clientY;
+      const newDist = Math.hypot(dx, dy);
+      const ratio = newDist / touchRef.current.dist;
+      touchRef.current = { dist: newDist };
+      setScale((s) => Math.min(5, Math.max(1, s * ratio)));
+    }
+  }
+
+  function onTouchEnd() {
+    touchRef.current = null;
+    if (scale < 1.05) setScale(1);
+  }
+
+  return (
+    <>
+      {/* Preview card */}
+      <div>
+        <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">
+          Nameplate Photo
+        </p>
+        <button
+          type="button"
+          onClick={openLightbox}
+          className="w-full relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 block group"
+          aria-label="Tap to inspect full nameplate photo"
+        >
+          <img
+            src={displayUrl}
+            alt="Nameplate"
+            className="w-full object-cover"
+            style={{ aspectRatio: "16/7" }}
+            onError={() => {
+              if (!previewFailed) setPreviewFailed(true);
+            }}
+          />
+          {/* Tap-to-inspect overlay */}
+          <div className="absolute bottom-0 inset-x-0 py-2 bg-gradient-to-t from-black/55 to-transparent flex items-center justify-center gap-1.5 opacity-100 group-hover:opacity-100 transition-opacity">
+            <ZoomIn className="w-3.5 h-3.5 text-white/90" />
+            <span className="text-xs text-white/90 font-medium tracking-wide">
+              Tap to inspect full photo
+            </span>
+          </div>
+        </button>
+      </div>
+
+      {/* Full-screen lightbox */}
+      {open && (
+        <div
+          className="fixed inset-0 z-50 bg-black/95 flex items-center justify-center"
+          onClick={closeLightbox}
+        >
+          {/* Close button */}
+          <button
+            type="button"
+            onClick={closeLightbox}
+            className="absolute top-4 right-4 z-50 bg-white/10 hover:bg-white/25 rounded-full p-2.5 text-white transition-colors"
+            aria-label="Close"
+          >
+            <X className="w-5 h-5" />
+          </button>
+
+          {/* Zoom area */}
+          <div
+            className="w-full h-full flex items-center justify-center overflow-hidden"
+            onClick={(e) => e.stopPropagation()}
+            onWheel={onWheel}
+            onTouchStart={onTouchStart}
+            onTouchMove={onTouchMove}
+            onTouchEnd={onTouchEnd}
+            style={{ touchAction: "none" }}
+          >
+            <img
+              src={fullUrl}
+              alt="Nameplate (full)"
+              className="max-w-full max-h-full object-contain select-none"
+              style={{
+                transform: `scale(${scale})`,
+                transformOrigin: "center",
+                transition: scale === 1 ? "transform 0.2s ease" : "none",
+                cursor: scale > 1 ? "grab" : "default",
+              }}
+              draggable={false}
+            />
+          </div>
+
+          <p className="absolute bottom-5 left-0 right-0 text-center text-xs text-white/40 pointer-events-none">
+            {scale > 1 ? `${Math.round(scale * 100)}%` : "Pinch or scroll to zoom"}
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function UnitDetailPage() {
@@ -475,29 +608,12 @@ export default function UnitDetailPage() {
           </Button>
         </div>
 
-        {/* Nameplate image */}
+        {/* Nameplate image — preview card + full-screen lightbox */}
         {unit.nameplateImageUrl && (
-          <div>
-            <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">Nameplate Photo</p>
-            <img
-              src={unit.nameplateImageUrl}
-              alt="Nameplate"
-              className="w-full rounded-2xl border border-slate-200 object-cover max-h-48"
-              onError={(e) => {
-                const img = e.currentTarget;
-                if (!img.dataset.errored) {
-                  img.dataset.errored = "1";
-                  console.warn("[Nameplate] Image failed to load:", unit.nameplateImageUrl);
-                  // Replace broken image with a placeholder message
-                  img.style.display = "none";
-                  const placeholder = document.createElement("div");
-                  placeholder.className = "w-full rounded-2xl border border-slate-200 bg-slate-50 flex items-center justify-center py-8 text-xs text-slate-400";
-                  placeholder.textContent = "Nameplate photo unavailable";
-                  img.parentElement?.appendChild(placeholder);
-                }
-              }}
-            />
-          </div>
+          <NameplateViewer
+            previewUrl={unit.nameplatePreviewUrl ?? unit.nameplateImageUrl}
+            fullUrl={unit.nameplateImageUrl}
+          />
         )}
 
         {/* Equipment info */}

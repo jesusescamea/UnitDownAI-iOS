@@ -33,6 +33,7 @@ export const unitRecords = pgTable(
     notes: text("notes"),
 
     nameplateImageUrl: text("nameplate_image_url"),
+    nameplatePreviewUrl: text("nameplate_preview_url"),
 
     isArchived: boolean("is_archived").notNull().default(false),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
