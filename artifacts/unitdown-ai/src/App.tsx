@@ -90,6 +90,7 @@ import {
   Globe,
   Moon,
   Sun,
+  Smartphone,
 } from "lucide-react";
 
 const queryClient = new QueryClient();
@@ -3208,78 +3209,172 @@ function Home() {
         </div>
       </main>
 
-      {/* Footer */}
-      <footer className="bg-slate-950 text-slate-400 py-10 sm:py-14 border-t border-slate-900">
-        <div className="container max-w-6xl mx-auto px-4 sm:px-6">
+      {/* ── Footer ──────────────────────────────────────────────────────────── */}
+      <footer className="bg-slate-950 border-t border-slate-800/60 text-slate-400">
 
-          {/* Top row */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-6 pb-8 border-b border-slate-800">
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 bg-blue-600 rounded flex items-center justify-center flex-shrink-0">
-                <ThermometerSnowflake className="w-5 h-5 text-white" />
+        {/* Main grid */}
+        <div className="container max-w-7xl mx-auto px-5 sm:px-8 pt-14 pb-10">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-10 lg:gap-8">
+
+            {/* ── Col 1: Brand ── */}
+            <div className="sm:col-span-2 lg:col-span-1 space-y-5">
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 shadow-lg shadow-blue-900/40">
+                  <ThermometerSnowflake className="w-5 h-5 text-white" />
+                </div>
+                <div>
+                  <span className="text-base font-extrabold text-white tracking-tight block leading-none">UnitDown AI</span>
+                  <span className="text-[10px] font-bold text-blue-400 uppercase tracking-widest mt-0.5 block">Commercial HVAC Intelligence</span>
+                </div>
               </div>
-              <div>
-                <span className="text-base font-bold text-white tracking-tight block">UnitDown AI</span>
-                <span className="text-xs text-slate-500">Commercial HVAC Diagnostics, Instantly.</span>
-              </div>
-            </div>
-
-            <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm font-semibold" aria-label="Footer navigation">
-              <Link href="/legal" className="hover:text-slate-200 transition-colors" data-testid="footer-legal">Legal</Link>
-              <Link href="/sponsor" className="hover:text-blue-400 transition-colors text-blue-500 font-bold" data-testid="footer-sponsor">Sponsor</Link>
-              {clerkLoaded && clerkUser && (
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-1.5 text-slate-400 hover:text-red-400 transition-colors"
-                  data-testid="footer-logout"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  Logout
-                </button>
-              )}
-            </nav>
-
-            {isPro ? (
-              <span className="flex items-center gap-2 text-xs font-bold text-emerald-400 self-start sm:self-auto" data-testid="footer-pro-badge">
-                <CheckCircle2 className="w-4 h-4" />
-                Active Pro Member
-              </span>
-            ) : (
-              <Button
-                onClick={openModal}
-                variant="outline"
-                className="bg-white/10 border-white/20 text-white hover:bg-white/20 font-bold self-start sm:self-auto flex-shrink-0"
-                data-testid="footer-join-premium"
-              >
-                <Sparkles className="w-4 h-4 mr-2" />
-                Join Premium
-              </Button>
-            )}
-          </div>
-
-          {/* Bottom row */}
-          <div className="pt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-            <p className="text-xs text-slate-600 leading-relaxed max-w-lg">
-              For informational use only. Always verify diagnostics with a licensed HVAC technician before performing repairs.
-              Not liable for any damages resulting from use of this tool.
-            </p>
-            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-5 flex-shrink-0">
-              <a
-                href="https://apps.apple.com/app/id6767750626"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-slate-500 hover:text-slate-300 transition-colors whitespace-nowrap"
-                aria-label="Download UnitDown AI on the App Store"
-              >
-                Also available on iPhone
-              </a>
-              <p className="text-xs text-slate-600 whitespace-nowrap">
-                © {new Date().getFullYear()} UnitDown AI. All rights reserved.
+              <p className="text-xs text-slate-500 leading-relaxed max-w-xs">
+                AI diagnostics, equipment records, service history, reminders, and field management built for commercial HVAC professionals.
               </p>
+              {isPro && (
+                <span className="inline-flex items-center gap-1.5 text-[11px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800/50 rounded-full px-3 py-1" data-testid="footer-pro-badge">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  Active Pro Member
+                </span>
+              )}
+              <div className="pt-1">
+                <a
+                  href="https://apps.apple.com/app/id6767750626"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 hover:text-blue-400 transition-colors"
+                  aria-label="Download on the App Store"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  Also available on iPhone
+                </a>
+              </div>
             </div>
-          </div>
 
+            {/* ── Col 2: Platform ── */}
+            <div className="space-y-4">
+              <h3 className="text-[11px] font-extrabold text-slate-300 uppercase tracking-widest">Platform</h3>
+              <nav className="space-y-2.5" aria-label="Platform links">
+                {[
+                  { label: "AI Diagnostics",        action: () => navigate("/") },
+                  { label: "Field Hub",              action: () => navigate("/records") },
+                  { label: "Equipment Records",      action: () => navigate("/records") },
+                  { label: "Diagnostic History",     action: () => navigate("/account") },
+                  { label: "Service Reminders",      action: () => navigate("/records") },
+                  { label: "Equipment Timeline",     action: () => navigate("/records") },
+                  { label: "Nameplate Scanner",      action: () => navigate("/records") },
+                  { label: "Resolution Library",     action: () => navigate("/") },
+                ].map(({ label, action }) => (
+                  <button
+                    key={label}
+                    onClick={action}
+                    className="block text-sm text-slate-500 hover:text-blue-400 transition-colors text-left w-full leading-snug"
+                  >
+                    {label}
+                  </button>
+                ))}
+              </nav>
+            </div>
+
+            {/* ── Col 3: Resources ── */}
+            <div className="space-y-4">
+              <h3 className="text-[11px] font-extrabold text-slate-300 uppercase tracking-widest">Resources</h3>
+              <nav className="space-y-2.5" aria-label="Resources links">
+                <button onClick={() => navigate("/")} className="block text-sm text-slate-500 hover:text-blue-400 transition-colors text-left w-full">Guides</button>
+                <button onClick={() => navigate("/privacy")} className="block text-sm text-slate-500 hover:text-blue-400 transition-colors text-left w-full">Privacy Policy</button>
+                <button onClick={() => navigate("/terms")} className="block text-sm text-slate-500 hover:text-blue-400 transition-colors text-left w-full">Terms of Service</button>
+                <a href="mailto:unitdownsupport@gmail.com" className="block text-sm text-slate-500 hover:text-blue-400 transition-colors">Contact</a>
+                <a href="mailto:unitdownsupport@gmail.com?subject=Support%20Request" className="block text-sm text-slate-500 hover:text-blue-400 transition-colors">Support</a>
+                <a href="mailto:unitdownsupport@gmail.com?subject=Bad%20Diagnosis%20Report" className="block text-sm text-slate-500 hover:text-blue-400 transition-colors">Report a Bug</a>
+                <button onClick={() => navigate("/")} className="block text-sm text-slate-500 hover:text-blue-400 transition-colors text-left w-full">Release Notes</button>
+              </nav>
+            </div>
+
+            {/* ── Col 4: Account + Version ── */}
+            <div className="space-y-4">
+              <h3 className="text-[11px] font-extrabold text-slate-300 uppercase tracking-widest">Account</h3>
+              <nav className="space-y-2.5" aria-label="Account links">
+                <button onClick={() => navigate("/account")} className="block text-sm text-slate-500 hover:text-blue-400 transition-colors text-left w-full">Profile</button>
+                <button onClick={() => navigate("/account")} className="block text-sm text-slate-500 hover:text-blue-400 transition-colors text-left w-full">Subscription</button>
+                <button onClick={() => navigate("/account")} className="block text-sm text-slate-500 hover:text-blue-400 transition-colors text-left w-full">Device Manager</button>
+                <button onClick={() => navigate("/account")} className="block text-sm text-slate-500 hover:text-blue-400 transition-colors text-left w-full">Notifications</button>
+                {clerkLoaded && clerkUser ? (
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-1.5 text-sm text-slate-500 hover:text-red-400 transition-colors"
+                    data-testid="footer-logout"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    Sign Out
+                  </button>
+                ) : (
+                  <button onClick={() => navigate("/login")} className="block text-sm text-slate-500 hover:text-blue-400 transition-colors text-left w-full">Sign In</button>
+                )}
+              </nav>
+
+              {/* Version block */}
+              <div className="pt-4 mt-2 border-t border-slate-800/60 space-y-1">
+                <p className="text-[11px] font-bold text-slate-400">Version 2.0</p>
+                <p className="text-[11px] text-slate-600">
+                  Last updated{" "}
+                  {new Date().toLocaleDateString("en-US", { month: "long", year: "numeric" })}
+                </p>
+              </div>
+            </div>
+
+          </div>
         </div>
+
+        {/* ── Separator ── */}
+        <div className="container max-w-7xl mx-auto px-5 sm:px-8">
+          <div className="border-t border-slate-800/50" />
+        </div>
+
+        {/* ── Badge strip ── */}
+        <div className="container max-w-7xl mx-auto px-5 sm:px-8 py-6">
+          <div className="flex flex-wrap gap-2">
+            {[
+              "AI Diagnostics",
+              "Equipment Records",
+              "Smart Nameplate OCR",
+              "Diagnostic History",
+              "Return Visit Scheduling",
+              "Service Reminders",
+              "Commercial HVAC Only",
+              "Cross Device Sync",
+              "Secure Cloud Storage",
+            ].map((badge) => (
+              <span
+                key={badge}
+                className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 bg-slate-900 border border-slate-800 rounded-full px-3 py-1"
+              >
+                <CheckCircle2 className="w-3 h-3 text-blue-500 flex-shrink-0" />
+                {badge}
+              </span>
+            ))}
+          </div>
+        </div>
+
+        {/* ── Separator ── */}
+        <div className="container max-w-7xl mx-auto px-5 sm:px-8">
+          <div className="border-t border-slate-800/50" />
+        </div>
+
+        {/* ── Bottom bar ── */}
+        <div className="container max-w-7xl mx-auto px-5 sm:px-8 py-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <p className="text-[11px] text-slate-600 leading-relaxed max-w-lg">
+            For informational use only. Always verify diagnostics with a licensed HVAC technician before performing repairs.
+            Not liable for any damages resulting from use of this tool.
+          </p>
+          <div className="flex items-center gap-4 flex-shrink-0">
+            <span className="text-[11px] font-semibold text-slate-500">
+              Trusted by Commercial HVAC Technicians
+            </span>
+            <span className="text-[11px] text-slate-700">
+              © {new Date().getFullYear()} UnitDown AI
+            </span>
+          </div>
+        </div>
+
       </footer>
     </div>
   );
