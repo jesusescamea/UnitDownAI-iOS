@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@clerk/clerk-react";
 import {
@@ -8,6 +8,7 @@ import {
   Phone, Calendar, Filter, Bell, Activity,
   TrendingUp, CheckCheck, ChevronLeft, ChevronDown,
   Zap, Shield, ArrowRight, BarChart3, Target,
+  MapPin, Users, LayoutList, CalendarDays, ListOrdered,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,6 +47,32 @@ interface DiagnosticLog {
   timestamp: number;
 }
 
+type FilteredView =
+  | "active-jobs"
+  | "on-parts"
+  | "return-visits"
+  | "pm-due"
+  | "unresolved"
+  | "monitoring"
+  | "completed"
+  | "saved-units"
+  | null;
+
+type CalendarMode = "week" | "month" | "agenda";
+
+interface SiteGroup {
+  site: string;
+  units: UnitRecord[];
+}
+
+interface LocationGroup {
+  customer: string;
+  sites: SiteGroup[];
+  totalUnits: number;
+  activeCount: number;
+  criticalCount: number;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const ACTIVE_STATUSES = new Set([
@@ -73,7 +100,9 @@ const EVENT_TYPE_DOT_COLOR: Record<string, string> = {
   "reminder":       "bg-slate-400",
 };
 
-const DAY_LABELS = ["M", "T", "W", "T", "F", "S", "S"];
+const DAY_LABELS_SHORT = ["M", "T", "W", "T", "F", "S", "S"];
+const DAY_LABELS_MED   = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -87,12 +116,12 @@ function getRecentlyViewedIds(): string[] {
 
 function statusConfig(status: string) {
   switch (status) {
-    case "resolved":          return { label: "Resolved",         Icon: CheckCircle2, className: "bg-emerald-100 text-emerald-800 border-emerald-200" };
-    case "monitoring":        return { label: "Monitoring",       Icon: CircleDot,    className: "bg-blue-100 text-blue-800 border-blue-200" };
-    case "waiting-on-parts":  return { label: "Waiting on Parts", Icon: Package,      className: "bg-purple-100 text-purple-800 border-purple-200" };
-    case "return-visit":      return { label: "Return Visit",     Icon: Calendar,     className: "bg-orange-100 text-orange-800 border-orange-200" };
-    case "customer-callback": return { label: "Callback",         Icon: Phone,        className: "bg-rose-100 text-rose-800 border-rose-200" };
-    default:                  return { label: "Unresolved",       Icon: AlertCircle,  className: "bg-amber-100 text-amber-800 border-amber-200" };
+    case "resolved":          return { label: "Resolved",         Icon: CheckCircle2, cls: "bg-emerald-100 text-emerald-800 border-emerald-200", dot: "bg-emerald-500" };
+    case "monitoring":        return { label: "Monitoring",       Icon: CircleDot,    cls: "bg-blue-100 text-blue-800 border-blue-200",          dot: "bg-blue-500" };
+    case "waiting-on-parts":  return { label: "Waiting on Parts", Icon: Package,      cls: "bg-purple-100 text-purple-800 border-purple-200",    dot: "bg-purple-500" };
+    case "return-visit":      return { label: "Return Visit",     Icon: Calendar,     cls: "bg-orange-100 text-orange-800 border-orange-200",    dot: "bg-orange-500" };
+    case "customer-callback": return { label: "Callback",         Icon: Phone,        cls: "bg-rose-100 text-rose-800 border-rose-200",          dot: "bg-rose-500" };
+    default:                  return { label: "Unresolved",       Icon: AlertCircle,  cls: "bg-amber-100 text-amber-800 border-amber-200",       dot: "bg-red-500" };
   }
 }
 
@@ -125,10 +154,8 @@ function formatDate(ts: number | string) {
 
 function formatScheduleDate(ts: number): string {
   const d = new Date(ts);
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const eventDay = new Date(d);
-  eventDay.setHours(0, 0, 0, 0);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const eventDay = new Date(d); eventDay.setHours(0, 0, 0, 0);
   const diff = Math.round((eventDay.getTime() - today.getTime()) / 86400000);
   if (diff < -1) return `${Math.abs(diff)}d overdue`;
   if (diff === -1) return "Yesterday";
@@ -164,6 +191,12 @@ function getResolutionCategory(log: DiagnosticLog): string {
   return "other";
 }
 
+function isSameDay(a: Date, b: Date) {
+  return a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate();
+}
+
 function getWeekDays(offset = 0): Date[] {
   const today = new Date();
   const dow = today.getDay();
@@ -177,39 +210,169 @@ function getWeekDays(offset = 0): Date[] {
   });
 }
 
-function isSameDay(a: Date, b: Date) {
-  return a.getFullYear() === b.getFullYear() &&
-    a.getMonth() === b.getMonth() &&
-    a.getDate() === b.getDate();
+function getMonthDates(year: number, month: number): (Date | null)[] {
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startDow = (firstDay.getDay() + 6) % 7;
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < startDow; i++) cells.push(null);
+  for (let d = 1; d <= lastDay.getDate(); d++) cells.push(new Date(year, month, d));
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
 }
 
 function getEventsForDay(day: Date, events: ScheduledEvent[]): ScheduledEvent[] {
   return events.filter((e) => isSameDay(new Date(e.scheduledDate), day));
 }
 
+function matchesSearch(q: string, unit: UnitRecord): boolean {
+  const lower = q.toLowerCase();
+  return [
+    unit.nickname, unit.siteCustomerName, unit.location, unit.manufacturer,
+    unit.modelNumber, unit.serialNumber, unit.equipmentType, unit.systemType,
+  ].some((f) => f?.toLowerCase().includes(lower));
+}
+
+function matchesLogSearch(q: string, log: DiagnosticLog): boolean {
+  const lower = q.toLowerCase();
+  return [
+    log.diagnosisTitle, log.symptoms, log.technicianNotes, log.resolutionNotes,
+  ].some((f) => f?.toLowerCase().includes(lower));
+}
+
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function KPICard({
-  value, label, Icon, colorClass, accentClass, onClick,
+  value, label, Icon, colorClass, accentIcon, onClick, onMouseEnter, onMouseLeave, active,
 }: {
   value: number | string;
   label: string;
   Icon: React.ElementType;
   colorClass: string;
-  accentClass: string;
+  accentIcon: string;
   onClick?: () => void;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+  active?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      className={`flex flex-col justify-between p-3 rounded-2xl border transition-all active:scale-95 text-left ${colorClass}`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className={`relative flex flex-col justify-between p-3 rounded-2xl border text-left
+        transition-all duration-150 ease-out active:scale-[0.96]
+        hover:scale-[1.03] hover:shadow-md
+        ${active ? "ring-2 ring-blue-400 ring-offset-1" : ""}
+        ${colorClass}`}
     >
-      <div className={`w-6 h-6 rounded-lg flex items-center justify-center mb-2 ${accentClass}`}>
+      <div className={`w-6 h-6 rounded-lg flex items-center justify-center mb-2 ${accentIcon}`}>
         <Icon className="w-3.5 h-3.5" />
       </div>
       <span className="text-xl font-extrabold leading-none block">{value}</span>
       <span className="text-[11px] font-semibold mt-1 opacity-70 leading-tight block">{label}</span>
+      {onClick && (
+        <ArrowRight className="absolute bottom-2.5 right-2.5 w-3 h-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+      )}
     </button>
+  );
+}
+
+function KpiHoverPreview({
+  kpi, logs, scheduledEvents, units, unitMap, onNavigate,
+}: {
+  kpi: string;
+  logs: DiagnosticLog[];
+  scheduledEvents: ScheduledEvent[];
+  units: UnitRecord[];
+  unitMap: Record<string, UnitRecord>;
+  onNavigate: (id: string) => void;
+}) {
+  const items = useMemo(() => {
+    switch (kpi) {
+      case "active-jobs": return logs.filter((l) => ACTIVE_STATUSES.has(l.status)).slice(0, 3);
+      case "on-parts":    return logs.filter((l) => l.status === "waiting-on-parts").slice(0, 3);
+      case "return-visits": return logs.filter((l) => l.status === "return-visit" || l.status === "customer-callback").slice(0, 3);
+      case "unresolved":  return logs.filter((l) => l.status === "unresolved").slice(0, 3);
+      case "monitoring":  return logs.filter((l) => l.status === "monitoring").slice(0, 3);
+      case "completed": {
+        const cutoff = Date.now() - 7 * 86400000;
+        return logs.filter((l) => l.status === "resolved" && l.timestamp > cutoff).slice(0, 3);
+      }
+      default: return [];
+    }
+  }, [kpi, logs]);
+
+  const eventItems = useMemo(() => {
+    if (kpi === "pm-due") return scheduledEvents.filter((e) => e.eventType === "pm-due").slice(0, 3);
+    return [];
+  }, [kpi, scheduledEvents]);
+
+  const unitItems = useMemo(() => {
+    if (kpi === "saved-units") return units.slice(0, 3);
+    return [];
+  }, [kpi, units]);
+
+  if (items.length === 0 && eventItems.length === 0 && unitItems.length === 0) {
+    return (
+      <div className="text-center py-3">
+        <p className="text-xs text-slate-400">Nothing here yet</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="divide-y divide-slate-100">
+      {items.map((log) => {
+        const cfg = statusConfig(log.status);
+        const unit = log.unitId ? unitMap[log.unitId] : null;
+        return (
+          <button
+            key={log.id}
+            onClick={() => onNavigate(`/records/log/${log.id}`)}
+            className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left"
+          >
+            <div className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${cfg.dot}`} />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-slate-800 line-clamp-1">{log.diagnosisTitle ?? "Diagnosis"}</p>
+              {unit && <p className="text-[11px] text-slate-400 truncate">{unit.nickname ?? unit.siteCustomerName ?? "Unit"}</p>}
+            </div>
+            <span className="text-[11px] text-slate-400 flex-shrink-0">{formatDate(log.timestamp)}</span>
+          </button>
+        );
+      })}
+      {eventItems.map((ev) => {
+        const cfg = scheduledEventTypeConfig(ev.eventType);
+        const unit = ev.unitId ? unitMap[ev.unitId] : null;
+        return (
+          <div key={ev.id} className="flex items-center gap-2.5 px-4 py-2.5">
+            <cfg.Icon className={`w-3.5 h-3.5 flex-shrink-0 ${cfg.color}`} />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold text-slate-800 line-clamp-1">{ev.title}</p>
+              {unit && <p className="text-[11px] text-slate-400 truncate">{unit.nickname ?? unit.siteCustomerName ?? "Unit"}</p>}
+            </div>
+            <span className={`text-[11px] font-semibold flex-shrink-0 ${ev.scheduledDate < Date.now() ? "text-red-500" : "text-slate-400"}`}>
+              {formatScheduleDate(ev.scheduledDate)}
+            </span>
+          </div>
+        );
+      })}
+      {unitItems.map((u) => (
+        <button
+          key={u.id}
+          onClick={() => onNavigate(`/records/unit/${u.id}`)}
+          className="w-full flex items-center gap-2.5 px-4 py-2.5 hover:bg-slate-50 transition-colors text-left"
+        >
+          <div className="w-6 h-6 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Wrench className="w-3 h-3 text-blue-600" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs font-semibold text-slate-800 line-clamp-1">{u.nickname ?? u.modelNumber ?? "Unit"}</p>
+            {u.siteCustomerName && <p className="text-[11px] text-slate-400 truncate">{u.siteCustomerName}</p>}
+          </div>
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -232,7 +395,7 @@ function SectionHeader({
         {count !== undefined && count > 0 && (
           <span className="bg-slate-100 text-slate-600 text-xs font-bold px-1.5 py-0.5 rounded-full">{count}</span>
         )}
-        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform ml-1 ${open ? "" : "-rotate-90"}`} />
+        <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-150 ml-1 ${open ? "" : "-rotate-90"}`} />
       </button>
       {action}
     </div>
@@ -252,7 +415,9 @@ function CompactUnitCard({
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-white border border-slate-200 rounded-2xl p-3.5 shadow-sm hover:border-blue-300 hover:shadow-md transition-all active:scale-[0.98]"
+      className="w-full text-left bg-white border border-slate-200 rounded-2xl p-3.5 shadow-sm
+        hover:border-blue-300 hover:shadow-md hover:scale-[1.01]
+        transition-all duration-150 ease-out active:scale-[0.98]"
     >
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -265,6 +430,9 @@ function CompactUnitCard({
           <div className="flex flex-wrap gap-1 mt-1.5 items-center">
             {unit.manufacturer && (
               <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">{unit.manufacturer}</span>
+            )}
+            {unit.equipmentType && (
+              <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">{unit.equipmentType}</span>
             )}
             {hs < 100 && (
               <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full border ${hc.bg} ${hc.text} ${hc.border}`}>{hs}</span>
@@ -300,7 +468,9 @@ function UnitCard({
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-blue-300 hover:shadow-md transition-all active:scale-[0.98]"
+      className="w-full text-left bg-white border border-slate-200 rounded-2xl p-4 shadow-sm
+        hover:border-blue-300 hover:shadow-md hover:scale-[1.01]
+        transition-all duration-150 ease-out active:scale-[0.98]"
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
@@ -315,12 +485,8 @@ function UnitCard({
           {unit.siteCustomerName && <p className="text-xs text-slate-500 font-medium ml-9">{unit.siteCustomerName}</p>}
           {unit.location && <p className="text-xs text-slate-400 ml-9 mt-0.5">{unit.location}</p>}
           <div className="flex flex-wrap gap-1.5 mt-2 ml-9 items-center">
-            {unit.manufacturer && (
-              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{unit.manufacturer}</span>
-            )}
-            {unit.equipmentType && (
-              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{unit.equipmentType}</span>
-            )}
+            {unit.manufacturer && <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{unit.manufacturer}</span>}
+            {unit.equipmentType && <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{unit.equipmentType}</span>}
             <span className="text-xs text-slate-400">{formatDate(unit.updatedAt)}</span>
           </div>
         </div>
@@ -351,11 +517,13 @@ function LogCard({ log, unitMap, onClick }: { log: DiagnosticLog; unitMap: Recor
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-blue-300 hover:shadow-md transition-all active:scale-[0.98]"
+      className="w-full text-left bg-white border border-slate-200 rounded-2xl p-4 shadow-sm
+        hover:border-blue-300 hover:shadow-md hover:scale-[1.01]
+        transition-all duration-150 ease-out active:scale-[0.98]"
     >
       <div className="flex items-start justify-between gap-2 mb-2">
         <span className="text-sm font-bold text-slate-900 line-clamp-1 flex-1">{log.diagnosisTitle ?? "Diagnosis"}</span>
-        <Badge className={`text-xs border flex-shrink-0 flex items-center gap-1 ${cfg.className}`}>
+        <Badge className={`text-xs border flex-shrink-0 flex items-center gap-1 ${cfg.cls}`}>
           <cfg.Icon className="w-3 h-3" />
           {cfg.label}
         </Badge>
@@ -365,7 +533,7 @@ function LogCard({ log, unitMap, onClick }: { log: DiagnosticLog; unitMap: Recor
         <div className="flex items-center gap-2 flex-wrap min-w-0">
           {unit && (
             <span className="text-xs text-blue-600 font-medium bg-blue-50 px-2 py-0.5 rounded-full truncate max-w-[140px]">
-              {unit.nickname ?? unit.modelNumber ?? "Unit"}
+              {unit.nickname ?? unit.siteCustomerName ?? unit.modelNumber ?? "Unit"}
             </span>
           )}
           {log.confidencePercent != null && (
@@ -399,15 +567,16 @@ function AgendaEventRow({
       </div>
       <div className="min-w-0 flex-1">
         <p className="text-sm font-semibold text-slate-900 line-clamp-1">{event.title}</p>
-        <div className="flex items-center gap-2 mt-0.5">
-          {unit && <span className="text-xs text-blue-600 font-medium truncate">{unit.nickname ?? unit.modelNumber ?? "Unit"}</span>}
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          {unit && <span className="text-xs text-blue-600 font-medium truncate">{unit.nickname ?? unit.siteCustomerName ?? "Unit"}</span>}
           {isOverdue && <span className="text-xs text-red-500 font-semibold">Overdue</span>}
           {event.recurrence && <span className="text-xs text-slate-400">↻ {event.recurrence}</span>}
         </div>
       </div>
       <button
         onClick={onMarkDone}
-        className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl px-2 py-1 font-semibold hover:bg-emerald-100 transition-colors whitespace-nowrap flex-shrink-0"
+        className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl px-2 py-1 font-semibold
+          hover:bg-emerald-100 transition-colors whitespace-nowrap flex-shrink-0"
       >
         ✓
       </button>
@@ -426,19 +595,15 @@ function WeekCalendar({
 }) {
   const days = useMemo(() => getWeekDays(weekOffset), [weekOffset]);
   const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
-
   const monthLabel = useMemo(() => {
-    const first = days[0];
-    const last = days[6];
-    if (first.getMonth() === last.getMonth()) {
-      return first.toLocaleDateString(undefined, { month: "long", year: "numeric" });
-    }
-    return `${first.toLocaleDateString(undefined, { month: "short" })} – ${last.toLocaleDateString(undefined, { month: "short", year: "numeric" })}`;
+    const first = days[0]; const last = days[6];
+    if (first.getMonth() === last.getMonth())
+      return `${MONTH_NAMES[first.getMonth()]} ${first.getFullYear()}`;
+    return `${MONTH_NAMES[first.getMonth()].slice(0,3)} – ${MONTH_NAMES[last.getMonth()].slice(0,3)} ${last.getFullYear()}`;
   }, [days]);
 
   return (
     <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
-      {/* Calendar header */}
       <div className="flex items-center justify-between mb-3">
         <button onClick={() => onWeekChange(-1)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
           <ChevronLeft className="w-4 h-4" />
@@ -448,65 +613,211 @@ function WeekCalendar({
           <ChevronRight className="w-4 h-4" />
         </button>
       </div>
-
-      {/* Day columns */}
       <div className="grid grid-cols-7 gap-0.5">
         {days.map((day, i) => {
           const dayEvents = getEventsForDay(day, scheduledEvents);
           const isToday = isSameDay(day, today);
           const isSelected = selectedDay ? isSameDay(day, selectedDay) : false;
           const isPast = day < today && !isToday;
-
           return (
             <button
               key={i}
               onClick={() => onSelectDay(isSelected ? null : day)}
-              className={`flex flex-col items-center py-1.5 px-0.5 rounded-xl transition-all ${
-                isSelected
-                  ? "bg-blue-600 text-white"
-                  : isToday
-                  ? "bg-blue-50"
-                  : "hover:bg-slate-50"
+              className={`flex flex-col items-center py-1.5 px-0.5 rounded-xl transition-all duration-150 ${
+                isSelected ? "bg-blue-600 text-white" : isToday ? "bg-blue-50" : "hover:bg-slate-50"
               }`}
             >
-              {/* Day label */}
               <span className={`text-[10px] font-bold uppercase tracking-wide mb-1 ${
                 isSelected ? "text-blue-100" : isPast ? "text-slate-300" : "text-slate-400"
-              }`}>
-                {DAY_LABELS[i]}
-              </span>
-
-              {/* Date number */}
+              }`}>{DAY_LABELS_SHORT[i]}</span>
               <span className={`text-sm font-extrabold leading-none w-7 h-7 flex items-center justify-center rounded-full ${
-                isSelected
-                  ? "text-white"
-                  : isToday
-                  ? "text-blue-700"
-                  : isPast
-                  ? "text-slate-300"
-                  : "text-slate-800"
-              }`}>
-                {day.getDate()}
-              </span>
-
-              {/* Event dots */}
+                isSelected ? "text-white" : isToday ? "text-blue-700" : isPast ? "text-slate-300" : "text-slate-800"
+              }`}>{day.getDate()}</span>
               <div className="flex gap-0.5 mt-1.5 min-h-[6px]">
-                {dayEvents.length === 0 ? null :
-                  dayEvents.slice(0, 3).map((ev, di) => (
-                    <span
-                      key={di}
-                      className={`w-1.5 h-1.5 rounded-full ${
-                        isSelected ? "bg-white opacity-80" : (EVENT_TYPE_DOT_COLOR[ev.eventType] ?? "bg-slate-400")
-                      }`}
-                    />
-                  ))
-                }
+                {dayEvents.slice(0, 3).map((ev, di) => (
+                  <span key={di} className={`w-1.5 h-1.5 rounded-full ${
+                    isSelected ? "bg-white opacity-80" : (EVENT_TYPE_DOT_COLOR[ev.eventType] ?? "bg-slate-400")
+                  }`} />
+                ))}
               </div>
             </button>
           );
         })}
       </div>
     </div>
+  );
+}
+
+function MonthCalendar({
+  scheduledEvents, monthOffset, onMonthChange, selectedDay, onSelectDay,
+}: {
+  scheduledEvents: ScheduledEvent[];
+  monthOffset: number;
+  onMonthChange: (dir: -1 | 1) => void;
+  selectedDay: Date | null;
+  onSelectDay: (day: Date | null) => void;
+}) {
+  const today = useMemo(() => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; }, []);
+  const { year, month } = useMemo(() => {
+    const base = new Date();
+    base.setDate(1);
+    base.setMonth(base.getMonth() + monthOffset);
+    return { year: base.getFullYear(), month: base.getMonth() };
+  }, [monthOffset]);
+
+  const cells = useMemo(() => getMonthDates(year, month), [year, month]);
+
+  return (
+    <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm">
+      <div className="flex items-center justify-between mb-3">
+        <button onClick={() => onMonthChange(-1)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+          <ChevronLeft className="w-4 h-4" />
+        </button>
+        <span className="text-xs font-bold text-slate-700">{MONTH_NAMES[month]} {year}</span>
+        <button onClick={() => onMonthChange(1)} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 hover:text-slate-700 transition-colors">
+          <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+      {/* Day headers */}
+      <div className="grid grid-cols-7 mb-1">
+        {DAY_LABELS_MED.map((d, i) => (
+          <span key={i} className="text-[10px] font-bold text-slate-400 uppercase text-center py-1">{d.slice(0,1)}</span>
+        ))}
+      </div>
+      {/* Date cells */}
+      <div className="grid grid-cols-7 gap-y-0.5">
+        {cells.map((date, i) => {
+          if (!date) return <div key={i} />;
+          const dayEvents = getEventsForDay(date, scheduledEvents);
+          const isToday = isSameDay(date, today);
+          const isSelected = selectedDay ? isSameDay(date, selectedDay) : false;
+          return (
+            <button
+              key={i}
+              onClick={() => onSelectDay(isSelected ? null : date)}
+              className={`flex flex-col items-center py-1 rounded-xl transition-all duration-150 ${
+                isSelected ? "bg-blue-600" : isToday ? "bg-blue-50" : "hover:bg-slate-50"
+              }`}
+            >
+              <span className={`text-xs font-bold w-6 h-6 flex items-center justify-center rounded-full ${
+                isSelected ? "text-white" : isToday ? "text-blue-700 font-extrabold" : "text-slate-700"
+              }`}>{date.getDate()}</span>
+              <div className="flex gap-0.5 mt-0.5 min-h-[5px]">
+                {dayEvents.slice(0, 2).map((ev, di) => (
+                  <span key={di} className={`w-1 h-1 rounded-full ${
+                    isSelected ? "bg-white opacity-80" : (EVENT_TYPE_DOT_COLOR[ev.eventType] ?? "bg-slate-400")
+                  }`} />
+                ))}
+              </div>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function LocationGroupCard({
+  group, healthScoreMap, expanded, onToggle, onUnitClick, onToggleFavorite,
+}: {
+  group: LocationGroup;
+  healthScoreMap: Record<string, number>;
+  expanded: boolean;
+  onToggle: () => void;
+  onUnitClick: (id: string) => void;
+  onToggleFavorite: (unit: UnitRecord, e: React.MouseEvent) => void;
+}) {
+  return (
+    <div className={`bg-white border rounded-2xl shadow-sm transition-all duration-150 overflow-hidden ${
+      expanded ? "border-blue-300" : "border-slate-200"
+    }`}>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">
+            <Users className="w-4.5 h-4.5 text-slate-600" style={{ width: "18px", height: "18px" }} />
+          </div>
+          <div className="min-w-0 text-left">
+            <p className="font-bold text-slate-900 text-sm truncate">{group.customer}</p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <span className="text-xs text-slate-500 font-medium">{group.totalUnits} unit{group.totalUnits !== 1 ? "s" : ""}</span>
+              {group.activeCount > 0 && (
+                <span className="text-xs text-amber-700 font-semibold bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                  {group.activeCount} active
+                </span>
+              )}
+              {group.criticalCount > 0 && (
+                <span className="text-xs text-red-700 font-semibold bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
+                  {group.criticalCount} critical
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+        <ChevronDown className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform duration-150 ${expanded ? "" : "-rotate-90"}`} />
+      </button>
+
+      {expanded && (
+        <div className="border-t border-slate-100">
+          {group.sites.map(({ site, units }) => (
+            <div key={site}>
+              {group.sites.length > 1 && (
+                <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border-b border-slate-100">
+                  <MapPin className="w-3 h-3 text-slate-400" />
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">{site}</span>
+                  <span className="text-xs text-slate-400">({units.length})</span>
+                </div>
+              )}
+              <div className="p-3 space-y-2">
+                {units.map((u) => (
+                  <CompactUnitCard
+                    key={u.id}
+                    unit={u}
+                    healthScore={healthScoreMap[u.id]}
+                    onClick={() => onUnitClick(u.id)}
+                    onToggleFavorite={(e) => onToggleFavorite(u, e)}
+                  />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Filtered View Components ─────────────────────────────────────────────────
+
+function FilteredViewHeader({
+  title, count, onBack, action,
+}: {
+  title: string;
+  count?: number;
+  onBack: () => void;
+  action?: React.ReactNode;
+}) {
+  return (
+    <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
+      <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+        <button
+          onClick={onBack}
+          className="flex items-center gap-1.5 text-blue-600 font-semibold text-sm hover:text-blue-800 transition-colors flex-shrink-0"
+        >
+          <ChevronLeft className="w-4 h-4" />
+          Dashboard
+        </button>
+        <div className="flex items-center gap-2 min-w-0">
+          <span className="font-extrabold text-slate-900 text-sm truncate">{title}</span>
+          {count !== undefined && (
+            <span className="bg-blue-100 text-blue-800 text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0">{count}</span>
+          )}
+        </div>
+        <div className="flex-shrink-0">{action}</div>
+      </div>
+    </header>
   );
 }
 
@@ -523,9 +834,22 @@ export default function RecordsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Navigation
+  const [filteredBy, setFilteredBy] = useState<FilteredView>(null);
+
   // Calendar state
+  const [calendarMode, setCalendarMode] = useState<CalendarMode>("week");
   const [weekOffset, setWeekOffset] = useState(0);
+  const [monthOffset, setMonthOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+
+  // KPI hover preview (desktop only)
+  const [hoveredKpi, setHoveredKpi] = useState<string | null>(null);
+  const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Location browse
+  const [locationViewOpen, setLocationViewOpen] = useState(false);
+  const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
 
   // Section collapse
   const [unitsOpen, setUnitsOpen] = useState(true);
@@ -536,7 +860,7 @@ export default function RecordsPage() {
   const [activeWorkOpen, setActiveWorkOpen] = useState(true);
   const [priorityOpen, setPriorityOpen] = useState(true);
 
-  // Expand-all states
+  // Expand-all
   const [showAllActive, setShowAllActive] = useState(false);
   const [showAllDiags, setShowAllDiags] = useState(false);
   const [showAllUnits, setShowAllUnits] = useState(false);
@@ -544,7 +868,7 @@ export default function RecordsPage() {
   // Modals
   const [showAddEvent, setShowAddEvent] = useState(false);
 
-  // Filters
+  // Search + filters
   const [q, setQ] = useState("");
   const [mfgFilter, setMfgFilter] = useState("");
 
@@ -615,6 +939,17 @@ export default function RecordsPage() {
     } catch { loadData(); }
   }, [clientId, loadData]);
 
+  // ─── KPI hover handlers ───────────────────────────────────────────────────
+
+  const handleKpiEnter = useCallback((kpi: string) => {
+    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
+    setHoveredKpi(kpi);
+  }, []);
+
+  const handleKpiLeave = useCallback(() => {
+    hoverTimeout.current = setTimeout(() => setHoveredKpi(null), 150);
+  }, []);
+
   // ─── Derived data ─────────────────────────────────────────────────────────
 
   const unitMap = useMemo(() => {
@@ -632,9 +967,13 @@ export default function RecordsPage() {
 
   const activeWork = useMemo(() => logs.filter((l) => ACTIVE_STATUSES.has(l.status)), [logs]);
   const partsWaiting = useMemo(() => logs.filter((l) => l.status === "waiting-on-parts"), [logs]);
-  const unresolvedCount = useMemo(() => logs.filter((l) => l.status === "unresolved").length, [logs]);
-  const monitoringCount = useMemo(() => logs.filter((l) => l.status === "monitoring").length, [logs]);
-  const returnVisitCount = useMemo(() => logs.filter((l) => l.status === "return-visit" || l.status === "customer-callback").length, [logs]);
+  const unresolvedLogs = useMemo(() => logs.filter((l) => l.status === "unresolved"), [logs]);
+  const monitoringLogs = useMemo(() => logs.filter((l) => l.status === "monitoring"), [logs]);
+  const returnVisitLogs = useMemo(() => logs.filter((l) => l.status === "return-visit" || l.status === "customer-callback"), [logs]);
+
+  const unresolvedCount = unresolvedLogs.length;
+  const monitoringCount = monitoringLogs.length;
+  const returnVisitCount = returnVisitLogs.length;
 
   const resolvedThisWeek = useMemo(() => {
     const cutoff = Date.now() - 7 * 86400000;
@@ -650,24 +989,27 @@ export default function RecordsPage() {
   }, [units]);
 
   const filteredUnits = useMemo(() => {
-    return units
-      .filter((u) => {
-        if (mfgFilter && u.manufacturer !== mfgFilter) return false;
-        if (!q) return true;
-        const lower = q.toLowerCase();
-        return [u.nickname, u.siteCustomerName, u.location, u.manufacturer, u.modelNumber, u.serialNumber]
-          .some((f) => f?.toLowerCase().includes(lower));
-      })
-      .sort((a, b) => {
-        const aName = a.siteCustomerName?.trim() ?? "";
-        const bName = b.siteCustomerName?.trim() ?? "";
-        if (aName && !bName) return -1;
-        if (!aName && bName) return 1;
-        const nc = aName.localeCompare(bName, undefined, { sensitivity: "base" });
-        if (nc !== 0) return nc;
-        return (a.nickname ?? "").localeCompare(b.nickname ?? "", undefined, { sensitivity: "base" });
-      });
+    if (!q && !mfgFilter) return units.sort((a, b) => {
+      const an = a.siteCustomerName?.trim() ?? "";
+      const bn = b.siteCustomerName?.trim() ?? "";
+      if (an && !bn) return -1; if (!an && bn) return 1;
+      const nc = an.localeCompare(bn, undefined, { sensitivity: "base" });
+      return nc !== 0 ? nc : (a.nickname ?? "").localeCompare(b.nickname ?? "", undefined, { sensitivity: "base" });
+    });
+    return units.filter((u) => {
+      if (mfgFilter && u.manufacturer !== mfgFilter) return false;
+      if (!q) return true;
+      return matchesSearch(q, u);
+    });
   }, [units, q, mfgFilter]);
+
+  // Smart search results (units + diagnostics)
+  const isSearching = q.trim().length >= 2;
+  const smartSearchResults = useMemo(() => {
+    if (!isSearching) return null;
+    const matchedLogs = logs.filter((l) => matchesLogSearch(q, l));
+    return { units: filteredUnits, diagnostics: matchedLogs };
+  }, [isSearching, q, filteredUnits, logs]);
 
   const resolutionGroups = useMemo(() => {
     const groups: Record<string, DiagnosticLog[]> = {};
@@ -701,10 +1043,7 @@ export default function RecordsPage() {
   }, [units, logs]);
 
   const healthSnapshot = useMemo(() => {
-    const critical: UnitRecord[] = [];
-    const watchlist: UnitRecord[] = [];
-    const healthy: UnitRecord[] = [];
-    const noActivity: UnitRecord[] = [];
+    const critical: UnitRecord[] = [], watchlist: UnitRecord[] = [], healthy: UnitRecord[] = [], noActivity: UnitRecord[] = [];
     units.forEach((u) => {
       const score = healthScoreMap[u.id] ?? 100;
       const hasLogs = logs.some((l) => l.unitId === u.id);
@@ -718,7 +1057,38 @@ export default function RecordsPage() {
 
   const pmDueCount = useMemo(() => scheduledEvents.filter((e) => e.eventType === "pm-due").length, [scheduledEvents]);
 
-  // Daily briefing summary
+  const locationGroups = useMemo((): LocationGroup[] => {
+    const customerMap: Record<string, UnitRecord[]> = {};
+    units.forEach((u) => {
+      const customer = u.siteCustomerName?.trim() || "Uncategorized";
+      if (!customerMap[customer]) customerMap[customer] = [];
+      customerMap[customer].push(u);
+    });
+    return Object.entries(customerMap)
+      .map(([customer, custUnits]) => {
+        const siteMap: Record<string, UnitRecord[]> = {};
+        custUnits.forEach((u) => {
+          const site = u.location?.trim() || "Main";
+          if (!siteMap[site]) siteMap[site] = [];
+          siteMap[site].push(u);
+        });
+        const activeCount = custUnits.filter((u) => logs.some((l) => l.unitId === u.id && ACTIVE_STATUSES.has(l.status))).length;
+        const criticalCount = custUnits.filter((u) => (healthScoreMap[u.id] ?? 100) < 60).length;
+        return {
+          customer,
+          sites: Object.entries(siteMap).map(([site, siteUnits]) => ({ site, units: siteUnits })),
+          totalUnits: custUnits.length,
+          activeCount,
+          criticalCount,
+        };
+      })
+      .sort((a, b) => {
+        if (a.customer === "Uncategorized") return 1;
+        if (b.customer === "Uncategorized") return -1;
+        return b.totalUnits - a.totalUnits;
+      });
+  }, [units, logs, healthScoreMap]);
+
   const briefingSummary = useMemo(() => {
     const parts: string[] = [];
     if (unresolvedCount > 0) parts.push(`${unresolvedCount} unresolved`);
@@ -727,23 +1097,21 @@ export default function RecordsPage() {
     if (pmDueCount > 0) parts.push(`${pmDueCount} PM due`);
     const overdueCount = scheduledEvents.filter((e) => e.scheduledDate < Date.now()).length;
     if (overdueCount > 0) parts.push(`${overdueCount} overdue`);
-    if (parts.length === 0 && activeWork.length === 0) return "All clear — nothing urgent today. 🟢";
+    if (parts.length === 0 && activeWork.length === 0) return "All clear — nothing urgent today.";
     if (parts.length === 0) return `${activeWork.length} active job${activeWork.length !== 1 ? "s" : ""} in progress.`;
     return parts.join(" · ");
   }, [activeWork, unresolvedCount, partsWaiting, returnVisitCount, pmDueCount, scheduledEvents]);
 
-  // Priority center items
   const priorityItems = useMemo(() => {
     type PItem = { type: "log"; item: DiagnosticLog } | { type: "event"; item: ScheduledEvent };
     const items: PItem[] = [];
-    logs.filter((l) => l.status === "unresolved").slice(0, 3).forEach((l) => items.push({ type: "log", item: l }));
+    unresolvedLogs.slice(0, 3).forEach((l) => items.push({ type: "log", item: l }));
     scheduledEvents.filter((e) => e.scheduledDate < Date.now()).slice(0, 2).forEach((e) => items.push({ type: "event", item: e }));
-    logs.filter((l) => l.status === "return-visit").slice(0, 2).forEach((l) => items.push({ type: "log", item: l }));
+    returnVisitLogs.slice(0, 2).forEach((l) => items.push({ type: "log", item: l }));
     logs.filter((l) => l.status === "customer-callback").slice(0, 1).forEach((l) => items.push({ type: "log", item: l }));
     return items.slice(0, 5);
-  }, [logs, scheduledEvents]);
+  }, [unresolvedLogs, scheduledEvents, returnVisitLogs, logs]);
 
-  // Active work grouped by status
   const activeByStatus = useMemo(() => {
     const order = ["unresolved", "waiting-on-parts", "monitoring", "return-visit", "customer-callback"];
     const groups: Record<string, DiagnosticLog[]> = {};
@@ -752,22 +1120,45 @@ export default function RecordsPage() {
     return order.map((s) => ({ status: s, logs: groups[s] })).filter((g) => g.logs.length > 0);
   }, [activeWork]);
 
-  // Agenda for selected day or next 3 days
+  // Agenda
   const agendaDays = useMemo(() => {
     if (selectedDay) {
-      const evs = getEventsForDay(selectedDay, scheduledEvents);
-      return [{ date: selectedDay, events: evs }];
+      return [{ date: selectedDay, events: getEventsForDay(selectedDay, scheduledEvents) }];
     }
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const today = new Date(); today.setHours(0, 0, 0, 0);
     return Array.from({ length: 3 }, (_, i) => {
-      const d = new Date(today);
-      d.setDate(today.getDate() + i);
+      const d = new Date(today); d.setDate(today.getDate() + i);
       return { date: d, events: getEventsForDay(d, scheduledEvents) };
-    }).filter((day) => day.events.length > 0 || day.date.getTime() === today.getTime());
+    }).filter((day) => day.events.length > 0 || isSameDay(day.date, today));
   }, [selectedDay, scheduledEvents]);
 
   const agendaHasEvents = useMemo(() => agendaDays.some((d) => d.events.length > 0), [agendaDays]);
+
+  // Agenda sorted list (for "agenda" calendar mode)
+  const allEventsSorted = useMemo(() => {
+    return [...scheduledEvents].sort((a, b) => a.scheduledDate - b.scheduledDate);
+  }, [scheduledEvents]);
+
+  const agendaGrouped = useMemo(() => {
+    const groups: { label: string; events: ScheduledEvent[] }[] = [];
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const map = new Map<string, ScheduledEvent[]>();
+    for (const ev of allEventsSorted) {
+      const d = new Date(ev.scheduledDate); d.setHours(0, 0, 0, 0);
+      const diff = Math.round((d.getTime() - today.getTime()) / 86400000);
+      let label: string;
+      if (diff < -1) label = `${Math.abs(diff)} days overdue`;
+      else if (diff === -1) label = "Yesterday";
+      else if (diff === 0) label = "Today";
+      else if (diff === 1) label = "Tomorrow";
+      else if (diff < 7) label = d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" });
+      else label = d.toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" });
+      if (!map.has(label)) map.set(label, []);
+      map.get(label)!.push(ev);
+    }
+    for (const [label, events] of map.entries()) groups.push({ label, events });
+    return groups;
+  }, [allEventsSorted]);
 
   // ─── Auth guards ───────────────────────────────────────────────────────────
 
@@ -787,36 +1178,261 @@ export default function RecordsPage() {
         </div>
         <h2 className="text-xl font-extrabold text-slate-900 mb-2">Sign in to access Field Hub</h2>
         <p className="text-slate-500 text-sm mb-6 max-w-xs">Unit records and diagnostic history are saved to your account.</p>
-        <Button onClick={() => navigate("/login")} className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-6">
-          Sign In
-        </Button>
-        <button onClick={() => navigate("/")} className="mt-4 text-sm text-slate-400 hover:text-slate-600">
-          Back to Diagnostics
-        </button>
+        <Button onClick={() => navigate("/login")} className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-6">Sign In</Button>
+        <button onClick={() => navigate("/")} className="mt-4 text-sm text-slate-400 hover:text-slate-600">Back to Diagnostics</button>
       </div>
     );
   }
 
-  // ─── Render ────────────────────────────────────────────────────────────────
+  // ─── Filtered Drill-down Views ─────────────────────────────────────────────
+
+  if (filteredBy !== null) {
+    let title = "";
+    let content: React.ReactNode = null;
+
+    const renderLogList = (items: DiagnosticLog[], empty: string) => (
+      items.length === 0 ? (
+        <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
+          <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+          <p className="font-semibold text-slate-500">{empty}</p>
+        </div>
+      ) : (
+        <div className="space-y-2.5">
+          {items.map((l) => (
+            <LogCard key={l.id} log={l} unitMap={unitMap} onClick={() => navigate(`/records/log/${l.id}`)} />
+          ))}
+        </div>
+      )
+    );
+
+    switch (filteredBy) {
+      case "active-jobs":
+        title = "Active Jobs";
+        content = (
+          <div className="space-y-5">
+            {activeByStatus.length === 0 ? (
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
+                <CheckCircle2 className="w-10 h-10 text-emerald-400 mx-auto mb-3" />
+                <p className="font-semibold text-slate-500">All clear — no active jobs</p>
+              </div>
+            ) : (
+              activeByStatus.map(({ status, logs: sl }) => {
+                const cfg = statusConfig(status);
+                return (
+                  <div key={status}>
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+                      <span className="text-xs font-extrabold uppercase tracking-widest text-slate-500">{cfg.label}</span>
+                      <span className="text-xs text-slate-400">({sl.length})</span>
+                    </div>
+                    <div className="space-y-2.5">{sl.map((l) => (
+                      <LogCard key={l.id} log={l} unitMap={unitMap} onClick={() => navigate(`/records/log/${l.id}`)} />
+                    ))}</div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        );
+        break;
+
+      case "on-parts":
+        title = "Waiting on Parts";
+        content = renderLogList(partsWaiting, "No jobs waiting on parts");
+        break;
+
+      case "return-visits":
+        title = "Return Visits";
+        content = renderLogList(returnVisitLogs, "No return visits scheduled");
+        break;
+
+      case "unresolved":
+        title = "Unresolved";
+        content = renderLogList(
+          unresolvedLogs.sort((a, b) => (b.confidencePercent ?? 0) - (a.confidencePercent ?? 0)),
+          "No unresolved diagnostics"
+        );
+        break;
+
+      case "monitoring":
+        title = "Monitoring";
+        content = renderLogList(monitoringLogs, "No units in monitoring");
+        break;
+
+      case "completed":
+        title = "Completed This Week";
+        content = renderLogList(
+          resolvedLogs.filter((l) => l.timestamp > Date.now() - 7 * 86400000),
+          "No completed jobs this week"
+        );
+        break;
+
+      case "pm-due": {
+        const pmEvents = scheduledEvents.filter((e) => e.eventType === "pm-due");
+        title = "PM Due";
+        content = pmEvents.length === 0 ? (
+          <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
+            <Wrench className="w-10 h-10 text-slate-300 mx-auto mb-3" />
+            <p className="font-semibold text-slate-500">No PM events scheduled</p>
+            <button onClick={() => setShowAddEvent(true)} className="mt-4 text-xs bg-blue-50 text-blue-700 border border-blue-200 rounded-xl px-3 py-2 font-semibold hover:bg-blue-100 transition-colors">
+              + Schedule PM
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-2.5">
+            {pmEvents.map((ev) => {
+              const cfg = scheduledEventTypeConfig(ev.eventType);
+              const unit = ev.unitId ? unitMap[ev.unitId] : null;
+              return (
+                <div key={ev.id} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${cfg.bg}`}>
+                      <cfg.Icon className={`w-4 h-4 ${cfg.color}`} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="font-bold text-slate-900 text-sm">{ev.title}</p>
+                      {unit && <p className="text-xs text-blue-600 font-medium mt-0.5 truncate">{unit.nickname ?? unit.siteCustomerName ?? "Unit"}</p>}
+                      <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                        <span className={`text-xs font-semibold ${ev.scheduledDate < Date.now() ? "text-red-600" : "text-slate-500"}`}>
+                          {formatScheduleDate(ev.scheduledDate)}
+                        </span>
+                        {ev.recurrence && <span className="text-xs bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded-full">↻ {ev.recurrence}</span>}
+                      </div>
+                    </div>
+                    <button onClick={() => markEventDone(ev.id)} className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-xl px-2.5 py-1 font-semibold hover:bg-emerald-100 transition-colors whitespace-nowrap flex-shrink-0">
+                      ✓ Done
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+        break;
+      }
+
+      case "saved-units":
+        title = "All Equipment";
+        content = (
+          <div className="space-y-3">
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search units, customers, models…"
+                  className="pl-8 rounded-xl border-slate-200 text-sm h-9"
+                />
+                {q && <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400"><X className="w-3.5 h-3.5" /></button>}
+              </div>
+              {manufacturers.length > 1 && (
+                <div className="relative">
+                  <select value={mfgFilter} onChange={(e) => setMfgFilter(e.target.value)} className="h-9 appearance-none text-xs text-slate-700 bg-white border border-slate-200 rounded-xl pl-3 pr-7 cursor-pointer font-semibold">
+                    <option value="">All</option>
+                    {manufacturers.map((m) => <option key={m} value={m}>{m}</option>)}
+                  </select>
+                  <Filter className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
+                </div>
+              )}
+            </div>
+            {filteredUnits.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-6">{q ? `No matches for "${q}"` : "No units saved yet."}</p>
+            ) : (
+              <div className="space-y-2.5">
+                {filteredUnits.map((u) => (
+                  <UnitCard
+                    key={u.id}
+                    unit={u}
+                    healthScore={healthScoreMap[u.id]}
+                    onClick={() => navigate(`/records/unit/${u.id}`)}
+                    onToggleFavorite={(e) => toggleFavorite(u, e)}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        );
+        break;
+    }
+
+    const filteredCount = {
+      "active-jobs": activeWork.length,
+      "on-parts": partsWaiting.length,
+      "return-visits": returnVisitLogs.length,
+      "unresolved": unresolvedCount,
+      "monitoring": monitoringCount,
+      "completed": resolvedLogs.filter((l) => l.timestamp > Date.now() - 7 * 86400000).length,
+      "pm-due": scheduledEvents.filter((e) => e.eventType === "pm-due").length,
+      "saved-units": units.length,
+    }[filteredBy] ?? 0;
+
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <FilteredViewHeader
+          title={title}
+          count={filteredCount}
+          onBack={() => setFilteredBy(null)}
+          action={
+            filteredBy === "pm-due" ? (
+              <button onClick={() => setShowAddEvent(true)} className="text-xs bg-blue-600 text-white rounded-xl px-3 py-1.5 font-bold hover:bg-blue-700 transition-colors">
+                + Add
+              </button>
+            ) : undefined
+          }
+        />
+        <div className="max-w-2xl mx-auto px-4 py-5">
+          {content}
+        </div>
+        {showAddEvent && (
+          <ScheduledEventModal
+            clientId={clientId}
+            onClose={() => setShowAddEvent(false)}
+            onCreated={(ev) => {
+              setScheduledEvents((prev) => [...prev, ev].sort((a, b) => a.scheduledDate - b.scheduledDate));
+              setShowAddEvent(false);
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ─── Dashboard Render ──────────────────────────────────────────────────────
 
   return (
     <div className="min-h-screen bg-slate-50">
 
-      {/* ── 1. Sticky Header ─────────────────────────────────────────────────── */}
+      {/* ── Sticky Header ──────────────────────────────────────────────────── */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button onClick={() => navigate("/")} className="text-slate-400 hover:text-slate-700 transition-colors p-1">
+        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between gap-3">
+          <div className="flex items-center gap-2 min-w-0 flex-1">
+            <button onClick={() => navigate("/")} className="text-slate-400 hover:text-slate-700 transition-colors p-1 flex-shrink-0">
               <ChevronRight className="w-5 h-5 rotate-180" />
             </button>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
                 <ThermometerSnowflake className="w-4 h-4 text-white" />
               </div>
-              <span className="font-extrabold text-slate-900 text-sm">Field Hub</span>
+              <span className="font-extrabold text-slate-900 text-sm hidden sm:block">Field Hub</span>
+            </div>
+            {/* Global search in header */}
+            <div className="relative flex-1 max-w-xs ml-2">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Search…"
+                className="w-full pl-8 pr-7 py-1.5 text-xs bg-slate-100 border border-slate-200 rounded-xl outline-none focus:bg-white focus:border-blue-300 transition-all"
+              />
+              {q && (
+                <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-shrink-0">
             <button
               onClick={() => setShowAddEvent(true)}
               className="w-8 h-8 flex items-center justify-center rounded-xl border border-slate-200 text-slate-500 hover:text-blue-600 hover:border-blue-300 transition-colors"
@@ -824,10 +1440,7 @@ export default function RecordsPage() {
             >
               <Bell className="w-4 h-4" />
             </button>
-            <Button
-              onClick={() => navigate("/records/new")}
-              className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-9 px-3 text-xs"
-            >
+            <Button onClick={() => navigate("/records/new")} className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-9 px-3 text-xs">
               <Plus className="w-3.5 h-3.5 mr-1" />
               New Unit
             </Button>
@@ -839,198 +1452,293 @@ export default function RecordsPage() {
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
-            {error}
+            <AlertCircle className="w-4 h-4 flex-shrink-0" />{error}
           </div>
         )}
 
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div key={i} className="bg-white rounded-2xl border border-slate-200 p-4 animate-pulse h-16" />
-            ))}
-          </div>
-        ) : (
-          <>
-            {/* ── 2. Daily Briefing ─────────────────────────────────────────────── */}
-            <section>
-              <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-2xl p-4 text-white shadow-lg shadow-blue-200">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-blue-100 text-xs font-semibold uppercase tracking-wider mb-1">
-                      {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
-                    </p>
-                    <p className="text-xl font-extrabold leading-tight text-white">
-                      {getGreeting(clerkUser?.firstName)}
-                    </p>
-                    <p className="text-sm text-blue-100 mt-1.5 font-medium leading-snug">
-                      {briefingSummary}
-                    </p>
-                  </div>
-                  <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Target className="w-5 h-5 text-white" />
-                  </div>
-                </div>
-                {/* Quick action strip */}
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={() => navigate("/")}
-                    className="flex-1 bg-white/20 hover:bg-white/30 text-white text-xs font-bold rounded-xl py-2 transition-colors"
-                  >
-                    + Diagnose
-                  </button>
-                  <button
-                    onClick={() => navigate("/records/new")}
-                    className="flex-1 bg-white/20 hover:bg-white/30 text-white text-xs font-bold rounded-xl py-2 transition-colors"
-                  >
-                    + New Unit
-                  </button>
-                  <button
-                    onClick={() => setShowAddEvent(true)}
-                    className="flex-1 bg-white/20 hover:bg-white/30 text-white text-xs font-bold rounded-xl py-2 transition-colors"
-                  >
-                    + Reminder
-                  </button>
-                </div>
+        {/* ── Smart Search Results ─────────────────────────────────────────── */}
+        {isSearching && smartSearchResults && (
+          <section aria-label="Search Results">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Search className="w-4 h-4 text-blue-500" />
+                <span className="font-bold text-slate-900 text-sm">Search Results</span>
               </div>
-            </section>
+              <span className="text-xs text-slate-400">
+                {smartSearchResults.units.length + smartSearchResults.diagnostics.length} found
+              </span>
+            </div>
 
-            {/* ── 3. KPI Cards ──────────────────────────────────────────────────── */}
-            <section aria-label="Key metrics">
-              <div className="grid grid-cols-4 gap-2">
-                <KPICard
-                  value={activeWork.length}
-                  label="Active Jobs"
-                  Icon={Zap}
-                  colorClass={activeWork.length > 0 ? "bg-amber-50 text-amber-900 border-amber-200" : "bg-slate-50 text-slate-500 border-slate-200"}
-                  accentClass={activeWork.length > 0 ? "bg-amber-100" : "bg-slate-100"}
-                />
-                <KPICard
-                  value={partsWaiting.length}
-                  label="On Parts"
-                  Icon={Package}
-                  colorClass={partsWaiting.length > 0 ? "bg-purple-50 text-purple-900 border-purple-200" : "bg-slate-50 text-slate-500 border-slate-200"}
-                  accentClass={partsWaiting.length > 0 ? "bg-purple-100" : "bg-slate-100"}
-                />
-                <KPICard
-                  value={returnVisitCount}
-                  label="Return Visits"
-                  Icon={Calendar}
-                  colorClass={returnVisitCount > 0 ? "bg-orange-50 text-orange-900 border-orange-200" : "bg-slate-50 text-slate-500 border-slate-200"}
-                  accentClass={returnVisitCount > 0 ? "bg-orange-100" : "bg-slate-100"}
-                />
-                <KPICard
-                  value={pmDueCount}
-                  label="PM Due"
-                  Icon={Wrench}
-                  colorClass={pmDueCount > 0 ? "bg-emerald-50 text-emerald-900 border-emerald-200" : "bg-slate-50 text-slate-500 border-slate-200"}
-                  accentClass={pmDueCount > 0 ? "bg-emerald-100" : "bg-slate-100"}
-                />
-                <KPICard
-                  value={unresolvedCount}
-                  label="Unresolved"
-                  Icon={AlertCircle}
-                  colorClass={unresolvedCount > 0 ? "bg-red-50 text-red-900 border-red-200" : "bg-slate-50 text-slate-500 border-slate-200"}
-                  accentClass={unresolvedCount > 0 ? "bg-red-100" : "bg-slate-100"}
-                />
-                <KPICard
-                  value={monitoringCount}
-                  label="Monitoring"
-                  Icon={CircleDot}
-                  colorClass={monitoringCount > 0 ? "bg-blue-50 text-blue-900 border-blue-200" : "bg-slate-50 text-slate-500 border-slate-200"}
-                  accentClass={monitoringCount > 0 ? "bg-blue-100" : "bg-slate-100"}
-                />
-                <KPICard
-                  value={resolvedThisWeek}
-                  label="Done / Week"
-                  Icon={CheckCircle2}
-                  colorClass={resolvedThisWeek > 0 ? "bg-emerald-50 text-emerald-900 border-emerald-200" : "bg-slate-50 text-slate-500 border-slate-200"}
-                  accentClass={resolvedThisWeek > 0 ? "bg-emerald-100" : "bg-slate-100"}
-                />
-                <KPICard
-                  value={units.length}
-                  label="Saved Units"
-                  Icon={Building2}
-                  colorClass="bg-slate-50 text-slate-700 border-slate-200"
-                  accentClass="bg-slate-100"
-                />
-              </div>
-            </section>
-
-            {/* ── 4. Compact Calendar + Agenda ──────────────────────────────────── */}
-            <section aria-label="Calendar">
-              <WeekCalendar
-                scheduledEvents={scheduledEvents}
-                weekOffset={weekOffset}
-                onWeekChange={(dir) => setWeekOffset((v) => v + dir)}
-                selectedDay={selectedDay}
-                onSelectDay={setSelectedDay}
-              />
-
-              {/* Agenda */}
-              <div className="mt-2 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
-                  <div className="flex items-center gap-2">
-                    <Calendar className="w-3.5 h-3.5 text-blue-500" />
-                    <span className="text-xs font-bold text-slate-700">
-                      {selectedDay
-                        ? selectedDay.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })
-                        : "Next 3 Days"}
-                    </span>
-                    {selectedDay && (
-                      <button onClick={() => setSelectedDay(null)} className="text-slate-400 hover:text-slate-600">
-                        <X className="w-3 h-3" />
-                      </button>
-                    )}
-                  </div>
-                  <button
-                    onClick={() => setShowAddEvent(true)}
-                    className="text-xs text-blue-600 font-semibold hover:text-blue-800 transition-colors flex items-center gap-1"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Add
-                  </button>
-                </div>
-
-                <div className="px-4 py-1">
-                  {!agendaHasEvents ? (
-                    <div className="py-4 text-center">
-                      <p className="text-xs font-semibold text-slate-400">No scheduled work</p>
-                      <button
-                        onClick={() => setShowAddEvent(true)}
-                        className="mt-2 text-xs text-blue-600 font-semibold hover:underline"
-                      >
-                        + Add Reminder
-                      </button>
-                    </div>
-                  ) : (
-                    agendaDays.map(({ date, events }) => {
-                      if (events.length === 0) return null;
-                      const today = new Date();
-                      today.setHours(0, 0, 0, 0);
-                      const diff = Math.round((date.getTime() - today.getTime()) / 86400000);
-                      const dayLabel = diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : date.toLocaleDateString(undefined, { weekday: "long" });
-                      return (
-                        <div key={date.toISOString()} className="py-2">
-                          <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">{dayLabel}</p>
-                          {events.map((ev) => (
-                            <AgendaEventRow
-                              key={ev.id}
-                              event={ev}
-                              unitMap={unitMap}
-                              onMarkDone={() => markEventDone(ev.id)}
-                              onDelete={() => deleteEvent(ev.id)}
-                            />
-                          ))}
-                        </div>
-                      );
-                    })
+            {smartSearchResults.units.length > 0 && (
+              <div className="mb-4">
+                <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2">
+                  Equipment ({smartSearchResults.units.length})
+                </p>
+                <div className="space-y-2.5">
+                  {smartSearchResults.units.slice(0, 5).map((u) => (
+                    <UnitCard key={u.id} unit={u} healthScore={healthScoreMap[u.id]}
+                      onClick={() => navigate(`/records/unit/${u.id}`)}
+                      onToggleFavorite={(e) => toggleFavorite(u, e)}
+                    />
+                  ))}
+                  {smartSearchResults.units.length > 5 && (
+                    <p className="text-xs text-slate-400 text-center py-1">+{smartSearchResults.units.length - 5} more</p>
                   )}
                 </div>
               </div>
+            )}
+
+            {smartSearchResults.diagnostics.length > 0 && (
+              <div>
+                <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2">
+                  Diagnostics ({smartSearchResults.diagnostics.length})
+                </p>
+                <div className="space-y-2.5">
+                  {smartSearchResults.diagnostics.slice(0, 5).map((l) => (
+                    <LogCard key={l.id} log={l} unitMap={unitMap} onClick={() => navigate(`/records/log/${l.id}`)} />
+                  ))}
+                  {smartSearchResults.diagnostics.length > 5 && (
+                    <p className="text-xs text-slate-400 text-center py-1">+{smartSearchResults.diagnostics.length - 5} more</p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {smartSearchResults.units.length === 0 && smartSearchResults.diagnostics.length === 0 && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-8 text-center">
+                <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-slate-500">No results for "{q}"</p>
+                <p className="text-xs text-slate-400 mt-1">Try customer name, model, or diagnosis type</p>
+              </div>
+            )}
+          </section>
+        )}
+
+        {!isSearching && !loading && (
+          <>
+            {/* ── Hero / Daily Briefing ──────────────────────────────────────── */}
+            <section>
+              <div className="bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 rounded-2xl p-5 text-white shadow-lg shadow-blue-200/60">
+                <div className="flex items-start justify-between gap-3 mb-4">
+                  <div className="min-w-0">
+                    <p className="text-blue-200 text-xs font-semibold uppercase tracking-wider mb-0.5">
+                      {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+                    </p>
+                    <p className="text-2xl font-extrabold leading-tight text-white">
+                      {getGreeting(clerkUser?.firstName)}
+                    </p>
+                    <p className="text-sm text-blue-100 mt-1.5 font-medium leading-snug">{briefingSummary}</p>
+                  </div>
+                  <div className="w-11 h-11 bg-white/15 rounded-2xl flex items-center justify-center flex-shrink-0">
+                    <Target className="w-5 h-5 text-white" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { label: "Diagnose", onClick: () => navigate("/") },
+                    { label: "New Unit", onClick: () => navigate("/records/new") },
+                    { label: "Reminder", onClick: () => setShowAddEvent(true) },
+                  ].map(({ label, onClick }) => (
+                    <button
+                      key={label}
+                      onClick={onClick}
+                      className="bg-white/15 hover:bg-white/25 active:bg-white/35 text-white text-xs font-bold rounded-xl py-2.5 transition-all duration-150 active:scale-95"
+                    >
+                      + {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </section>
 
-            {/* ── 5. Priority Center ────────────────────────────────────────────── */}
+            {/* ── KPI Cards (4×2) ───────────────────────────────────────────── */}
+            <section aria-label="Key metrics">
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { key: "active-jobs",   label: "Active Jobs",   Icon: Zap,          value: activeWork.length,   active: activeWork.length > 0,   colorOn: "bg-amber-50 text-amber-900 border-amber-200",   colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-amber-100 text-amber-600" },
+                  { key: "on-parts",      label: "On Parts",      Icon: Package,      value: partsWaiting.length, active: partsWaiting.length > 0, colorOn: "bg-purple-50 text-purple-900 border-purple-200", colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-purple-100 text-purple-600" },
+                  { key: "return-visits", label: "Return Visits", Icon: Calendar,     value: returnVisitCount,    active: returnVisitCount > 0,    colorOn: "bg-orange-50 text-orange-900 border-orange-200", colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-orange-100 text-orange-600" },
+                  { key: "pm-due",        label: "PM Due",        Icon: Wrench,       value: pmDueCount,          active: pmDueCount > 0,          colorOn: "bg-emerald-50 text-emerald-900 border-emerald-200", colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-emerald-100 text-emerald-600" },
+                  { key: "unresolved",    label: "Unresolved",    Icon: AlertCircle,  value: unresolvedCount,     active: unresolvedCount > 0,     colorOn: "bg-red-50 text-red-900 border-red-200",         colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-red-100 text-red-600" },
+                  { key: "monitoring",    label: "Monitoring",    Icon: CircleDot,    value: monitoringCount,     active: monitoringCount > 0,     colorOn: "bg-blue-50 text-blue-900 border-blue-200",      colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-blue-100 text-blue-600" },
+                  { key: "completed",     label: "Done / Week",   Icon: CheckCircle2, value: resolvedThisWeek,    active: resolvedThisWeek > 0,    colorOn: "bg-emerald-50 text-emerald-900 border-emerald-200", colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-emerald-100 text-emerald-600" },
+                  { key: "saved-units",   label: "Saved Units",   Icon: Building2,    value: units.length,        active: false,                   colorOn: "bg-slate-100 text-slate-700 border-slate-300",   colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-slate-200 text-slate-500" },
+                ].map(({ key, label, Icon, value, active, colorOn, colorOff, accent }) => (
+                  <KPICard
+                    key={key}
+                    value={value}
+                    label={label}
+                    Icon={Icon}
+                    colorClass={active ? colorOn : colorOff}
+                    accentIcon={active ? accent : "bg-slate-100 text-slate-400"}
+                    active={hoveredKpi === key}
+                    onClick={() => setFilteredBy(key as FilteredView)}
+                    onMouseEnter={() => handleKpiEnter(key)}
+                    onMouseLeave={handleKpiLeave}
+                  />
+                ))}
+              </div>
+
+              {/* Desktop-only hover preview panel */}
+              <div
+                onMouseEnter={() => { if (hoverTimeout.current) clearTimeout(hoverTimeout.current); }}
+                onMouseLeave={handleKpiLeave}
+                className={`hidden md:block mt-2 bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden transition-all duration-200 ${
+                  hoveredKpi ? "max-h-60 opacity-100" : "max-h-0 opacity-0 pointer-events-none"
+                }`}
+              >
+                {hoveredKpi && (
+                  <>
+                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100">
+                      <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">
+                        {hoveredKpi.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
+                      </span>
+                      <button
+                        onClick={() => setFilteredBy(hoveredKpi as FilteredView)}
+                        className="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1"
+                      >
+                        View all <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                    <KpiHoverPreview
+                      kpi={hoveredKpi}
+                      logs={logs}
+                      scheduledEvents={scheduledEvents}
+                      units={units}
+                      unitMap={unitMap}
+                      onNavigate={(path) => navigate(path)}
+                    />
+                  </>
+                )}
+              </div>
+            </section>
+
+            {/* ── Calendar + Agenda ────────────────────────────────────────────── */}
+            <section aria-label="Calendar">
+              {/* Calendar mode tabs */}
+              <div className="flex gap-1 mb-2 bg-slate-100 p-1 rounded-xl">
+                {(["week", "month", "agenda"] as const).map((mode) => {
+                  const icons = { week: LayoutList, month: CalendarDays, agenda: ListOrdered };
+                  const Icon = icons[mode];
+                  return (
+                    <button
+                      key={mode}
+                      onClick={() => { setCalendarMode(mode); setSelectedDay(null); }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-bold transition-all duration-150 ${
+                        calendarMode === mode
+                          ? "bg-white text-slate-900 shadow-sm"
+                          : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Icon className="w-3.5 h-3.5" />
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {calendarMode === "week" && (
+                <WeekCalendar
+                  scheduledEvents={scheduledEvents}
+                  weekOffset={weekOffset}
+                  onWeekChange={(dir) => { setWeekOffset((v) => v + dir); setSelectedDay(null); }}
+                  selectedDay={selectedDay}
+                  onSelectDay={setSelectedDay}
+                />
+              )}
+
+              {calendarMode === "month" && (
+                <MonthCalendar
+                  scheduledEvents={scheduledEvents}
+                  monthOffset={monthOffset}
+                  onMonthChange={(dir) => { setMonthOffset((v) => v + dir); setSelectedDay(null); }}
+                  selectedDay={selectedDay}
+                  onSelectDay={setSelectedDay}
+                />
+              )}
+
+              {calendarMode === "agenda" ? (
+                /* Agenda view: full event list grouped by date */
+                <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <ListOrdered className="w-3.5 h-3.5 text-blue-500" />
+                      <span className="text-xs font-bold text-slate-700">All Upcoming Events</span>
+                    </div>
+                    <button onClick={() => setShowAddEvent(true)} className="text-xs text-blue-600 font-semibold flex items-center gap-1">
+                      <Plus className="w-3 h-3" />Add
+                    </button>
+                  </div>
+                  {agendaGrouped.length === 0 ? (
+                    <div className="px-4 py-8 text-center">
+                      <Calendar className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                      <p className="text-xs font-semibold text-slate-400">No scheduled events</p>
+                      <button onClick={() => setShowAddEvent(true)} className="mt-2 text-xs text-blue-600 font-semibold hover:underline">+ Add Reminder</button>
+                    </div>
+                  ) : (
+                    <div className="px-4 py-2">
+                      {agendaGrouped.map(({ label, events }) => (
+                        <div key={label} className="py-2">
+                          <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">{label}</p>
+                          {events.map((ev) => (
+                            <AgendaEventRow key={ev.id} event={ev} unitMap={unitMap}
+                              onMarkDone={() => markEventDone(ev.id)} onDelete={() => deleteEvent(ev.id)} />
+                          ))}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ) : (
+                /* Week/Month: show agenda panel below */
+                <div className="mt-2 bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+                  <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="w-3.5 h-3.5 text-blue-500" />
+                      <span className="text-xs font-bold text-slate-700">
+                        {selectedDay
+                          ? selectedDay.toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })
+                          : "Next 3 Days"}
+                      </span>
+                      {selectedDay && (
+                        <button onClick={() => setSelectedDay(null)} className="text-slate-400 hover:text-slate-600">
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <button onClick={() => setShowAddEvent(true)} className="text-xs text-blue-600 font-semibold flex items-center gap-1">
+                      <Plus className="w-3 h-3" />Add
+                    </button>
+                  </div>
+                  <div className="px-4 py-1">
+                    {!agendaHasEvents ? (
+                      <div className="py-4 text-center">
+                        <p className="text-xs font-semibold text-slate-400">No scheduled work</p>
+                        <button onClick={() => setShowAddEvent(true)} className="mt-2 text-xs text-blue-600 font-semibold hover:underline">+ Add Reminder</button>
+                      </div>
+                    ) : (
+                      agendaDays.map(({ date, events }) => {
+                        if (events.length === 0) return null;
+                        const today = new Date(); today.setHours(0, 0, 0, 0);
+                        const diff = Math.round((date.getTime() - today.getTime()) / 86400000);
+                        const dayLabel = diff === 0 ? "Today" : diff === 1 ? "Tomorrow" : date.toLocaleDateString(undefined, { weekday: "long" });
+                        return (
+                          <div key={date.toISOString()} className="py-2">
+                            <p className="text-[11px] font-extrabold text-slate-400 uppercase tracking-widest mb-1">{dayLabel}</p>
+                            {events.map((ev) => (
+                              <AgendaEventRow key={ev.id} event={ev} unitMap={unitMap}
+                                onMarkDone={() => markEventDone(ev.id)} onDelete={() => deleteEvent(ev.id)} />
+                            ))}
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              )}
+            </section>
+
+            {/* ── Priority Center ──────────────────────────────────────────────── */}
             <section aria-label="Priority Center">
               <SectionHeader
                 title="Priority Center"
@@ -1046,7 +1754,6 @@ export default function RecordsPage() {
                     <div className="bg-white border border-slate-200 rounded-2xl p-5 text-center">
                       <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto mb-2" />
                       <p className="text-sm font-semibold text-slate-500">Nothing urgent right now</p>
-                      <p className="text-xs text-slate-400 mt-1">You're all caught up.</p>
                     </div>
                   ) : (
                     <div className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
@@ -1059,18 +1766,17 @@ export default function RecordsPage() {
                             <button
                               key={log.id}
                               onClick={() => navigate(`/records/log/${log.id}`)}
-                              className={`w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-slate-50 transition-colors ${idx < priorityItems.length - 1 ? "border-b border-slate-100" : ""}`}
+                              className={`w-full flex items-center gap-3 px-4 py-3.5 text-left hover:bg-slate-50 transition-colors ${idx < priorityItems.length - 1 ? "border-b border-slate-100" : ""}`}
                             >
-                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                                log.status === "unresolved" ? "bg-red-500" :
-                                log.status === "return-visit" ? "bg-orange-500" :
-                                log.status === "customer-callback" ? "bg-rose-500" : "bg-amber-500"
-                              }`} />
+                              <div className={`w-2 h-2 rounded-full flex-shrink-0 ${cfg.dot}`} />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold text-slate-900 line-clamp-1">{log.diagnosisTitle ?? "Unresolved Issue"}</p>
-                                {unit && <p className="text-xs text-slate-500 mt-0.5 truncate">{unit.nickname ?? unit.modelNumber ?? "Unit"}</p>}
+                                {unit && <p className="text-xs text-slate-500 mt-0.5 truncate">{unit.nickname ?? unit.siteCustomerName ?? "Unit"}</p>}
                               </div>
-                              <Badge className={`text-xs border flex-shrink-0 ${cfg.className}`}>{cfg.label}</Badge>
+                              <div className="flex items-center gap-2 flex-shrink-0">
+                                {log.confidencePercent != null && <span className="text-xs text-slate-400">{log.confidencePercent}%</span>}
+                                <Badge className={`text-xs border ${cfg.cls}`}>{cfg.label}</Badge>
+                              </div>
                             </button>
                           );
                         } else {
@@ -1078,14 +1784,11 @@ export default function RecordsPage() {
                           const cfg = scheduledEventTypeConfig(ev.eventType);
                           const unit = ev.unitId ? unitMap[ev.unitId] : null;
                           return (
-                            <div
-                              key={ev.id}
-                              className={`flex items-center gap-3 px-4 py-3 ${idx < priorityItems.length - 1 ? "border-b border-slate-100" : ""}`}
-                            >
+                            <div key={ev.id} className={`flex items-center gap-3 px-4 py-3.5 ${idx < priorityItems.length - 1 ? "border-b border-slate-100" : ""}`}>
                               <div className="w-2 h-2 rounded-full flex-shrink-0 bg-red-500" />
                               <div className="min-w-0 flex-1">
                                 <p className="text-sm font-semibold text-slate-900 line-clamp-1">{ev.title}</p>
-                                {unit && <p className="text-xs text-slate-500 mt-0.5 truncate">{unit.nickname ?? unit.modelNumber ?? "Unit"}</p>}
+                                {unit && <p className="text-xs text-slate-500 mt-0.5 truncate">{unit.nickname ?? unit.siteCustomerName ?? "Unit"}</p>}
                               </div>
                               <div className="flex items-center gap-2 flex-shrink-0">
                                 <span className={`text-xs font-semibold ${cfg.color}`}>{cfg.label}</span>
@@ -1097,11 +1800,10 @@ export default function RecordsPage() {
                       })}
                       {activeWork.length > 5 && (
                         <button
-                          onClick={() => { setPriorityOpen(false); setActiveWorkOpen(true); }}
+                          onClick={() => setFilteredBy("active-jobs")}
                           className="w-full flex items-center justify-center gap-1 text-xs text-blue-600 font-bold py-3 border-t border-slate-100 hover:bg-blue-50 transition-colors"
                         >
-                          View All {activeWork.length} active jobs
-                          <ArrowRight className="w-3 h-3" />
+                          View all {activeWork.length} active jobs <ArrowRight className="w-3 h-3" />
                         </button>
                       )}
                     </div>
@@ -1110,7 +1812,7 @@ export default function RecordsPage() {
               )}
             </section>
 
-            {/* ── 6. Active Work ────────────────────────────────────────────────── */}
+            {/* ── Active Work ──────────────────────────────────────────────────── */}
             <section aria-label="Active Work">
               <SectionHeader
                 title="Active Work"
@@ -1119,6 +1821,16 @@ export default function RecordsPage() {
                 onToggle={() => setActiveWorkOpen((v) => !v)}
                 icon={Activity}
                 accent={activeWork.length > 0}
+                action={
+                  activeWork.length > 0 ? (
+                    <button
+                      onClick={() => setFilteredBy("active-jobs")}
+                      className="text-xs text-blue-600 font-semibold flex items-center gap-1 hover:underline"
+                    >
+                      View all <ArrowRight className="w-3 h-3" />
+                    </button>
+                  ) : undefined
+                }
               />
               {activeWorkOpen && (
                 <div className="mt-3">
@@ -1129,43 +1841,39 @@ export default function RecordsPage() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      {activeByStatus.map(({ status, logs: statusLogs }) => {
+                      {activeByStatus.map(({ status, logs: sl }) => {
                         const cfg = statusConfig(status);
-                        const displayLogs = showAllActive ? statusLogs : statusLogs.slice(0, 3);
+                        const displayLogs = showAllActive ? sl : sl.slice(0, 3);
                         return (
                           <div key={status}>
                             <div className="flex items-center gap-2 mb-2">
-                              <cfg.Icon className="w-3.5 h-3.5" style={{ color: "inherit" }} />
-                              <span className={`text-xs font-extrabold uppercase tracking-wide ${
-                                status === "unresolved" ? "text-red-600" :
-                                status === "waiting-on-parts" ? "text-purple-600" :
-                                status === "monitoring" ? "text-blue-600" :
-                                status === "return-visit" ? "text-orange-600" : "text-rose-600"
-                              }`}>
-                                {cfg.label}
-                              </span>
-                              <span className="text-xs text-slate-400 font-semibold">{statusLogs.length}</span>
+                              <div className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+                              <span className="text-xs font-extrabold uppercase tracking-widest text-slate-500">{cfg.label}</span>
+                              <span className="text-xs text-slate-400">({sl.length})</span>
+                              {sl.length > 3 && !showAllActive && (
+                                <button onClick={() => setFilteredBy(
+                                  status === "waiting-on-parts" ? "on-parts" :
+                                  status === "return-visit" ? "return-visits" :
+                                  status as FilteredView
+                                )} className="text-xs text-blue-600 font-semibold ml-auto hover:underline">
+                                  All {sl.length} →
+                                </button>
+                              )}
                             </div>
                             <div className="space-y-2">
                               {displayLogs.map((l) => (
-                                <LogCard
-                                  key={l.id}
-                                  log={l}
-                                  unitMap={unitMap}
-                                  onClick={() => navigate(`/records/log/${l.id}`)}
-                                />
+                                <LogCard key={l.id} log={l} unitMap={unitMap} onClick={() => navigate(`/records/log/${l.id}`)} />
                               ))}
                             </div>
                           </div>
                         );
                       })}
-                      {activeWork.length > 9 && !showAllActive && (
+                      {!showAllActive && activeWork.length > 9 && (
                         <button
                           onClick={() => setShowAllActive(true)}
                           className="w-full flex items-center justify-center gap-1 text-xs text-blue-600 font-bold py-2.5 border border-dashed border-blue-200 rounded-2xl hover:bg-blue-50 transition-colors"
                         >
-                          View all {activeWork.length} active jobs
-                          <ArrowRight className="w-3 h-3" />
+                          Show all {activeWork.length} <ArrowRight className="w-3 h-3" />
                         </button>
                       )}
                     </div>
@@ -1174,7 +1882,7 @@ export default function RecordsPage() {
               )}
             </section>
 
-            {/* ── 7. Weekly Progress ────────────────────────────────────────────── */}
+            {/* ── Weekly Progress ──────────────────────────────────────────────── */}
             <section aria-label="Weekly Progress">
               <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
@@ -1184,34 +1892,26 @@ export default function RecordsPage() {
                   </div>
                   <span className="text-xs text-slate-400 font-semibold">This week</span>
                 </div>
-
-                {/* Progress bar */}
                 {(resolvedThisWeek + activeWork.length) > 0 ? (
                   <>
-                    <div className="flex items-center gap-2 mb-2">
+                    <div className="flex items-center gap-2 mb-1.5">
                       <div className="flex-1 bg-slate-100 rounded-full h-2.5 overflow-hidden">
                         <div
-                          className="bg-emerald-500 h-full rounded-full transition-all"
-                          style={{
-                            width: `${Math.min(100, Math.round((resolvedThisWeek / Math.max(1, resolvedThisWeek + activeWork.length)) * 100))}%`
-                          }}
+                          className="bg-emerald-500 h-full rounded-full transition-all duration-500"
+                          style={{ width: `${Math.min(100, Math.round((resolvedThisWeek / Math.max(1, resolvedThisWeek + activeWork.length)) * 100))}%` }}
                         />
                       </div>
                       <span className="text-xs font-extrabold text-slate-600 flex-shrink-0">
                         {resolvedThisWeek}/{resolvedThisWeek + activeWork.length}
                       </span>
                     </div>
-                    <p className="text-xs text-slate-400 mb-3">
-                      {resolvedThisWeek} resolved this week
-                    </p>
+                    <p className="text-xs text-slate-400 mb-3">{resolvedThisWeek} resolved this week</p>
                   </>
                 ) : (
                   <div className="bg-slate-50 rounded-xl p-3 text-center mb-3">
                     <p className="text-xs text-slate-400">No activity yet this week</p>
                   </div>
                 )}
-
-                {/* Stats row */}
                 <div className="grid grid-cols-4 gap-2">
                   {[
                     { label: "Completed", value: resolvedThisWeek, color: "text-emerald-700" },
@@ -1228,86 +1928,68 @@ export default function RecordsPage() {
               </div>
             </section>
 
-            {/* ── 8. Equipment Health Snapshot ──────────────────────────────────── */}
+            {/* ── Equipment Health Snapshot ────────────────────────────────────── */}
             {units.length > 0 && (
               <section aria-label="Equipment Health">
-                <SectionHeader
-                  title="Equipment Health"
-                  open={healthOpen}
-                  onToggle={() => setHealthOpen((v) => !v)}
-                  icon={Shield}
-                />
+                <SectionHeader title="Equipment Health" open={healthOpen} onToggle={() => setHealthOpen((v) => !v)} icon={Shield} />
                 {healthOpen && (
                   <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => {}}
-                      className={`flex items-center gap-3 p-3.5 rounded-2xl border text-left transition-all ${
-                        healthSnapshot.critical.length > 0
-                          ? "bg-red-50 border-red-200"
-                          : "bg-slate-50 border-slate-200"
-                      }`}
-                    >
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${healthSnapshot.critical.length > 0 ? "bg-red-100" : "bg-slate-100"}`}>
-                        <AlertCircle className={`w-4 h-4 ${healthSnapshot.critical.length > 0 ? "text-red-600" : "text-slate-400"}`} />
+                    {[
+                      { label: "Critical",    count: healthSnapshot.critical.length,    Icon: AlertCircle,  bg: healthSnapshot.critical.length > 0 ? "bg-red-50 border-red-200" : "bg-slate-50 border-slate-200",       icon: healthSnapshot.critical.length > 0 ? "bg-red-100" : "bg-slate-100",     text: healthSnapshot.critical.length > 0 ? "text-red-700" : "text-slate-400",     iconColor: healthSnapshot.critical.length > 0 ? "text-red-600" : "text-slate-400" },
+                      { label: "Watchlist",   count: healthSnapshot.watchlist.length,   Icon: CircleDot,    bg: healthSnapshot.watchlist.length > 0 ? "bg-amber-50 border-amber-200" : "bg-slate-50 border-slate-200",   icon: healthSnapshot.watchlist.length > 0 ? "bg-amber-100" : "bg-slate-100",   text: healthSnapshot.watchlist.length > 0 ? "text-amber-700" : "text-slate-400",  iconColor: healthSnapshot.watchlist.length > 0 ? "text-amber-600" : "text-slate-400" },
+                      { label: "Healthy",     count: healthSnapshot.healthy.length,     Icon: CheckCircle2, bg: "bg-emerald-50 border-emerald-200",                                                                         icon: "bg-emerald-100",                                                         text: "text-emerald-700",                                                         iconColor: "text-emerald-600" },
+                      { label: "No Activity", count: healthSnapshot.noActivity.length,  Icon: Clock,        bg: "bg-slate-50 border-slate-200",                                                                             icon: "bg-slate-100",                                                           text: "text-slate-500",                                                           iconColor: "text-slate-400" },
+                    ].map(({ label, count, Icon, bg, icon, text, iconColor }) => (
+                      <div key={label} className={`flex items-center gap-3 p-3.5 rounded-2xl border transition-all duration-150 hover:scale-[1.02] ${bg}`}>
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${icon}`}>
+                          <Icon className={`w-4 h-4 ${iconColor}`} />
+                        </div>
+                        <div>
+                          <p className={`text-xl font-extrabold leading-none ${text}`}>{count}</p>
+                          <p className="text-[11px] font-semibold text-slate-500 mt-0.5">{label}</p>
+                        </div>
                       </div>
-                      <div>
-                        <p className={`text-xl font-extrabold leading-none ${healthSnapshot.critical.length > 0 ? "text-red-700" : "text-slate-400"}`}>
-                          {healthSnapshot.critical.length}
-                        </p>
-                        <p className="text-[11px] font-semibold text-slate-500 mt-0.5">Critical</p>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => {}}
-                      className={`flex items-center gap-3 p-3.5 rounded-2xl border text-left ${
-                        healthSnapshot.watchlist.length > 0
-                          ? "bg-amber-50 border-amber-200"
-                          : "bg-slate-50 border-slate-200"
-                      }`}
-                    >
-                      <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 ${healthSnapshot.watchlist.length > 0 ? "bg-amber-100" : "bg-slate-100"}`}>
-                        <CircleDot className={`w-4 h-4 ${healthSnapshot.watchlist.length > 0 ? "text-amber-600" : "text-slate-400"}`} />
-                      </div>
-                      <div>
-                        <p className={`text-xl font-extrabold leading-none ${healthSnapshot.watchlist.length > 0 ? "text-amber-700" : "text-slate-400"}`}>
-                          {healthSnapshot.watchlist.length}
-                        </p>
-                        <p className="text-[11px] font-semibold text-slate-500 mt-0.5">Watchlist</p>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => {}}
-                      className="flex items-center gap-3 p-3.5 rounded-2xl border bg-emerald-50 border-emerald-200 text-left"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-emerald-100 flex items-center justify-center flex-shrink-0">
-                        <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      </div>
-                      <div>
-                        <p className="text-xl font-extrabold leading-none text-emerald-700">{healthSnapshot.healthy.length}</p>
-                        <p className="text-[11px] font-semibold text-slate-500 mt-0.5">Healthy</p>
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() => {}}
-                      className="flex items-center gap-3 p-3.5 rounded-2xl border bg-slate-50 border-slate-200 text-left"
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center flex-shrink-0">
-                        <Clock className="w-4 h-4 text-slate-400" />
-                      </div>
-                      <div>
-                        <p className="text-xl font-extrabold leading-none text-slate-500">{healthSnapshot.noActivity.length}</p>
-                        <p className="text-[11px] font-semibold text-slate-500 mt-0.5">No Activity</p>
-                      </div>
-                    </button>
+                    ))}
                   </div>
                 )}
               </section>
             )}
 
-            {/* ── 9. Favorites ──────────────────────────────────────────────────── */}
+            {/* ── Location Browse ──────────────────────────────────────────────── */}
+            {locationGroups.length > 0 && (
+              <section aria-label="Browse by Customer">
+                <SectionHeader
+                  title="Browse by Customer"
+                  count={locationGroups.length}
+                  open={locationViewOpen}
+                  onToggle={() => setLocationViewOpen((v) => !v)}
+                  icon={MapPin}
+                />
+                {locationViewOpen && (
+                  <div className="mt-3 space-y-2.5">
+                    {locationGroups.map((group) => (
+                      <LocationGroupCard
+                        key={group.customer}
+                        group={group}
+                        healthScoreMap={healthScoreMap}
+                        expanded={expandedLocations.has(group.customer)}
+                        onToggle={() => {
+                          setExpandedLocations((prev) => {
+                            const next = new Set(prev);
+                            next.has(group.customer) ? next.delete(group.customer) : next.add(group.customer);
+                            return next;
+                          });
+                        }}
+                        onUnitClick={(id) => navigate(`/records/unit/${id}`)}
+                        onToggleFavorite={toggleFavorite}
+                      />
+                    ))}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {/* ── Favorites ────────────────────────────────────────────────────── */}
             {favorites.length > 0 && (
               <section aria-label="Favorites">
                 <div className="flex items-center gap-2 mb-3">
@@ -1317,19 +1999,14 @@ export default function RecordsPage() {
                 </div>
                 <div className="space-y-2">
                   {favorites.map((u) => (
-                    <CompactUnitCard
-                      key={u.id}
-                      unit={u}
-                      healthScore={healthScoreMap[u.id]}
-                      onClick={() => navigate(`/records/unit/${u.id}`)}
-                      onToggleFavorite={(e) => toggleFavorite(u, e)}
-                    />
+                    <CompactUnitCard key={u.id} unit={u} healthScore={healthScoreMap[u.id]}
+                      onClick={() => navigate(`/records/unit/${u.id}`)} onToggleFavorite={(e) => toggleFavorite(u, e)} />
                   ))}
                 </div>
               </section>
             )}
 
-            {/* ── 10. Recently Viewed ───────────────────────────────────────────── */}
+            {/* ── Recently Viewed ──────────────────────────────────────────────── */}
             {recentlyViewed.length > 0 && (
               <section aria-label="Recently Viewed">
                 <div className="flex items-center gap-2 mb-3">
@@ -1338,18 +2015,14 @@ export default function RecordsPage() {
                 </div>
                 <div className="space-y-2">
                   {recentlyViewed.map((u) => (
-                    <CompactUnitCard
-                      key={u.id}
-                      unit={u}
-                      healthScore={healthScoreMap[u.id]}
-                      onClick={() => navigate(`/records/unit/${u.id}`)}
-                    />
+                    <CompactUnitCard key={u.id} unit={u} healthScore={healthScoreMap[u.id]}
+                      onClick={() => navigate(`/records/unit/${u.id}`)} />
                   ))}
                 </div>
               </section>
             )}
 
-            {/* ── 11. Saved Units ───────────────────────────────────────────────── */}
+            {/* ── Saved Units ──────────────────────────────────────────────────── */}
             <section aria-label="Saved Units">
               <SectionHeader
                 title="Saved Units"
@@ -1357,32 +2030,24 @@ export default function RecordsPage() {
                 open={unitsOpen}
                 onToggle={() => setUnitsOpen((v) => !v)}
                 icon={Building2}
+                action={
+                  <button onClick={() => setFilteredBy("saved-units")} className="text-xs text-blue-600 font-semibold flex items-center gap-1 hover:underline">
+                    All <ArrowRight className="w-3 h-3" />
+                  </button>
+                }
               />
               {unitsOpen && (
                 <div className="mt-3 space-y-3">
-                  {/* Search + filter */}
                   <div className="flex gap-2">
                     <div className="relative flex-1">
                       <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                      <Input
-                        value={q}
-                        onChange={(e) => setQ(e.target.value)}
-                        placeholder="Search units, customers, models…"
-                        className="pl-8 rounded-xl border-slate-200 text-sm h-9"
-                      />
-                      {q && (
-                        <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400">
-                          <X className="w-3.5 h-3.5" />
-                        </button>
-                      )}
+                      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search units, customers, models…"
+                        className="pl-8 rounded-xl border-slate-200 text-sm h-9" />
+                      {q && <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400"><X className="w-3.5 h-3.5" /></button>}
                     </div>
                     {manufacturers.length > 1 && (
                       <div className="relative">
-                        <select
-                          value={mfgFilter}
-                          onChange={(e) => setMfgFilter(e.target.value)}
-                          className="h-9 appearance-none text-xs text-slate-700 bg-white border border-slate-200 rounded-xl pl-3 pr-7 cursor-pointer font-semibold"
-                        >
+                        <select value={mfgFilter} onChange={(e) => setMfgFilter(e.target.value)} className="h-9 appearance-none text-xs text-slate-700 bg-white border border-slate-200 rounded-xl pl-3 pr-7 cursor-pointer font-semibold">
                           <option value="">All</option>
                           {manufacturers.map((m) => <option key={m} value={m}>{m}</option>)}
                         </select>
@@ -1397,8 +2062,7 @@ export default function RecordsPage() {
                       <p className="text-sm font-semibold text-slate-500">No units saved yet</p>
                       <p className="text-xs text-slate-400 mt-1 mb-4">Save units to track service history.</p>
                       <Button onClick={() => navigate("/records/new")} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl">
-                        <Plus className="w-3.5 h-3.5 mr-1" />
-                        Add First Unit
+                        <Plus className="w-3.5 h-3.5 mr-1" />Add First Unit
                       </Button>
                     </div>
                   ) : filteredUnits.length === 0 ? (
@@ -1407,22 +2071,16 @@ export default function RecordsPage() {
                     <>
                       <div className="space-y-2.5">
                         {(showAllUnits ? filteredUnits : filteredUnits.slice(0, 5)).map((u) => (
-                          <UnitCard
-                            key={u.id}
-                            unit={u}
-                            healthScore={healthScoreMap[u.id]}
-                            onClick={() => navigate(`/records/unit/${u.id}`)}
-                            onToggleFavorite={(e) => toggleFavorite(u, e)}
-                          />
+                          <UnitCard key={u.id} unit={u} healthScore={healthScoreMap[u.id]}
+                            onClick={() => navigate(`/records/unit/${u.id}`)} onToggleFavorite={(e) => toggleFavorite(u, e)} />
                         ))}
                       </div>
                       {filteredUnits.length > 5 && !showAllUnits && (
                         <button
-                          onClick={() => setShowAllUnits(true)}
+                          onClick={() => setFilteredBy("saved-units")}
                           className="w-full flex items-center justify-center gap-1 text-xs text-blue-600 font-bold py-2.5 border border-dashed border-blue-200 rounded-2xl hover:bg-blue-50 transition-colors"
                         >
-                          View all {filteredUnits.length} units
-                          <ArrowRight className="w-3 h-3" />
+                          View all {filteredUnits.length} units <ArrowRight className="w-3 h-3" />
                         </button>
                       )}
                     </>
@@ -1431,7 +2089,7 @@ export default function RecordsPage() {
               )}
             </section>
 
-            {/* ── 12. Recent Diagnostics ────────────────────────────────────────── */}
+            {/* ── Recent Diagnostics ───────────────────────────────────────────── */}
             <section aria-label="Recent Diagnostics">
               <SectionHeader
                 title="Recent Diagnostics"
@@ -1446,27 +2104,17 @@ export default function RecordsPage() {
                     <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
                       <Activity className="w-8 h-8 text-slate-300 mx-auto mb-2" />
                       <p className="text-sm font-semibold text-slate-500">No diagnostics yet</p>
-                      <p className="text-xs text-slate-400 mt-1">Run a diagnosis to see results here.</p>
                     </div>
                   ) : (
                     <>
                       <div className="space-y-2.5">
                         {(showAllDiags ? logs : logs.slice(0, 5)).map((l) => (
-                          <LogCard
-                            key={l.id}
-                            log={l}
-                            unitMap={unitMap}
-                            onClick={() => navigate(`/records/log/${l.id}`)}
-                          />
+                          <LogCard key={l.id} log={l} unitMap={unitMap} onClick={() => navigate(`/records/log/${l.id}`)} />
                         ))}
                       </div>
                       {logs.length > 5 && !showAllDiags && (
-                        <button
-                          onClick={() => setShowAllDiags(true)}
-                          className="mt-2.5 w-full flex items-center justify-center gap-1 text-xs text-blue-600 font-bold py-2.5 border border-dashed border-blue-200 rounded-2xl hover:bg-blue-50 transition-colors"
-                        >
-                          View all {logs.length} diagnostics
-                          <ArrowRight className="w-3 h-3" />
+                        <button onClick={() => setShowAllDiags(true)} className="mt-2.5 w-full flex items-center justify-center gap-1 text-xs text-blue-600 font-bold py-2.5 border border-dashed border-blue-200 rounded-2xl hover:bg-blue-50 transition-colors">
+                          View all {logs.length} diagnostics <ArrowRight className="w-3 h-3" />
                         </button>
                       )}
                     </>
@@ -1475,34 +2123,22 @@ export default function RecordsPage() {
               )}
             </section>
 
-            {/* ── 13. My Stats ──────────────────────────────────────────────────── */}
+            {/* ── My Stats ─────────────────────────────────────────────────────── */}
             <section aria-label="My Stats">
-              <SectionHeader
-                title="My Stats"
-                open={statsOpen}
-                onToggle={() => setStatsOpen((v) => !v)}
-                icon={TrendingUp}
-              />
+              <SectionHeader title="My Stats" open={statsOpen} onToggle={() => setStatsOpen((v) => !v)} icon={TrendingUp} />
               {statsOpen && (
                 <div className="mt-3 grid grid-cols-2 gap-3">
-                  <div className="bg-white border border-slate-200 rounded-2xl p-4">
-                    <span className="text-2xl font-extrabold text-slate-900 leading-none">{logs.length}</span>
-                    <p className="text-xs font-semibold text-slate-400 mt-1.5">Total Diagnoses</p>
-                  </div>
-                  <div className="bg-white border border-slate-200 rounded-2xl p-4">
-                    <span className="text-2xl font-extrabold text-emerald-700 leading-none">{resolvedThisWeek}</span>
-                    <p className="text-xs font-semibold text-slate-400 mt-1.5">Resolved This Week</p>
-                  </div>
-                  <div className="bg-white border border-slate-200 rounded-2xl p-4">
-                    <span className="text-2xl font-extrabold text-blue-700 leading-none">
-                      {avgConfidence != null ? `${avgConfidence}%` : "—"}
-                    </span>
-                    <p className="text-xs font-semibold text-slate-400 mt-1.5">Avg. AI Confidence</p>
-                  </div>
-                  <div className="bg-white border border-slate-200 rounded-2xl p-4">
-                    <span className="text-2xl font-extrabold text-slate-900 leading-none">{resolvedLogs.length}</span>
-                    <p className="text-xs font-semibold text-slate-400 mt-1.5">Total Resolved</p>
-                  </div>
+                  {[
+                    { value: logs.length,                                                    label: "Total Diagnoses",      color: "text-slate-900" },
+                    { value: resolvedThisWeek,                                               label: "Resolved This Week",  color: "text-emerald-700" },
+                    { value: avgConfidence != null ? `${avgConfidence}%` : "—",             label: "Avg. AI Confidence",  color: "text-blue-700" },
+                    { value: resolvedLogs.length,                                            label: "Total Resolved",      color: "text-slate-900" },
+                  ].map(({ value, label, color }) => (
+                    <div key={label} className="bg-white border border-slate-200 rounded-2xl p-4">
+                      <span className={`text-2xl font-extrabold leading-none ${color}`}>{value}</span>
+                      <p className="text-xs font-semibold text-slate-400 mt-1.5">{label}</p>
+                    </div>
+                  ))}
                   {topDiagnosis && (
                     <div className="col-span-2 bg-white border border-slate-200 rounded-2xl p-4">
                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Top Diagnosis</p>
@@ -1514,7 +2150,7 @@ export default function RecordsPage() {
               )}
             </section>
 
-            {/* ── 14. Resolution Library ────────────────────────────────────────── */}
+            {/* ── Resolution Library ───────────────────────────────────────────── */}
             <section aria-label="Resolution Library">
               <SectionHeader
                 title="Resolution Library"
@@ -1533,25 +2169,18 @@ export default function RecordsPage() {
                   ) : (
                     <div className="space-y-4">
                       <div className="flex flex-wrap gap-2">
-                        {Object.entries(resolutionGroups)
-                          .sort((a, b) => b[1].length - a[1].length)
-                          .map(([key, items]) => {
-                            const cat = RESOLUTION_CATEGORIES.find((c) => c.key === key);
-                            return (
-                              <span key={key} className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-semibold">
-                                {cat?.label ?? "Other"} ({items.length})
-                              </span>
-                            );
-                          })}
+                        {Object.entries(resolutionGroups).sort((a, b) => b[1].length - a[1].length).map(([key, items]) => {
+                          const cat = RESOLUTION_CATEGORIES.find((c) => c.key === key);
+                          return (
+                            <span key={key} className="text-xs bg-emerald-50 text-emerald-700 border border-emerald-200 px-2.5 py-1 rounded-full font-semibold">
+                              {cat?.label ?? "Other"} ({items.length})
+                            </span>
+                          );
+                        })}
                       </div>
                       <div className="space-y-2.5">
                         {resolvedLogs.slice(0, 10).map((l) => (
-                          <LogCard
-                            key={l.id}
-                            log={l}
-                            unitMap={unitMap}
-                            onClick={() => navigate(`/records/log/${l.id}`)}
-                          />
+                          <LogCard key={l.id} log={l} unitMap={unitMap} onClick={() => navigate(`/records/log/${l.id}`)} />
                         ))}
                       </div>
                     </div>
@@ -1560,13 +2189,19 @@ export default function RecordsPage() {
               )}
             </section>
 
-            {/* Bottom spacer */}
-            <div className="h-4" />
+            <div className="h-6" />
           </>
+        )}
+
+        {loading && (
+          <div className="space-y-3 pt-2">
+            {[1, 2, 3, 4, 5].map((i) => (
+              <div key={i} className="bg-white rounded-2xl border border-slate-200 p-4 animate-pulse h-16" />
+            ))}
+          </div>
         )}
       </div>
 
-      {/* ── Add Reminder Modal ───────────────────────────────────────────────── */}
       {showAddEvent && (
         <ScheduledEventModal
           clientId={clientId}
