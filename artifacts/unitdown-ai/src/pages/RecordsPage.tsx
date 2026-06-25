@@ -1747,7 +1747,7 @@ export default function RecordsPage() {
                   { key: "unresolved",    label: "Unresolved",    Icon: AlertCircle,  value: unresolvedCount,     active: unresolvedCount > 0,     colorOn: "bg-red-50 text-red-900 border-red-200",         colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-red-100 text-red-600" },
                   { key: "monitoring",    label: "Monitoring",    Icon: CircleDot,    value: monitoringCount,     active: monitoringCount > 0,     colorOn: "bg-blue-50 text-blue-900 border-blue-200",      colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-blue-100 text-blue-600" },
                   { key: "completed",     label: "Done / Week",   Icon: CheckCircle2, value: resolvedThisWeek,    active: resolvedThisWeek > 0,    colorOn: "bg-emerald-50 text-emerald-900 border-emerald-200", colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-emerald-100 text-emerald-600" },
-                  { key: "saved-units",   label: "Saved Units",   Icon: Building2,    value: units.length,        active: false,                   colorOn: "bg-slate-100 text-slate-700 border-slate-300",   colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-slate-200 text-slate-500" },
+                  { key: "saved-units",   label: "Equipment",     Icon: Building2,    value: units.length,        active: false,                   colorOn: "bg-slate-100 text-slate-700 border-slate-300",   colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-slate-200 text-slate-500" },
                 ].map(({ key, label, Icon, value, active, colorOn, colorOff, accent }) => (
                   <KPICard
                     key={key}

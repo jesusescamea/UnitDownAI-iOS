@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { useUser } from "@clerk/clerk-react";
 import {
-  ChevronRight, Wrench, ThermometerSnowflake, Edit2, Trash2, Pencil,
+  ChevronRight, Wrench, Edit2, Trash2, Pencil,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
   MapPin, Activity, Loader2, FileText, Settings, Camera, Search,
-  ZoomIn, X, Star, Bell,
+  ZoomIn, X, Star, Bell, Layers, Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -83,6 +83,22 @@ function statusConfig(status: string) {
     default:           return { label: "Unresolved", Icon: AlertCircle,  className: "bg-amber-100 text-amber-800 border-amber-200" };
   }
 }
+
+// ─── Equipment Lifecycle Status ────────────────────────────────────────────────
+
+type UnitStatus = "operational" | "monitoring" | "needs-follow-up" | "critical" | "archived";
+
+function unitStatusConfig(status: UnitStatus) {
+  switch (status) {
+    case "operational":     return { strip: "bg-emerald-500", dot: "bg-emerald-500", label: "Operational", textCls: "text-emerald-700", bgCls: "bg-emerald-50",  borderCls: "border-emerald-200" };
+    case "monitoring":      return { strip: "bg-blue-500",    dot: "bg-blue-500",    label: "Monitoring",  textCls: "text-blue-700",    bgCls: "bg-blue-50",    borderCls: "border-blue-200"   };
+    case "needs-follow-up": return { strip: "bg-amber-500",   dot: "bg-amber-500",   label: "Follow-up",   textCls: "text-amber-700",   bgCls: "bg-amber-50",   borderCls: "border-amber-200"  };
+    case "critical":        return { strip: "bg-red-500",     dot: "bg-red-500",     label: "Critical",    textCls: "text-red-700",     bgCls: "bg-red-50",     borderCls: "border-red-200"    };
+    case "archived":        return { strip: "bg-slate-400",   dot: "bg-slate-400",   label: "Archived",    textCls: "text-slate-500",   bgCls: "bg-slate-100",  borderCls: "border-slate-200"  };
+  }
+}
+
+type ActiveTab = "timeline" | "info" | "photos" | "resources" | "notes";
 
 function eventTypeConfig(type: string) {
   switch (type) {
@@ -417,6 +433,9 @@ export default function UnitDetailPage() {
   const [showReminderModal, setShowReminderModal] = useState(false);
   const [progressOpen, setProgressOpen] = useState(true);
 
+  // Tab state
+  const [activeTab, setActiveTab] = useState<ActiveTab>("timeline");
+
   // Timeline UI state
   const [activeFilter, setActiveFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -480,6 +499,17 @@ export default function UnitDetailPage() {
     }
     return counts;
   }, [events]);
+
+  // Equipment lifecycle status — derived from open diagnostic logs
+  const unitStatus = useMemo((): UnitStatus => {
+    if (!unit) return "operational";
+    if (unit.isArchived) return "archived";
+    if (unitLogs.some((l) => l.status === "unresolved")) return "critical";
+    if (unitLogs.some((l) => l.status === "waiting-on-parts")) return "needs-follow-up";
+    if (unitLogs.some((l) => l.status === "return-visit" || l.status === "customer-callback")) return "needs-follow-up";
+    if (unitLogs.some((l) => l.status === "monitoring")) return "monitoring";
+    return "operational";
+  }, [unit, unitLogs]);
 
   // Repair progress checklist — auto-computed, never manual
   const progressSteps = useMemo(() => {
@@ -605,11 +635,12 @@ export default function UnitDetailPage() {
   const hasEquipment = unit.manufacturer || unit.modelNumber || unit.serialNumber ||
     unit.equipmentType || unit.systemType || unit.refrigerantType || unit.capacityTons || unit.manufactureDate;
   const hasElectrical = unit.voltage || unit.phase || unit.mca || unit.mocp || unit.rla || unit.lra;
+  const sc = unitStatusConfig(unitStatus);
 
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
 
-      {/* Header */}
+      {/* ── Sticky Header ─────────────────────────────────────────────────── */}
       <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -618,7 +649,7 @@ export default function UnitDetailPage() {
             </button>
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-                <ThermometerSnowflake className="w-4 h-4 text-white" />
+                <Layers className="w-4 h-4 text-white" />
               </div>
               <span className="font-extrabold text-slate-900 text-sm truncate max-w-[160px]">
                 {unit.nickname ?? unit.modelNumber ?? "Unit"}
@@ -655,272 +686,404 @@ export default function UnitDetailPage() {
         </div>
       </header>
 
-      <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
+      <div className="max-w-2xl mx-auto px-4 py-4 space-y-3">
 
-        {/* Unit overview card */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4">
-          <div className="flex items-start gap-3 mb-3">
-            <div className="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Wrench className="w-5 h-5 text-blue-600" />
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-base font-extrabold text-slate-900 leading-tight">
-                {unit.nickname ?? unit.modelNumber ?? "Unnamed Unit"}
-              </h1>
-              {unit.siteCustomerName && (
-                <p className="text-sm text-slate-500 font-medium">{unit.siteCustomerName}</p>
-              )}
-              {unit.location && (
-                <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                  <MapPin className="w-3 h-3" />{unit.location}
-                </p>
-              )}
-            </div>
-          </div>
-          <Button
-            onClick={handleDiagnoseThis}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-10 text-sm"
-          >
-            <Activity className="w-4 h-4 mr-2" />
-            Diagnose This Unit
-          </Button>
-        </div>
+        {/* ── Equipment Identity Card ──────────────────────────────────────── */}
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+          {/* Status color strip */}
+          <div className={`h-1.5 w-full ${sc.strip}`} />
 
-        {/* Nameplate image — preview card + full-screen lightbox */}
-        {unit.nameplateImageUrl && (
-          <NameplateViewer
-            previewUrl={unit.nameplatePreviewUrl ?? unit.nameplateImageUrl}
-            fullUrl={unit.nameplateImageUrl}
-          />
-        )}
-
-        {/* Equipment info */}
-        {hasEquipment && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-4">
-            <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mb-1">Equipment</p>
-            <InfoRow label="Manufacturer" value={unit.manufacturer} />
-            <InfoRow label="Model" value={unit.modelNumber} />
-            <InfoRow label="Serial" value={unit.serialNumber} />
-            <InfoRow label="Type" value={unit.equipmentType} />
-            <InfoRow label="System" value={unit.systemType} />
-            <InfoRow label="Refrigerant" value={unit.refrigerantType} />
-            <InfoRow label="Capacity" value={unit.capacityTons ? `${unit.capacityTons} tons` : null} />
-            <InfoRow label="Mfg. Date" value={unit.manufactureDate} />
-          </div>
-        )}
-
-        {/* Electrical data */}
-        {hasElectrical && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-4">
-            <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mb-1">Electrical</p>
-            <InfoRow label="Voltage" value={unit.voltage} />
-            <InfoRow label="Phase" value={unit.phase} />
-            <InfoRow label="MCA" value={unit.mca} />
-            <InfoRow label="MOCP" value={unit.mocp} />
-            <InfoRow label="RLA / FLA" value={unit.rla} />
-            <InfoRow label="LRA" value={unit.lra} />
-          </div>
-        )}
-
-        {/* Notes */}
-        {unit.notes && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-4">
-            <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide mb-2">Notes</p>
-            <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{unit.notes}</p>
-          </div>
-        )}
-
-        {/* ── Equipment Resources ──────────────────────────────────────── */}
-        {(unit.modelNumber || unit.manufacturer) && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-4">
-            <EquipmentResources
-              modelNumber={unit.modelNumber}
-              manufacturer={unit.manufacturer}
-            />
-          </div>
-        )}
-
-        {/* ── Photos & Notes ───────────────────────────────────────────── */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-4">
-          <PhotoAlbum unitId={unit.id} clientId={clientId} />
-        </div>
-
-        {/* ── Repair Progress Tracker ──────────────────────────────────── */}
-        {progressSteps.length > 0 && (
-          <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-            <button
-              onClick={() => setProgressOpen((v) => !v)}
-              className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors"
-            >
-              <div className="flex items-center gap-2.5 min-w-0">
-                <div className="w-6 h-6 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
-                </div>
-                <div className="min-w-0">
-                  <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wide">
-                    Repair Progress
+          <div className="p-4">
+            {/* Name row + status badge */}
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 flex-wrap mb-1">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex items-center gap-1 ${sc.bgCls} ${sc.textCls} ${sc.borderCls}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
+                    {sc.label}
                   </span>
-                  <span className="text-xs text-slate-400 ml-2">
-                    {progressSteps.filter((s) => s.done).length}/{progressSteps.length}
-                  </span>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <span className={`text-xs font-extrabold ${
-                  Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100) === 100
-                    ? "text-emerald-600"
-                    : "text-slate-500"
-                }`}>
-                  {Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100)}%
-                </span>
-                <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${progressOpen ? "rotate-90" : ""}`} />
-              </div>
-            </button>
-            {/* Progress bar */}
-            <div className="px-4 pb-2">
-              <div className="w-full bg-slate-100 rounded-full h-1.5">
-                <div
-                  className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
-                  style={{ width: `${Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100)}%` }}
-                />
-              </div>
-            </div>
-            {progressOpen && (
-              <div className="px-4 pb-4 pt-2 space-y-1.5 border-t border-slate-100">
-                {progressSteps.map((step) => (
-                  <div key={step.label} className="flex items-center gap-2.5">
-                    <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${
-                      step.done ? "bg-emerald-100" : "bg-slate-100"
-                    }`}>
-                      {step.done
-                        ? <CheckCircle2 className="w-3 h-3 text-emerald-600" />
-                        : <div className="w-2 h-2 rounded-full bg-slate-300" />
-                      }
-                    </div>
-                    <span className={`text-xs font-medium ${step.done ? "text-slate-700" : "text-slate-400"}`}>
-                      {step.label}
+                  {unit.equipmentType && (
+                    <span className="text-[10px] text-slate-400 font-medium bg-slate-100 px-2 py-0.5 rounded-full">
+                      {unit.equipmentType}
                     </span>
+                  )}
+                </div>
+                <h1 className="text-lg font-extrabold text-slate-900 leading-tight">
+                  {unit.nickname ?? unit.modelNumber ?? "Unnamed Unit"}
+                </h1>
+                {unit.siteCustomerName && (
+                  <p className="text-sm text-slate-600 font-medium mt-0.5">{unit.siteCustomerName}</p>
+                )}
+                {unit.location && (
+                  <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
+                    <MapPin className="w-3 h-3" />{unit.location}
+                  </p>
+                )}
+              </div>
+              {/* Nameplate thumbnail */}
+              {unit.nameplateImageUrl && (
+                <button
+                  type="button"
+                  onClick={() => setActiveTab("info")}
+                  className="w-16 h-16 flex-shrink-0 rounded-xl overflow-hidden border border-slate-200 hover:border-blue-300 transition-colors group relative"
+                  aria-label="View nameplate"
+                  title="Tap to view nameplate"
+                >
+                  <img
+                    src={unit.nameplatePreviewUrl ?? unit.nameplateImageUrl}
+                    alt="Nameplate"
+                    className="w-full h-full object-cover"
+                  />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-end justify-center pb-1">
+                    <span className="text-[9px] text-white/0 group-hover:text-white/90 font-semibold transition-all">Nameplate</span>
                   </div>
+                </button>
+              )}
+            </div>
+
+            {/* Quick spec chips */}
+            {(unit.manufacturer || unit.modelNumber || unit.serialNumber || unit.refrigerantType || unit.voltage || unit.capacityTons) && (
+              <div className="flex flex-wrap gap-1.5 mb-3">
+                {unit.manufacturer && (
+                  <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-1 rounded-full font-semibold">{unit.manufacturer}</span>
+                )}
+                {unit.modelNumber && (
+                  <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full font-mono">{unit.modelNumber}</span>
+                )}
+                {unit.refrigerantType && (
+                  <span className="text-[10px] bg-blue-50 text-blue-700 px-2 py-1 rounded-full font-semibold border border-blue-100">{unit.refrigerantType}</span>
+                )}
+                {unit.voltage && (
+                  <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{unit.voltage}V</span>
+                )}
+                {unit.capacityTons && (
+                  <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-1 rounded-full">{unit.capacityTons} tons</span>
+                )}
+              </div>
+            )}
+
+            {/* Primary CTA */}
+            <Button
+              onClick={handleDiagnoseThis}
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-10 text-sm"
+            >
+              <Activity className="w-4 h-4 mr-2" />
+              Run AI Diagnosis
+            </Button>
+          </div>
+        </div>
+
+        {/* ── Tab Navigation ───────────────────────────────────────────────── */}
+        <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+          {(
+            [
+              { id: "timeline" as const,  label: "Timeline",   Icon: History   },
+              { id: "info" as const,      label: "Info",       Icon: Info      },
+              { id: "photos" as const,    label: "Photos",     Icon: Camera    },
+              { id: "resources" as const, label: "Resources",  Icon: Search    },
+              { id: "notes" as const,     label: "Notes",      Icon: FileText  },
+            ] as const
+          ).map(({ id, label, Icon }) => (
+            <button
+              key={id}
+              onClick={() => setActiveTab(id)}
+              className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition-all duration-150 ${
+                activeTab === id
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "bg-white border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600"
+              }`}
+            >
+              <Icon className="w-3.5 h-3.5" />
+              {label}
+              {id === "timeline" && events.length > 0 && (
+                <span className={`text-[10px] ${activeTab === "timeline" ? "opacity-70" : "text-slate-400"}`}>
+                  {events.length}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        {/* ── Timeline Tab ─────────────────────────────────────────────────── */}
+        {activeTab === "timeline" && (
+          <div>
+            {/* Section header */}
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Service Timeline</p>
+                <p className="text-xs text-slate-400 mt-0.5">{events.length} event{events.length !== 1 ? "s" : ""}</p>
+              </div>
+              <button
+                onClick={() => openAddModal("note")}
+                className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-3 py-1.5 text-xs transition-colors"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Add Entry
+              </button>
+            </div>
+
+            {/* Quick-add shortcuts */}
+            <div className="flex gap-2 mb-3 flex-wrap">
+              {(
+                [
+                  { type: "note" as const,        Icon: FileText,  label: "Note" },
+                  { type: "repair" as const,       Icon: Wrench,    label: "Repair" },
+                  { type: "maintenance" as const,  Icon: Settings,  label: "PM" },
+                ] as const
+              ).map(({ type, Icon, label }) => (
+                <button
+                  key={type}
+                  onClick={() => openAddModal(type)}
+                  className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors"
+                >
+                  <Icon className="w-3.5 h-3.5" />
+                  {label}
+                </button>
+              ))}
+              <button
+                onClick={() => setShowReminderModal(true)}
+                className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors"
+              >
+                <Bell className="w-3.5 h-3.5" />
+                Reminder
+              </button>
+            </div>
+
+            {/* Filter tabs */}
+            <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
+              {FILTER_TABS.map(({ id, label }) => {
+                const count = typeCounts[id] ?? 0;
+                const active = activeFilter === id;
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setActiveFilter(id)}
+                    className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                      active
+                        ? "bg-slate-800 text-white"
+                        : "bg-white border border-slate-200 text-slate-600 hover:border-slate-400"
+                    }`}
+                  >
+                    {label}
+                    <span className={`text-xs ${active ? "opacity-60" : "text-slate-400"}`}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Search bar */}
+            <div className="relative mb-3">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Search timeline…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full h-9 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300"
+              />
+            </div>
+
+            {/* Event cards */}
+            {filteredEvents.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+                <History className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm text-slate-400 font-medium">
+                  {(searchQuery || activeFilter !== "all") ? "No matching events found." : "No timeline events yet."}
+                </p>
+                {!searchQuery && activeFilter === "all" && (
+                  <p className="text-xs text-slate-400 mt-1 leading-relaxed">
+                    Run a diagnosis or tap <strong>Add Entry</strong> to start tracking this unit's history.
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {filteredEvents.map((event) => (
+                  <TimelineCard
+                    key={event.id}
+                    event={event}
+                    expanded={expandedIds.has(event.id)}
+                    onToggle={() => toggleExpand(event.id)}
+                    onNavigate={navigate}
+                    onDelete={handleDeleteEvent}
+                    onEdit={setEditingEvent}
+                  />
                 ))}
               </div>
             )}
           </div>
         )}
 
-        {/* ── Equipment Timeline ───────────────────────────────────────── */}
-        <div>
-          {/* Section header */}
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Equipment Timeline</p>
-              <p className="text-xs text-slate-400 mt-0.5">{events.length} event{events.length !== 1 ? "s" : ""}</p>
-            </div>
+        {/* ── Info Tab ─────────────────────────────────────────────────────── */}
+        {activeTab === "info" && (
+          <div className="space-y-4">
+            {/* Nameplate — preview card + lightbox */}
+            {unit.nameplateImageUrl && (
+              <NameplateViewer
+                previewUrl={unit.nameplatePreviewUrl ?? unit.nameplateImageUrl}
+                fullUrl={unit.nameplateImageUrl}
+              />
+            )}
+
+            {/* Equipment details */}
+            {hasEquipment && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2">Equipment</p>
+                <InfoRow label="Manufacturer" value={unit.manufacturer} />
+                <InfoRow label="Model" value={unit.modelNumber} />
+                <InfoRow label="Serial" value={unit.serialNumber} />
+                <InfoRow label="Type" value={unit.equipmentType} />
+                <InfoRow label="System" value={unit.systemType} />
+                <InfoRow label="Refrigerant" value={unit.refrigerantType} />
+                <InfoRow label="Capacity" value={unit.capacityTons ? `${unit.capacityTons} tons` : null} />
+                <InfoRow label="Mfg. Date" value={unit.manufactureDate} />
+              </div>
+            )}
+
+            {/* Electrical data */}
+            {hasElectrical && (
+              <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2">Electrical</p>
+                <InfoRow label="Voltage" value={unit.voltage} />
+                <InfoRow label="Phase" value={unit.phase} />
+                <InfoRow label="MCA" value={unit.mca} />
+                <InfoRow label="MOCP" value={unit.mocp} />
+                <InfoRow label="RLA / FLA" value={unit.rla} />
+                <InfoRow label="LRA" value={unit.lra} />
+              </div>
+            )}
+
+            {/* Edit button */}
             <button
-              onClick={() => openAddModal("note")}
-              className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-3 py-1.5 text-xs transition-colors"
+              onClick={() => navigate(`/records/${unit.id}/edit`)}
+              className="w-full flex items-center justify-center gap-2 text-xs font-bold text-slate-500 border border-dashed border-slate-300 rounded-2xl py-3 hover:border-blue-300 hover:text-blue-600 transition-colors"
             >
-              <Plus className="w-3.5 h-3.5" />
-              Add Entry
+              <Edit2 className="w-3.5 h-3.5" />
+              Edit Equipment Details
             </button>
           </div>
+        )}
 
-          {/* Quick-add shortcuts */}
-          <div className="flex gap-2 mb-3 flex-wrap">
-            {(
-              [
-                { type: "note" as const,        Icon: FileText,  label: "Note" },
-                { type: "repair" as const,       Icon: Wrench,    label: "Repair" },
-                { type: "maintenance" as const,  Icon: Settings,  label: "PM" },
-              ] as const
-            ).map(({ type, Icon, label }) => (
-              <button
-                key={type}
-                onClick={() => openAddModal(type)}
-                className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors"
-              >
-                <Icon className="w-3.5 h-3.5" />
-                {label}
-              </button>
-            ))}
-            <button
-              onClick={() => setShowReminderModal(true)}
-              className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors"
-            >
-              <Bell className="w-3.5 h-3.5" />
-              Reminder
-            </button>
+        {/* ── Photos Tab ───────────────────────────────────────────────────── */}
+        {activeTab === "photos" && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-4">
+            <PhotoAlbum unitId={unit.id} clientId={clientId} />
           </div>
+        )}
 
-          {/* Filter tabs */}
-          <div
-            className="flex gap-1.5 mb-3 overflow-x-auto pb-1"
-            style={{ scrollbarWidth: "none" }}
-          >
-            {FILTER_TABS.map(({ id, label }) => {
-              const count = typeCounts[id] ?? 0;
-              const active = activeFilter === id;
-              return (
+        {/* ── Resources Tab ────────────────────────────────────────────────── */}
+        {activeTab === "resources" && (
+          <div className="bg-white rounded-2xl border border-slate-200 p-4">
+            {(unit.modelNumber || unit.manufacturer) ? (
+              <EquipmentResources
+                modelNumber={unit.modelNumber}
+                manufacturer={unit.manufacturer}
+              />
+            ) : (
+              <div className="text-center py-6">
+                <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-slate-500">No model info yet</p>
+                <p className="text-xs text-slate-400 mt-1">Add a model number or manufacturer to find resources.</p>
                 <button
-                  key={id}
-                  onClick={() => setActiveFilter(id)}
-                  className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    active
-                      ? "bg-blue-600 text-white"
-                      : "bg-white border border-slate-200 text-slate-600 hover:border-blue-300"
-                  }`}
+                  onClick={() => navigate(`/records/${unit.id}/edit`)}
+                  className="mt-3 text-xs text-blue-600 font-bold hover:underline"
                 >
-                  {label}
-                  <span className={`text-xs ${active ? "opacity-70" : "text-slate-400"}`}>
-                    {count}
-                  </span>
+                  Edit unit info
                 </button>
-              );
-            })}
+              </div>
+            )}
           </div>
+        )}
 
-          {/* Search bar */}
-          <div className="relative mb-3">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search timeline…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full h-9 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300"
-            />
+        {/* ── Notes Tab ────────────────────────────────────────────────────── */}
+        {activeTab === "notes" && (
+          <div className="space-y-4">
+            {/* Notes */}
+            {unit.notes ? (
+              <div className="bg-white rounded-2xl border border-slate-200 p-4">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest">Notes</p>
+                  <button
+                    onClick={() => navigate(`/records/${unit.id}/edit`)}
+                    className="text-xs text-blue-600 font-semibold hover:underline"
+                  >
+                    Edit
+                  </button>
+                </div>
+                <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{unit.notes}</p>
+              </div>
+            ) : (
+              <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-6 text-center">
+                <FileText className="w-7 h-7 text-slate-300 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-slate-500">No notes yet</p>
+                <button
+                  onClick={() => navigate(`/records/${unit.id}/edit`)}
+                  className="mt-2 text-xs text-blue-600 font-bold hover:underline"
+                >
+                  Add notes
+                </button>
+              </div>
+            )}
+
+            {/* Repair Progress */}
+            {progressSteps.length > 0 && (
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                <button
+                  onClick={() => setProgressOpen((v) => !v)}
+                  className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors"
+                >
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-6 h-6 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
+                    </div>
+                    <div className="min-w-0">
+                      <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wide">Repair Progress</span>
+                      <span className="text-xs text-slate-400 ml-2">
+                        {progressSteps.filter((s) => s.done).length}/{progressSteps.length}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    <span className={`text-xs font-extrabold ${
+                      Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100) === 100
+                        ? "text-emerald-600" : "text-slate-500"
+                    }`}>
+                      {Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100)}%
+                    </span>
+                    <ChevronRight className={`w-4 h-4 text-slate-400 transition-transform ${progressOpen ? "rotate-90" : ""}`} />
+                  </div>
+                </button>
+                <div className="px-4 pb-2">
+                  <div className="w-full bg-slate-100 rounded-full h-1.5">
+                    <div
+                      className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+                      style={{ width: `${Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100)}%` }}
+                    />
+                  </div>
+                </div>
+                {progressOpen && (
+                  <div className="px-4 pb-4 pt-2 space-y-1.5 border-t border-slate-100">
+                    {progressSteps.map((step) => (
+                      <div key={step.label} className="flex items-center gap-2.5">
+                        <div className={`w-4 h-4 rounded-full flex items-center justify-center flex-shrink-0 ${
+                          step.done ? "bg-emerald-100" : "bg-slate-100"
+                        }`}>
+                          {step.done
+                            ? <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                            : <div className="w-2 h-2 rounded-full bg-slate-300" />
+                          }
+                        </div>
+                        <span className={`text-xs font-medium ${step.done ? "text-slate-700" : "text-slate-400"}`}>
+                          {step.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-
-          {/* Event cards */}
-          {filteredEvents.length === 0 ? (
-            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-              <History className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-              <p className="text-sm text-slate-400 font-medium">
-                {(searchQuery || activeFilter !== "all")
-                  ? "No matching events found."
-                  : "No timeline events yet."}
-              </p>
-              {!searchQuery && activeFilter === "all" && (
-                <p className="text-xs text-slate-400 mt-1 leading-relaxed">
-                  Run a diagnosis or tap <strong>Add Entry</strong> to start tracking this unit's history.
-                </p>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-2">
-              {filteredEvents.map((event) => (
-                <TimelineCard
-                  key={event.id}
-                  event={event}
-                  expanded={expandedIds.has(event.id)}
-                  onToggle={() => toggleExpand(event.id)}
-                  onNavigate={navigate}
-                  onDelete={handleDeleteEvent}
-                  onEdit={setEditingEvent}
-                />
-              ))}
-            </div>
-          )}
-        </div>
+        )}
 
       </div>
 
