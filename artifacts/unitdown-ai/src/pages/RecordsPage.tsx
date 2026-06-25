@@ -9,6 +9,7 @@ import {
   TrendingUp, CheckCheck, ChevronLeft, ChevronDown,
   Zap, Shield, ArrowRight, BarChart3, Target,
   MapPin, Users, LayoutList, CalendarDays, ListOrdered,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -182,6 +183,41 @@ function healthColor(score: number) {
   if (score >= 60) return { text: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200" };
   return { text: "text-red-700", bg: "bg-red-50", border: "border-red-200" };
 }
+
+// ─── Equipment Lifecycle Status ────────────────────────────────────────────────
+
+type UnitStatus = "operational" | "monitoring" | "needs-follow-up" | "critical" | "archived";
+
+function computeUnitStatus(unit: UnitRecord, logs: DiagnosticLog[]): UnitStatus {
+  if (unit.isArchived) return "archived";
+  const ul = logs.filter((l) => l.unitId === unit.id);
+  if (ul.some((l) => l.status === "unresolved")) return "critical";
+  if (ul.some((l) => l.status === "waiting-on-parts")) return "needs-follow-up";
+  if (ul.some((l) => l.status === "return-visit" || l.status === "customer-callback")) return "needs-follow-up";
+  if (ul.some((l) => l.status === "monitoring")) return "monitoring";
+  return "operational";
+}
+
+function unitStatusConfig(status: UnitStatus) {
+  switch (status) {
+    case "operational":     return { dot: "bg-emerald-500", label: "Operational", textCls: "text-emerald-700", bgCls: "bg-emerald-50",  borderCls: "border-emerald-200" };
+    case "monitoring":      return { dot: "bg-blue-500",    label: "Monitoring",  textCls: "text-blue-700",    bgCls: "bg-blue-50",    borderCls: "border-blue-200"   };
+    case "needs-follow-up": return { dot: "bg-amber-500",   label: "Follow-up",   textCls: "text-amber-700",   bgCls: "bg-amber-50",   borderCls: "border-amber-200"  };
+    case "critical":        return { dot: "bg-red-500",     label: "Critical",    textCls: "text-red-700",     bgCls: "bg-red-50",     borderCls: "border-red-200"    };
+    case "archived":        return { dot: "bg-slate-400",   label: "Archived",    textCls: "text-slate-500",   bgCls: "bg-slate-100",  borderCls: "border-slate-200"  };
+  }
+}
+
+// Equipment type filter chips
+const EQUIP_TYPE_CHIPS: { label: string; match: string }[] = [
+  { label: "RTU",       match: "rooftop" },
+  { label: "Split",     match: "split"   },
+  { label: "Chiller",   match: "chiller" },
+  { label: "AHU",       match: "air handler" },
+  { label: "Boiler",    match: "boiler"  },
+  { label: "Heat Pump", match: "heat pump" },
+  { label: "VRF",       match: "vrf"     },
+];
 
 function getResolutionCategory(log: DiagnosticLog): string {
   const text = ((log.diagnosisTitle ?? "") + " " + (log.resolutionNotes ?? "")).toLowerCase();
@@ -456,15 +492,17 @@ function CompactUnitCard({
 }
 
 function UnitCard({
-  unit, healthScore, onClick, onToggleFavorite,
+  unit, unitStatus, onClick, onToggleFavorite,
 }: {
   unit: UnitRecord;
-  healthScore?: number;
+  unitStatus?: UnitStatus;
   onClick: () => void;
   onToggleFavorite?: (e: React.MouseEvent) => void;
 }) {
-  const hs = healthScore ?? 100;
-  const hc = healthColor(hs);
+  const status = unitStatus ?? "operational";
+  const sc = unitStatusConfig(status);
+  const showBadge = status !== "operational" && status !== "archived";
+
   return (
     <button
       onClick={onClick}
@@ -472,39 +510,59 @@ function UnitCard({
         hover:border-blue-300 hover:shadow-md hover:scale-[1.01]
         transition-all duration-150 ease-out active:scale-[0.98]"
     >
-      <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2 mb-1">
-            <div className="w-7 h-7 bg-blue-50 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Wrench className="w-3.5 h-3.5 text-blue-600" />
-            </div>
-            <span className="font-bold text-slate-900 text-sm truncate">
-              {unit.nickname ?? unit.modelNumber ?? "Unnamed Unit"}
-            </span>
-          </div>
-          {unit.siteCustomerName && <p className="text-xs text-slate-500 font-medium ml-9">{unit.siteCustomerName}</p>}
-          {unit.location && <p className="text-xs text-slate-400 ml-9 mt-0.5">{unit.location}</p>}
-          <div className="flex flex-wrap gap-1.5 mt-2 ml-9 items-center">
-            {unit.manufacturer && <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{unit.manufacturer}</span>}
-            {unit.equipmentType && <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">{unit.equipmentType}</span>}
-            <span className="text-xs text-slate-400">{formatDate(unit.updatedAt)}</span>
-          </div>
+      <div className="flex items-start gap-3">
+        {/* Status dot column */}
+        <div className="flex flex-col items-center pt-1 flex-shrink-0">
+          <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${sc.dot}`} />
         </div>
-        <div className="flex flex-col items-end gap-2 flex-shrink-0 mt-0.5">
-          <div className="flex items-center gap-0.5">
-            {onToggleFavorite && (
-              <button
-                onClick={onToggleFavorite}
-                className={`p-1.5 rounded-xl transition-colors ${unit.isFavorite ? "text-yellow-500" : "text-slate-300 hover:text-yellow-400"}`}
-              >
-                <Star className={`w-3.5 h-3.5 ${unit.isFavorite ? "fill-yellow-400" : ""}`} />
-              </button>
-            )}
-            <ChevronRight className="w-4 h-4 text-slate-400" />
+
+        {/* Main content */}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <span className="font-bold text-slate-900 text-sm leading-snug truncate block">
+                {unit.nickname ?? unit.modelNumber ?? "Unnamed Unit"}
+              </span>
+              {unit.siteCustomerName && (
+                <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">{unit.siteCustomerName}</p>
+              )}
+            </div>
+            <div className="flex items-center gap-1 flex-shrink-0">
+              {onToggleFavorite && (
+                <button
+                  onClick={onToggleFavorite}
+                  className={`p-1 rounded-lg transition-colors ${unit.isFavorite ? "text-yellow-500" : "text-slate-300 hover:text-yellow-400"}`}
+                >
+                  <Star className={`w-3.5 h-3.5 ${unit.isFavorite ? "fill-yellow-400" : ""}`} />
+                </button>
+              )}
+              <ChevronRight className="w-4 h-4 text-slate-400" />
+            </div>
           </div>
-          {hs < 100 && (
-            <span className={`text-xs font-extrabold px-2 py-0.5 rounded-full border ${hc.bg} ${hc.text} ${hc.border}`}>{hs}</span>
-          )}
+
+          <div className="flex flex-wrap items-center gap-1.5 mt-2">
+            {showBadge && (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${sc.bgCls} ${sc.textCls} ${sc.borderCls}`}>
+                {sc.label}
+              </span>
+            )}
+            {unit.equipmentType && (
+              <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
+                {unit.equipmentType}
+              </span>
+            )}
+            {unit.manufacturer && (
+              <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+                {unit.manufacturer}
+              </span>
+            )}
+            {unit.location && (
+              <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                <MapPin className="w-2.5 h-2.5" />{unit.location}
+              </span>
+            )}
+            <span className="text-[10px] text-slate-300 ml-auto">{formatDate(unit.updatedAt)}</span>
+          </div>
         </div>
       </div>
     </button>
@@ -871,6 +929,7 @@ export default function RecordsPage() {
   // Search + filters
   const [q, setQ] = useState("");
   const [mfgFilter, setMfgFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
 
   const clientId = getClientId();
   const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
@@ -989,19 +1048,20 @@ export default function RecordsPage() {
   }, [units]);
 
   const filteredUnits = useMemo(() => {
-    if (!q && !mfgFilter) return units.sort((a, b) => {
+    const sorted = [...units].sort((a, b) => {
       const an = a.siteCustomerName?.trim() ?? "";
       const bn = b.siteCustomerName?.trim() ?? "";
       if (an && !bn) return -1; if (!an && bn) return 1;
       const nc = an.localeCompare(bn, undefined, { sensitivity: "base" });
       return nc !== 0 ? nc : (a.nickname ?? "").localeCompare(b.nickname ?? "", undefined, { sensitivity: "base" });
     });
-    return units.filter((u) => {
+    return sorted.filter((u) => {
       if (mfgFilter && u.manufacturer !== mfgFilter) return false;
+      if (typeFilter && !(u.equipmentType ?? "").toLowerCase().includes(typeFilter)) return false;
       if (!q) return true;
       return matchesSearch(q, u);
     });
-  }, [units, q, mfgFilter]);
+  }, [units, q, mfgFilter, typeFilter]);
 
   // Smart search results (units + diagnostics)
   const isSearching = q.trim().length >= 2;
@@ -1039,6 +1099,12 @@ export default function RecordsPage() {
   const healthScoreMap = useMemo(() => {
     const map: Record<string, number> = {};
     units.forEach((u) => { map[u.id] = computeHealthScore(u.id, logs); });
+    return map;
+  }, [units, logs]);
+
+  const unitStatusMap = useMemo(() => {
+    const map: Record<string, UnitStatus> = {};
+    units.forEach((u) => { map[u.id] = computeUnitStatus(u, logs); });
     return map;
   }, [units, logs]);
 
@@ -1344,7 +1410,7 @@ export default function RecordsPage() {
                   <UnitCard
                     key={u.id}
                     unit={u}
-                    healthScore={healthScoreMap[u.id]}
+                    unitStatus={unitStatusMap[u.id]}
                     onClick={() => navigate(`/records/unit/${u.id}`)}
                     onToggleFavorite={(e) => toggleFavorite(u, e)}
                   />
@@ -1412,9 +1478,9 @@ export default function RecordsPage() {
             </button>
             <div className="flex items-center gap-2 flex-shrink-0">
               <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-                <ThermometerSnowflake className="w-4 h-4 text-white" />
+                <Layers className="w-4 h-4 text-white" />
               </div>
-              <span className="font-extrabold text-slate-900 text-sm hidden sm:block">Field Hub</span>
+              <span className="font-extrabold text-slate-900 text-sm hidden sm:block">Equipment Library</span>
             </div>
             {/* Global search in header */}
             <div className="relative flex-1 max-w-xs ml-2">
@@ -1476,7 +1542,7 @@ export default function RecordsPage() {
                 </p>
                 <div className="space-y-2.5">
                   {smartSearchResults.units.slice(0, 5).map((u) => (
-                    <UnitCard key={u.id} unit={u} healthScore={healthScoreMap[u.id]}
+                    <UnitCard key={u.id} unit={u} unitStatus={unitStatusMap[u.id]}
                       onClick={() => navigate(`/records/unit/${u.id}`)}
                       onToggleFavorite={(e) => toggleFavorite(u, e)}
                     />
@@ -1549,6 +1615,125 @@ export default function RecordsPage() {
                   ))}
                 </div>
               </div>
+            </section>
+
+            {/* ── Equipment Library ────────────────────────────────────────────── */}
+            <section aria-label="Equipment Library">
+              {/* Section header */}
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 bg-blue-50 rounded-xl flex items-center justify-center">
+                    <Layers className="w-3.5 h-3.5 text-blue-600" />
+                  </div>
+                  <h2 className="font-extrabold text-slate-900 text-sm">Equipment Library</h2>
+                  {units.length > 0 && (
+                    <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                      {units.length}
+                    </span>
+                  )}
+                </div>
+                <button
+                  onClick={() => navigate("/records/new")}
+                  className="flex items-center gap-1 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 px-3 py-1.5 rounded-xl transition-colors"
+                >
+                  <Plus className="w-3 h-3" /> Add Unit
+                </button>
+              </div>
+
+              {/* Search row */}
+              <div className="relative mb-2.5">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <Input
+                  value={q}
+                  onChange={(e) => setQ(e.target.value)}
+                  placeholder="Search equipment, customers, models…"
+                  className="pl-9 pr-8 rounded-xl border-slate-200 text-sm h-10"
+                />
+                {q && (
+                  <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400">
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Type filter chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mb-3 scrollbar-hide">
+                <button
+                  onClick={() => setTypeFilter("")}
+                  className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
+                    typeFilter === ""
+                      ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                      : "bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600"
+                  }`}
+                >
+                  All
+                </button>
+                {EQUIP_TYPE_CHIPS.filter((chip) =>
+                  units.some((u) => (u.equipmentType ?? "").toLowerCase().includes(chip.match))
+                ).map((chip) => (
+                  <button
+                    key={chip.label}
+                    onClick={() => setTypeFilter(typeFilter === chip.match ? "" : chip.match)}
+                    className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
+                      typeFilter === chip.match
+                        ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                        : "bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600"
+                    }`}
+                  >
+                    {chip.label}
+                  </button>
+                ))}
+                {units.some((u) => unitStatusMap[u.id] === "critical") && (
+                  <span className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border bg-red-50 text-red-600 border-red-200 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full inline-block" />
+                    {units.filter((u) => unitStatusMap[u.id] === "critical").length} Critical
+                  </span>
+                )}
+              </div>
+
+              {/* Equipment list */}
+              {units.length === 0 ? (
+                <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center">
+                  <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
+                    <Layers className="w-6 h-6 text-blue-400" />
+                  </div>
+                  <p className="text-sm font-bold text-slate-700">No equipment yet</p>
+                  <p className="text-xs text-slate-400 mt-1 mb-4">Add your first unit to start tracking service history and diagnostics.</p>
+                  <Button onClick={() => navigate("/records/new")} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl">
+                    <Plus className="w-3.5 h-3.5 mr-1" /> Add First Unit
+                  </Button>
+                </div>
+              ) : filteredUnits.length === 0 ? (
+                <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
+                  <Search className="w-7 h-7 text-slate-300 mx-auto mb-2" />
+                  <p className="text-sm font-semibold text-slate-500">No matches</p>
+                  <p className="text-xs text-slate-400 mt-1">
+                    {typeFilter ? "Try a different equipment type or clear the filter." : `No results for "${q}"`}
+                  </p>
+                  {typeFilter && (
+                    <button onClick={() => setTypeFilter("")} className="mt-3 text-xs text-blue-600 font-bold hover:underline">
+                      Clear filter
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <>
+                  <div className="space-y-2.5">
+                    {(showAllUnits ? filteredUnits : filteredUnits.slice(0, 6)).map((u) => (
+                      <UnitCard key={u.id} unit={u} unitStatus={unitStatusMap[u.id]}
+                        onClick={() => navigate(`/records/unit/${u.id}`)} onToggleFavorite={(e) => toggleFavorite(u, e)} />
+                    ))}
+                  </div>
+                  {filteredUnits.length > 6 && !showAllUnits && (
+                    <button
+                      onClick={() => setShowAllUnits(true)}
+                      className="mt-2.5 w-full flex items-center justify-center gap-1 text-xs text-blue-600 font-bold py-2.5 border border-dashed border-blue-200 rounded-2xl hover:bg-blue-50 transition-colors"
+                    >
+                      Show all {filteredUnits.length} units <ArrowRight className="w-3 h-3" />
+                    </button>
+                  )}
+                </>
+              )}
             </section>
 
             {/* ── KPI Cards (4×2) ───────────────────────────────────────────── */}
@@ -2021,73 +2206,6 @@ export default function RecordsPage() {
                 </div>
               </section>
             )}
-
-            {/* ── Saved Units ──────────────────────────────────────────────────── */}
-            <section aria-label="Saved Units">
-              <SectionHeader
-                title="Saved Units"
-                count={units.length}
-                open={unitsOpen}
-                onToggle={() => setUnitsOpen((v) => !v)}
-                icon={Building2}
-                action={
-                  <button onClick={() => setFilteredBy("saved-units")} className="text-xs text-blue-600 font-semibold flex items-center gap-1 hover:underline">
-                    All <ArrowRight className="w-3 h-3" />
-                  </button>
-                }
-              />
-              {unitsOpen && (
-                <div className="mt-3 space-y-3">
-                  <div className="flex gap-2">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-                      <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search units, customers, models…"
-                        className="pl-8 rounded-xl border-slate-200 text-sm h-9" />
-                      {q && <button onClick={() => setQ("")} className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-slate-400"><X className="w-3.5 h-3.5" /></button>}
-                    </div>
-                    {manufacturers.length > 1 && (
-                      <div className="relative">
-                        <select value={mfgFilter} onChange={(e) => setMfgFilter(e.target.value)} className="h-9 appearance-none text-xs text-slate-700 bg-white border border-slate-200 rounded-xl pl-3 pr-7 cursor-pointer font-semibold">
-                          <option value="">All</option>
-                          {manufacturers.map((m) => <option key={m} value={m}>{m}</option>)}
-                        </select>
-                        <Filter className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-400 pointer-events-none" />
-                      </div>
-                    )}
-                  </div>
-
-                  {units.length === 0 ? (
-                    <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
-                      <Building2 className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-                      <p className="text-sm font-semibold text-slate-500">No units saved yet</p>
-                      <p className="text-xs text-slate-400 mt-1 mb-4">Save units to track service history.</p>
-                      <Button onClick={() => navigate("/records/new")} size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl">
-                        <Plus className="w-3.5 h-3.5 mr-1" />Add First Unit
-                      </Button>
-                    </div>
-                  ) : filteredUnits.length === 0 ? (
-                    <p className="text-sm text-slate-400 text-center py-4">No matches for "{q}"</p>
-                  ) : (
-                    <>
-                      <div className="space-y-2.5">
-                        {(showAllUnits ? filteredUnits : filteredUnits.slice(0, 5)).map((u) => (
-                          <UnitCard key={u.id} unit={u} healthScore={healthScoreMap[u.id]}
-                            onClick={() => navigate(`/records/unit/${u.id}`)} onToggleFavorite={(e) => toggleFavorite(u, e)} />
-                        ))}
-                      </div>
-                      {filteredUnits.length > 5 && !showAllUnits && (
-                        <button
-                          onClick={() => setFilteredBy("saved-units")}
-                          className="w-full flex items-center justify-center gap-1 text-xs text-blue-600 font-bold py-2.5 border border-dashed border-blue-200 rounded-2xl hover:bg-blue-50 transition-colors"
-                        >
-                          View all {filteredUnits.length} units <ArrowRight className="w-3 h-3" />
-                        </button>
-                      )}
-                    </>
-                  )}
-                </div>
-              )}
-            </section>
 
             {/* ── Recent Diagnostics ───────────────────────────────────────────── */}
             <section aria-label="Recent Diagnostics">
