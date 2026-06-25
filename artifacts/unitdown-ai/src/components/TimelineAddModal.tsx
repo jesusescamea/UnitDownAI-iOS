@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { X, Wrench, FileText, Settings, Loader2 } from "lucide-react";
 import { trackTimelineEntry } from "@/lib/appReview";
+import { awardReward } from "@/lib/rewards";
 
 type EventType = "note" | "repair" | "maintenance";
 type StatusValue = "unresolved" | "monitoring" | "resolved";
@@ -151,6 +152,8 @@ export default function TimelineAddModal({
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "Save failed");
         trackTimelineEntry();
+        // Award first_timeline_entry bonus (idempotent — fires only on first entry)
+        awardReward(clientId, "first_timeline_entry").catch(() => {});
         onSave(data.event as TimelineEvent);
       }
     } catch (err: any) {

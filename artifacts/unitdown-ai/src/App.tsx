@@ -2,7 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation, Link } from "wouter";
 import { useUser, useClerk, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
 import { shouldUseAppleIAP } from "@/lib/platform";
-import { trackDiagnosisComplete, trackThumbsUp, maybeRequestReview } from "@/lib/appReview";
+import { trackDiagnosisComplete, trackThumbsUp, maybeRequestReview, trackAppOpen } from "@/lib/appReview";
+import { awardReward } from "@/lib/rewards";
+import { useToast } from "@/hooks/use-toast";
 import { Browser } from "@capacitor/browser";
 import { isDemoProEmail } from "@/lib/demoAccess";
 import { isDemoSessionActive } from "@/lib/demoSession";
@@ -1687,6 +1689,12 @@ function Home() {
   const [emailWallOpen, setEmailWallOpen] = useState(false);
   const [diagCount, setDiagCount] = useState(0);
   const [freeRemaining, setFreeRemaining] = useState(4);
+  const [trialState, setTrialState] = useState<{
+    active: boolean;
+    daysLeft: number;
+    creditsLeft: number;
+    rewardsEarned: string[];
+  } | null>(null);
   // Start as Pro immediately for demo/review sessions (sessionStorage flag set
   // by login.tsx) so the paywall never flashes before refreshUsageStatus fires.
   // All other users start Free — isPro is elevated only after the server or
@@ -1697,6 +1705,7 @@ function Home() {
   const [proCheckDone, setProCheckDone] = useState(false);
   const [clientId, setClientId] = useState(getOrCreateClientId);
   const [, navigate] = useLocation();
+  const { toast } = useToast();
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [selectedUnitLabel, setSelectedUnitLabel] = useState<string | null>(null);
@@ -1779,6 +1788,14 @@ function Home() {
         body: JSON.stringify({ clientId, entries: localHistory }),
       }).catch(() => {});
     }
+
+    // Award account_created bonus for brand new signups (idempotent — no-op if already earned)
+    awardReward(clientId, "account_created").then((result) => {
+      if (result?.bonusCredits) {
+        toast({ description: `+${result.bonusCredits} diagnostic credits added! Welcome to your Pro Trial.` });
+        refreshUsageStatus(clientId, testerEmail);
+      }
+    }).catch(() => {});
 
     const pending = pendingSymptomsRef.current;
     if (!pending) return;
@@ -1889,6 +1906,15 @@ function Home() {
           saveIsProCached(false);
           setDiagCount(d.useCount ?? 0);
           setFreeRemaining(d.freeRemaining ?? Math.max(0, FREE_DIAGNOSES - (d.useCount ?? 0)));
+          // Parse trial data (only populated for authenticated Clerk users)
+          if (d.trialActive !== undefined) {
+            setTrialState({
+              active: !!d.trialActive,
+              daysLeft: d.trialDaysLeft ?? 0,
+              creditsLeft: d.trialCreditsLeft ?? 0,
+              rewardsEarned: Array.isArray(d.rewardsEarned) ? d.rewardsEarned : [],
+            });
+          }
         }
         // In both cases the server has answered — unlock the upgrade CTA.
         setProCheckDone(true);
@@ -1906,6 +1932,7 @@ function Home() {
   useEffect(() => {
     setHistory(loadHistory());
     setDiagCount(loadDiagCount());
+    trackAppOpen();  // record today as a used day for App Store review eligibility
 
     // Read pre-selected unit navigated from UnitDetailPage
     try {
@@ -1981,6 +2008,13 @@ function Home() {
           setCurrentResult(result);
           trackDiagnosisComplete();
           setTimeout(() => { maybeRequestReview("diagnosis").catch(() => {}); }, 2000);
+          // Award first_diagnosis bonus (idempotent — fires only on very first diagnosis)
+          awardReward(clientId, "first_diagnosis").then((result) => {
+            if (result?.bonusCredits) {
+              toast({ description: `+${result.bonusCredits} diagnostic credits added!` });
+              setTrialState(prev => prev ? { ...prev, creditsLeft: prev.creditsLeft + result.bonusCredits } : prev);
+            }
+          }).catch(() => {});
           setHistory((prev) => {
             const updated = [entry, ...prev].slice(0, MAX_HISTORY);
             saveHistory(updated);
@@ -2332,6 +2366,13 @@ function Home() {
                       <span className="flex items-center gap-1.5 text-emerald-600">
                         <CheckCircle2 className="w-4 h-4" /> Unlimited diagnostics
                       </span>
+                    ) : trialState?.active ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-50 border border-blue-100 text-xs font-semibold text-blue-700">
+                        <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse flex-shrink-0" />
+                        Pro Trial · {trialState.daysLeft}d left · {trialState.creditsLeft} {trialState.creditsLeft === 1 ? "diagnosis" : "diagnoses"}
+                      </span>
+                    ) : trialState && !trialState.active ? (
+                      <span className="text-amber-600 font-semibold text-xs">Trial ended · Upgrade to continue</span>
                     ) : freeRemaining > 0 ? (
                       <span className="text-slate-400">
                         Free uses remaining: <strong className="text-slate-600">{freeRemaining}</strong>

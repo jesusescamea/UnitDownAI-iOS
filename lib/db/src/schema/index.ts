@@ -1,5 +1,6 @@
 export * from "./users";
 export * from "./usage";
+export * from "./trials";
 export * from "./sponsor";
 export * from "./diagnosticHistory";
 export * from "./unitRecords";

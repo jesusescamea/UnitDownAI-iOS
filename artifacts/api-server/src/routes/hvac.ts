@@ -7,7 +7,7 @@ import { isTesterEmail } from "../lib/tester-whitelist.js";
 import { db } from "@workspace/db";
 import { freeUsage } from "@workspace/db";
 import { sql } from "drizzle-orm";
-import { computeStatus, FREE_AUTH_USES } from "../lib/usage-limits.js";
+import { computeStatus, FREE_AUTH_USES, computeTrialStatus } from "../lib/usage-limits.js";
 
 const hvacRouter: IRouter = Router();
 
@@ -77,47 +77,46 @@ hvacRouter.post("/hvac/diagnose", async (req: Request, res: Response) => {
   const isPro = isTesterEmail(testerEmail) || await storage.isProUser(clientId);
   req.log.info({ clientId: clientId ?? "anonymous", isPro }, "Diagnose request tier");
 
-  // ── Server-side usage gate (backstop) ────────────────────────────────────────
-  // The gate endpoint is read-only; this is where the increment actually happens.
-  // When clientId is provided (Clerk user), use the per-account session so that
-  // a freshly-logged-in user is not blocked by their old anonymous browser session.
+  // ── Server-side usage backstop ────────────────────────────────────────────────
+  // The /usage/gate endpoint is read-only; this is where consumption actually
+  // happens. Authenticated (Clerk) users are on the trial credit system.
+  // Anonymous users remain on the old cookie-session free-use counter.
+  const isAuthClient = typeof clientId === "string" && clientId.startsWith("user_");
   let freeSession: (typeof freeUsage.$inferSelect) | null = null;
+
   if (!isPro) {
-    // Only Clerk user IDs (user_xxx) are stable per-account identifiers.
-    // Anonymous localStorage UUIDs are NOT the same as the cookie-based session
-    // IDs that the gate creates — using clientId for anon users would never find
-    // the session and the backstop check would silently skip, allowing unlimited
-    // diagnoses. Always use the session cookie for non-Clerk users.
-    const isAuthClient = typeof clientId === "string" && clientId.startsWith("user_");
-    const sessionLookupId: string | undefined = isAuthClient
-      ? clientId
-      : (req as any).cookies?.unitdown_session;
-
-    if (sessionLookupId) {
-      const [session] = await db
-        .select()
-        .from(freeUsage)
-        .where(sql`${freeUsage.sessionId} = ${sessionLookupId}`);
-
-      if (session) {
-        const backstopStatus = computeStatus(session, isAuthClient);
-        if (backstopStatus !== "free") {
-          res.status(429).json({ error: "Usage limit reached", status: backstopStatus });
-          return;
-        }
-        freeSession = session;
-      } else if (isAuthClient) {
-        // Clerk user with no session yet (gate creates it; this is a safety net).
-        // Allow the request — their count will be 0 and will be created on increment.
-        freeSession = null;
+    if (isAuthClient) {
+      // ── Trial backstop for authenticated Clerk users ──────────────────────
+      const trial = await storage.getOrCreateTrial(clientId!);
+      const trialStatus = computeTrialStatus(trial);
+      if (!trialStatus.active) {
+        res.status(429).json({ error: "Trial ended. Upgrade to Pro to continue.", status: "upgrade_wall" });
+        return;
       }
-      // Anonymous user with no cookie session: allow once (gate should have run
-      // first and set the cookie; if not, the server cannot track this request).
+      // freeSession stays null — credits decremented via storage.consumeTrialCredit()
+    } else {
+      // ── Cookie-session backstop for anonymous users ───────────────────────
+      const sessionLookupId: string | undefined = (req as any).cookies?.unitdown_session;
+      if (sessionLookupId) {
+        const [session] = await db
+          .select()
+          .from(freeUsage)
+          .where(sql`${freeUsage.sessionId} = ${sessionLookupId}`);
+        if (session) {
+          const backstopStatus = computeStatus(session, false);
+          if (backstopStatus !== "free") {
+            res.status(429).json({ error: "Usage limit reached", status: backstopStatus });
+            return;
+          }
+          freeSession = session;
+        }
+        // No session row yet: allow — gate should have set the cookie first.
+      }
     }
   }
 
-  // All free-tier uses get full results (within the allowed limit).
-  const shouldReturnFull = isPro || !freeSession || freeSession.useCount < FREE_AUTH_USES;
+  // Authenticated (trial) and Pro users always receive full results.
+  const shouldReturnFull = isPro || isAuthClient || !freeSession || freeSession.useCount < FREE_AUTH_USES;
 
   // ── Step 1: Knowledge-base scoring ─────────────────────────────────────────
   const kbResult = diagnoseByKnowledgeBase(symptoms);
@@ -153,6 +152,10 @@ hvacRouter.post("/hvac/diagnose", async (req: Request, res: Response) => {
       if (freeSession) {
         await incrementSession(freeSession.sessionId, freeSession).catch((err) =>
           req.log.error({ err }, "Failed to increment session count after KB hit")
+        );
+      } else if (isAuthClient && !isPro) {
+        await storage.consumeTrialCredit(clientId!).catch((err) =>
+          req.log.error({ err }, "Failed to consume trial credit after KB hit")
         );
       }
       res.json(validated.data);
@@ -437,6 +440,10 @@ Include exactly 1–2 alternatives. Each alternative must represent a genuinely 
         await incrementSession(freeSession.sessionId, freeSession).catch((err) =>
           req.log.error({ err }, "Failed to increment session count after AI hit")
         );
+      } else if (isAuthClient && !isPro) {
+        await storage.consumeTrialCredit(clientId!).catch((err) =>
+          req.log.error({ err }, "Failed to consume trial credit after AI hit")
+        );
       }
       res.json(validated.data);
       return;
@@ -465,6 +472,10 @@ Include exactly 1–2 alternatives. Each alternative must represent a genuinely 
     if (freeSession) {
       await incrementSession(freeSession.sessionId, freeSession).catch((err) =>
         req.log.error({ err }, "Failed to increment session count after KB fallback")
+      );
+    } else if (isAuthClient && !isPro) {
+      await storage.consumeTrialCredit(clientId!).catch((err) =>
+        req.log.error({ err }, "Failed to consume trial credit after KB fallback")
       );
     }
     res.json(fallbackValidated.data);

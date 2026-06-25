@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation, useParams } from "wouter";
 import { trackUnitSaved, maybeRequestReview } from "@/lib/appReview";
+import { awardReward } from "@/lib/rewards";
+import { useToast } from "@/hooks/use-toast";
 import { useUser } from "@clerk/clerk-react";
 import {
   ChevronRight, Camera, Loader2, AlertTriangle, CheckCircle2,
@@ -128,6 +130,7 @@ export default function UnitFormPage() {
   const [, navigate] = useLocation();
   const params = useParams<{ id?: string }>();
   const { user: clerkUser, isLoaded } = useUser();
+  const { toast } = useToast();
   const isEdit = !!params.id && params.id !== "new";
 
   const [form, setForm] = useState<UnitFormData>(emptyForm());
@@ -326,6 +329,14 @@ export default function UnitFormPage() {
       const data = await res.json();
       trackUnitSaved();
       void maybeRequestReview("unit_saved");
+      // Award first_unit_saved bonus (idempotent — fires only on first unit)
+      if (!isEdit) {
+        awardReward(clientId, "first_unit_saved").then((result) => {
+          if (result?.bonusCredits) {
+            toast({ description: `+${result.bonusCredits} diagnostic credits added!` });
+          }
+        }).catch(() => {});
+      }
       navigate(`/records/${data.unit?.id ?? params.id}`);
     } catch (err: any) {
       setError(err.message ?? "Save failed");

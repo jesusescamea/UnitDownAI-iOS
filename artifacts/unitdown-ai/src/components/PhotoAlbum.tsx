@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { trackPhoto } from "@/lib/appReview";
+import { awardReward } from "@/lib/rewards";
 import {
   Camera, Upload, X, ChevronLeft, ChevronRight, Trash2,
   Loader2, ImagePlus, ScanText, Edit3, Check, AlertCircle,
@@ -541,7 +542,9 @@ export default function PhotoAlbum({ unitId, clientId }: Props) {
   const handleAdded = useCallback((photo: UnitPhoto) => {
     setPhotos((prev) => [photo, ...prev]);
     trackPhoto();
-  }, []);
+    // Award first_photo bonus (idempotent — fires only on first photo)
+    awardReward(clientId, "first_photo").catch(() => {});
+  }, [clientId]);
 
   const handleDelete = useCallback((id: string) => {
     setPhotos((prev) => prev.filter((p) => p.id !== id));

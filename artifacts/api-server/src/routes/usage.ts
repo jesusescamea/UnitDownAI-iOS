@@ -5,7 +5,11 @@ import { freeUsage } from "@workspace/db";
 import { sql, and, gt } from "drizzle-orm";
 import { storage } from "../storage.js";
 import { isTesterEmail } from "../lib/tester-whitelist.js";
-import { computeStatus, remainingFree } from "../lib/usage-limits.js";
+import {
+  computeStatus,
+  remainingFree,
+  computeTrialStatus,
+} from "../lib/usage-limits.js";
 
 const usageRouter: IRouter = Router();
 
@@ -34,14 +38,12 @@ async function getOrCreateSession(req: Request, res: Response, fingerprint: stri
   const ip = getIp(req);
   const cookieSessionId: string | undefined = req.cookies?.[SESSION_COOKIE];
 
-  // 1. Try to find by cookie session ID
   if (cookieSessionId) {
     const [byCookie] = await db
       .select()
       .from(freeUsage)
       .where(sql`${freeUsage.sessionId} = ${cookieSessionId}`);
     if (byCookie) {
-      // Update IP + fingerprint if changed (soft-sync)
       if (byCookie.ip !== ip || byCookie.fingerprint !== fingerprint) {
         await db
           .update(freeUsage)
@@ -52,7 +54,7 @@ async function getOrCreateSession(req: Request, res: Response, fingerprint: stri
     }
   }
 
-  // 2. Fingerprint match within last 30 days — anti-bypass (incognito, cleared cache etc.)
+  // Fingerprint match within last 30 days — anti-bypass
   if (fingerprint && fingerprint.length > 3) {
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const byFingerprint = await db
@@ -74,30 +76,12 @@ async function getOrCreateSession(req: Request, res: Response, fingerprint: stri
     }
   }
 
-  // 3. Create new session
   const newId = randomUUID();
   const [created] = await db
     .insert(freeUsage)
     .values({ sessionId: newId, ip, fingerprint })
     .returning();
   setSessionCookie(res, newId);
-  return created;
-}
-
-// ── Per-account session for authenticated (Clerk) users ───────────────────────
-async function getOrCreateClientSession(clientId: string, ip: string) {
-  const [existing] = await db
-    .select()
-    .from(freeUsage)
-    .where(sql`${freeUsage.sessionId} = ${clientId}`);
-
-  if (existing) return existing;
-
-  const [created] = await db
-    .insert(freeUsage)
-    .values({ sessionId: clientId, ip, fingerprint: "clerk-user" })
-    .returning();
-
   return created;
 }
 
@@ -122,15 +106,33 @@ usageRouter.get("/usage/status", async (req: Request, res: Response) => {
     return;
   }
 
-  // Only real Clerk users (user_xxx) get per-account quota.
-  // Anonymous UUIDs passed as clientId still use the cookie-based session so
-  // clearing localStorage cannot reset the usage counter.
   const isAuthenticated = typeof clientId === "string" && clientId.startsWith("user_");
-  const session = isAuthenticated
-    ? await getOrCreateClientSession(clientId!, getIp(req))
-    : await getOrCreateSession(req, res, fingerprint);
 
-  const status = computeStatus(session, isAuthenticated);
+  if (isAuthenticated) {
+    // ── Trial-based status for authenticated Clerk users ─────────────────────
+    const trial = await storage.getOrCreateTrial(clientId!);
+    const trialStatus = computeTrialStatus(trial);
+
+    res.json({
+      isPro: false,
+      status: trialStatus.active ? "trial" : "upgrade_wall",
+      // Trial fields
+      trialActive: trialStatus.active,
+      trialDaysLeft: trialStatus.daysLeft,
+      trialCreditsLeft: trialStatus.creditsLeft,
+      rewardsEarned: trialStatus.rewardsEarned,
+      // Legacy fields kept for backwards compatibility
+      useCount: 0,
+      emailUnlocked: false,
+      emailUnlockUsed: false,
+      freeRemaining: trialStatus.creditsLeft,
+    });
+    return;
+  }
+
+  // ── Anonymous session (unchanged) ─────────────────────────────────────────
+  const session = await getOrCreateSession(req, res, fingerprint);
+  const status = computeStatus(session, false);
 
   res.json({
     isPro: false,
@@ -138,15 +140,23 @@ usageRouter.get("/usage/status", async (req: Request, res: Response) => {
     status,
     emailUnlocked: session.emailUnlocked,
     emailUnlockUsed: session.emailUnlockUsed,
-    freeRemaining: remainingFree(session, isAuthenticated),
+    freeRemaining: remainingFree(session, false),
+    trialActive: false,
+    trialDaysLeft: 0,
+    trialCreditsLeft: 0,
+    rewardsEarned: [],
   });
 });
 
 // ── POST /api/usage/gate ──────────────────────────────────────────────────────
-// Read-only pre-flight check. Returns { allowed, status, useCount }.
-// Does NOT increment. Increment happens in /api/hvac/diagnose on success.
+// Read-only pre-flight check. Returns { allowed, status, ... }.
+// Does NOT decrement credits. Decrement happens in /api/hvac/diagnose on success.
 usageRouter.post("/usage/gate", async (req: Request, res: Response) => {
-  const { fingerprint = "", clientId, testerEmail } = req.body as { fingerprint?: string; clientId?: string; testerEmail?: string };
+  const { fingerprint = "", clientId, testerEmail } = req.body as {
+    fingerprint?: string;
+    clientId?: string;
+    testerEmail?: string;
+  };
 
   if (isTesterEmail(testerEmail)) {
     res.json({ allowed: true, status: "pro", useCount: 0 });
@@ -163,20 +173,42 @@ usageRouter.post("/usage/gate", async (req: Request, res: Response) => {
     return;
   }
 
-  // Only real Clerk users (user_xxx) get per-account quota.
   const isAuthenticated = typeof clientId === "string" && clientId.startsWith("user_");
-  const session = isAuthenticated
-    ? await getOrCreateClientSession(clientId!, getIp(req))
-    : await getOrCreateSession(req, res, fingerprint);
 
-  const status = computeStatus(session, isAuthenticated);
+  if (isAuthenticated) {
+    // ── Trial gate for authenticated users ───────────────────────────────────
+    const trial = await storage.getOrCreateTrial(clientId!);
+    const trialStatus = computeTrialStatus(trial);
+
+    if (trialStatus.active) {
+      res.json({
+        allowed: true,
+        status: "trial",
+        trialDaysLeft: trialStatus.daysLeft,
+        trialCreditsLeft: trialStatus.creditsLeft,
+        rewardsEarned: trialStatus.rewardsEarned,
+      });
+    } else {
+      res.json({
+        allowed: false,
+        status: "upgrade_wall",
+        trialDaysLeft: 0,
+        trialCreditsLeft: 0,
+      });
+    }
+    return;
+  }
+
+  // ── Anonymous gate (unchanged) ────────────────────────────────────────────
+  const session = await getOrCreateSession(req, res, fingerprint);
+  const status = computeStatus(session, false);
 
   if (status !== "free") {
     res.json({
       allowed: false,
       status,
       useCount: session.useCount,
-      freeRemaining: remainingFree(session, isAuthenticated),
+      freeRemaining: remainingFree(session, false),
     });
     return;
   }
@@ -185,11 +217,33 @@ usageRouter.post("/usage/gate", async (req: Request, res: Response) => {
     allowed: true,
     status: "free",
     useCount: session.useCount,
-    freeRemaining: remainingFree(session, isAuthenticated),
+    freeRemaining: remainingFree(session, false),
   });
 });
 
+// ── POST /api/usage/reward ────────────────────────────────────────────────────
+// Awards bonus diagnostic credits for a one-time onboarding action.
+// Idempotent — calling twice with the same rewardId returns alreadyEarned=true.
+// Only available for authenticated Clerk users (clientId.startsWith("user_")).
+usageRouter.post("/usage/reward", async (req: Request, res: Response) => {
+  const { clientId, rewardId } = req.body as { clientId?: string; rewardId?: string };
+
+  if (!clientId || !clientId.startsWith("user_")) {
+    res.status(400).json({ error: "Authenticated user required" });
+    return;
+  }
+
+  if (!rewardId || !storage.isValidRewardId(rewardId)) {
+    res.status(400).json({ error: "Invalid rewardId" });
+    return;
+  }
+
+  const result = await storage.awardReward(clientId, rewardId);
+  res.json(result);
+});
+
 // ── POST /api/usage/email ─────────────────────────────────────────────────────
+// Anonymous-only: collects email to grant one extra free use.
 usageRouter.post("/usage/email", async (req: Request, res: Response) => {
   const { email, fingerprint = "" } = req.body as { email?: string; fingerprint?: string };
 
