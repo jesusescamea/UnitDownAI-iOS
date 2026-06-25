@@ -8,3 +8,4 @@ export * from "./diagnosticLogs";
 export * from "./equipmentTimeline";
 export * from "./unitPhotos";
 export * from "./scheduledEvents";
+export * from "./devices";

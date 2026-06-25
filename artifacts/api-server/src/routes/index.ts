@@ -15,6 +15,7 @@ import resourcesRouter from "./resources";
 import storageRouter from "./storage";
 import unitPhotosRouter from "./unitPhotos";
 import scheduledEventsRouter from "./scheduledEvents";
+import devicesRouter from "./devices";
 
 const router: IRouter = Router();
 
@@ -34,5 +35,6 @@ router.use(resourcesRouter);
 router.use(storageRouter);
 router.use(unitPhotosRouter);
 router.use(scheduledEventsRouter);
+router.use(devicesRouter);
 
 export default router;

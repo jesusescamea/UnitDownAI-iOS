@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useUser, useClerk, useSignIn } from "@clerk/clerk-react";
 import { shouldUseAppleIAP, isIOS, isIOSApp } from "@/lib/platform";
 import { checkIAPSubscriptionActive, restorePurchases, IAP_PRODUCT_ID } from "@/lib/appleIAP";
 import { isDemoProEmail } from "@/lib/demoAccess";
+import { getFingerprint } from "@/lib/fingerprint";
 import {
   ChevronLeft,
   ChevronRight,
@@ -28,9 +29,29 @@ import {
   ThumbsUp,
   FileText,
   MailCheck,
+  Monitor,
+  Smartphone,
+  Tablet,
+  Globe,
+  Trash2,
+  ShieldAlert,
+  ShieldCheck,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
+
+interface DeviceRecord {
+  id: string;
+  deviceName: string;
+  deviceType: string;
+  browser: string | null;
+  os: string | null;
+  isNew: boolean;
+  isTrusted: boolean;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  seenCount: number;
+}
 
 interface DiagnosisEntry {
   id: string;
@@ -154,6 +175,73 @@ export default function AccountPage() {
   const [deleteText, setDeleteText] = useState("");
   const [deleteLoading, setDeleteLoading] = useState(false);
 
+  // Device registry
+  const [devices, setDevices] = useState<DeviceRecord[]>([]);
+  const [devicesLoading, setDevicesLoading] = useState(false);
+  const [devicesError, setDevicesError] = useState<string | null>(null);
+  const [suspicious, setSuspicious] = useState(false);
+  const [newDeviceBanner, setNewDeviceBanner] = useState(false);
+  const [removingDeviceId, setRemovingDeviceId] = useState<string | null>(null);
+
+  // ── Device helpers ─────────────────────────────────────────────────────────
+
+  function detectDeviceInfo() {
+    const ua = navigator.userAgent;
+    const isMobile = /iPhone|Android.*Mobile|BlackBerry|IEMobile|Opera Mini/i.test(ua);
+    const isTabletUA = /iPad|Android(?!.*Mobile)/i.test(ua);
+    const deviceType = isMobile ? "mobile" : isTabletUA ? "tablet" : "desktop";
+
+    let os = "Unknown";
+    if (/Windows/i.test(ua)) os = "Windows";
+    else if (/Mac OS X/i.test(ua) && !/iPhone|iPad/i.test(ua)) os = "macOS";
+    else if (/iPhone/i.test(ua)) os = "iOS";
+    else if (/iPad/i.test(ua)) os = "iPadOS";
+    else if (/Android/i.test(ua)) os = "Android";
+    else if (/Linux/i.test(ua)) os = "Linux";
+
+    let browser = "Unknown";
+    if (/Edg\//i.test(ua)) browser = "Edge";
+    else if (/Chrome/i.test(ua) && !/Chromium/i.test(ua)) browser = "Chrome";
+    else if (/Firefox/i.test(ua)) browser = "Firefox";
+    else if (/Safari/i.test(ua) && !/Chrome/i.test(ua)) browser = "Safari";
+    else if (/OPR|Opera/i.test(ua)) browser = "Opera";
+
+    const deviceName = `${os} · ${browser}`;
+    return { deviceType, os, browser, deviceName };
+  }
+
+  const fetchDevices = useCallback(async (cid: string) => {
+    setDevicesLoading(true);
+    setDevicesError(null);
+    try {
+      const r = await fetch(`/api/devices?clientId=${encodeURIComponent(cid)}`, { credentials: "include" });
+      if (!r.ok) throw new Error("Failed to load devices");
+      const data = await r.json() as { devices: DeviceRecord[]; suspicious: boolean };
+      setDevices(data.devices ?? []);
+      setSuspicious(data.suspicious ?? false);
+    } catch {
+      setDevicesError("Could not load device list. Try again later.");
+    } finally {
+      setDevicesLoading(false);
+    }
+  }, []);
+
+  const handleRemoveDevice = useCallback(async (deviceId: string, cid: string) => {
+    setRemovingDeviceId(deviceId);
+    try {
+      const r = await fetch(`/api/devices/${deviceId}?clientId=${encodeURIComponent(cid)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!r.ok) throw new Error("Remove failed");
+      setDevices((prev) => prev.filter((d) => d.id !== deviceId));
+    } catch {
+      // Silently leave the device in the list — non-critical
+    } finally {
+      setRemovingDeviceId(null);
+    }
+  }, []);
+
   useEffect(() => {
     document.title = "Account — UnitDown AI";
     setHistory(loadHistory());
@@ -187,9 +275,36 @@ export default function AccountPage() {
     }
   }, [email]);
 
-  // Server-side Pro check for web (Stripe) subscribers. This is the fallback
-  // for non-iOS sessions where Apple IAP is not used. The iOS IAP check above
-  // already sets isPro for iOS users — this only runs if that returned false.
+  // ── Device registration — fires once when authenticated user lands here ──────
+  // Reads the existing Clerk userId (already set by the login flow) and upserts
+  // this device in the registry. No auth changes — purely additive.
+  useEffect(() => {
+    if (!isLoaded || !user) return;
+    const cid = (() => { try { return localStorage.getItem(CLIENT_ID_KEY) || user.id; } catch { return user.id; } })();
+    const fp = getFingerprint();
+    const info = detectDeviceInfo();
+    fetch("/api/devices/register", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ clientId: cid, fingerprint: fp, ...info }),
+    })
+      .then((r) => r.json())
+      .then((data: { isNew?: boolean }) => {
+        if (data.isNew) setNewDeviceBanner(true);
+        fetchDevices(cid);
+      })
+      .catch(() => {
+        // Non-critical — don't surface errors from device registration
+        fetchDevices(cid);
+      });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoaded, user?.id]);
+
+  // ── Server-side Pro check for web (Stripe) subscribers ───────────────────────
+  // This is the fallback for non-iOS sessions where Apple IAP is not used.
+  // The iOS IAP check above already sets isPro for iOS users — this only runs
+  // if that returned false.
   useEffect(() => {
     if (!isLoaded || !user) return;
     const cid = (() => { try { return localStorage.getItem(CLIENT_ID_KEY) || user.id; } catch { return user.id; } })();
@@ -522,6 +637,150 @@ export default function AccountPage() {
             </div>
           </div>
         </Section>
+
+        {/* ── New device banner ── */}
+        {newDeviceBanner && !isGuest && (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 px-5 py-4 flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-amber-500 flex-shrink-0 mt-0.5" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-amber-800">New device detected</p>
+              <p className="text-xs text-amber-700 mt-0.5">
+                This is the first time UnitDown AI has seen this device on your account. If this wasn't you, remove it below.
+              </p>
+            </div>
+            <button
+              onClick={() => setNewDeviceBanner(false)}
+              className="flex-shrink-0 text-amber-400 hover:text-amber-600 transition-colors"
+              aria-label="Dismiss"
+            >
+              <span className="text-lg leading-none">×</span>
+            </button>
+          </div>
+        )}
+
+        {/* ── Trusted Devices ── */}
+        {!isGuest && (
+          <Section title="Trusted Devices" icon={suspicious ? ShieldAlert : ShieldCheck}>
+            <div className="space-y-3">
+              {suspicious && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 flex items-start gap-2.5">
+                  <ShieldAlert className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-bold text-red-700">Unusual activity detected</p>
+                    <p className="text-xs text-red-600 mt-0.5">
+                      Your account has been accessed from an unusually high number of devices recently.
+                      Review the list below and remove any devices you don't recognise.
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {devicesLoading && (
+                <div className="text-center py-8">
+                  <p className="text-sm text-slate-400">Loading devices…</p>
+                </div>
+              )}
+
+              {devicesError && !devicesLoading && (
+                <p className="text-sm text-red-500 text-center py-4">{devicesError}</p>
+              )}
+
+              {!devicesLoading && !devicesError && devices.length === 0 && (
+                <div className="text-center py-6 space-y-2">
+                  <Monitor className="w-7 h-7 text-slate-300 mx-auto" />
+                  <p className="text-sm text-slate-400">No devices registered yet.</p>
+                </div>
+              )}
+
+              {!devicesLoading && devices.length > 0 && (
+                <div className="space-y-2">
+                  {devices.map((device) => {
+                    const DeviceIcon =
+                      device.deviceType === "mobile"
+                        ? Smartphone
+                        : device.deviceType === "tablet"
+                        ? Tablet
+                        : Monitor;
+                    const lastSeen = new Date(device.lastSeenAt);
+                    return (
+                      <div
+                        key={device.id}
+                        className={`flex items-center gap-3 rounded-xl border px-4 py-3 ${
+                          device.isNew
+                            ? "border-amber-200 bg-amber-50/60"
+                            : "border-slate-200 bg-white"
+                        }`}
+                        data-testid={`device-row-${device.id}`}
+                      >
+                        <DeviceIcon
+                          className={`w-5 h-5 flex-shrink-0 ${
+                            device.isNew ? "text-amber-500" : "text-slate-400"
+                          }`}
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-semibold text-slate-800 truncate">
+                              {device.deviceName}
+                            </p>
+                            {device.isNew && (
+                              <span className="text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full uppercase tracking-widest flex-shrink-0">
+                                New
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                            {device.browser && (
+                              <span className="flex items-center gap-1 text-xs text-slate-400">
+                                <Globe className="w-3 h-3" />
+                                {device.browser}
+                              </span>
+                            )}
+                            {device.os && (
+                              <span className="text-xs text-slate-400">{device.os}</span>
+                            )}
+                            <span className="text-xs text-slate-400">
+                              Last seen{" "}
+                              {lastSeen.toLocaleDateString("en-US", {
+                                month: "short",
+                                day: "numeric",
+                                year:
+                                  lastSeen.getFullYear() !== new Date().getFullYear()
+                                    ? "numeric"
+                                    : undefined,
+                              })}
+                            </span>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const cid = (() => {
+                              try { return localStorage.getItem(CLIENT_ID_KEY) || ""; } catch { return ""; }
+                            })();
+                            handleRemoveDevice(device.id, cid);
+                          }}
+                          disabled={removingDeviceId === device.id}
+                          className="flex-shrink-0 p-1.5 rounded-lg text-slate-300 hover:text-red-500 hover:bg-red-50 transition-colors disabled:opacity-40"
+                          aria-label={`Remove ${device.deviceName}`}
+                          data-testid={`device-remove-${device.id}`}
+                        >
+                          {removingDeviceId === device.id ? (
+                            <span className="text-xs text-slate-400">…</span>
+                          ) : (
+                            <Trash2 className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <p className="text-xs text-slate-400 pt-1">
+                Removing a device only removes it from this list. It does not sign you out or affect your account access.
+              </p>
+            </div>
+          </Section>
+        )}
 
         {/* ── Saved Diagnostics ── */}
         <Section title="Saved Diagnostics" icon={History}>
