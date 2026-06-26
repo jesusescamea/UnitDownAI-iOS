@@ -17,6 +17,7 @@ import unitPhotosRouter from "./unitPhotos";
 import scheduledEventsRouter from "./scheduledEvents";
 import devicesRouter from "./devices";
 import aiPolishRouter from "./aiPolish";
+import voiceInterpretRouter from "./voiceInterpret";
 
 const router: IRouter = Router();
 
@@ -38,5 +39,6 @@ router.use(unitPhotosRouter);
 router.use(scheduledEventsRouter);
 router.use(devicesRouter);
 router.use(aiPolishRouter);
+router.use(voiceInterpretRouter);
 
 export default router;

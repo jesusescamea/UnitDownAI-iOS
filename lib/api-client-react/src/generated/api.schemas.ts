@@ -35,6 +35,87 @@ export interface AiPolishResponse {
   polished: string;
 }
 
+/**
+ * A learned correction from a technician's personal vocabulary profile
+ */
+export interface UserVoiceCorrection {
+  /** The word or phrase as the technician spoke it */
+  original: string;
+  /** The technician's preferred interpretation or spelling */
+  preferred: string;
+  /**
+   * Number of times the technician has confirmed this preference
+   * @minimum 1
+   */
+  count: number;
+}
+
+export interface VoiceInterpretBody {
+  /** Raw speech-recognition transcript from the technician */
+  rawTranscript: string;
+  /** Optional personal vocabulary corrections learned from this technician's past usage */
+  userCorrections?: UserVoiceCorrection[];
+}
+
+/**
+ * A phrase the AI was less than 85% confident in interpreting
+ */
+export interface VoiceUncertainPhrase {
+  /** The phrase exactly as it appeared in the raw transcript */
+  original: string;
+  /** The AI's HVAC interpretation of the phrase */
+  suggested: string;
+  /**
+   * Confidence score for this specific phrase (0–100)
+   * @minimum 0
+   * @maximum 100
+   */
+  confidence: number;
+}
+
+/**
+ * Structured equipment memory data extracted from the interpreted transcript
+ */
+export interface VoiceMemoryExtracts {
+  /** Parts or components that were replaced */
+  componentsReplaced: string[];
+  /** Repairs or corrective actions performed */
+  repairsPerformed: string[];
+  /** Refrigerant type if mentioned (e.g. R-22, R-410A) */
+  refrigerantType?: string;
+  /** Refrigerant amount with units if mentioned (e.g. 8 lb 12 oz) */
+  refrigerantAmount?: string;
+  /** Follow-up work recommended or required */
+  followUp?: string;
+  /** Preventive maintenance reminders extracted */
+  pmReminders?: string;
+  /** Notable conditions observed during the visit */
+  observedConditions?: string;
+  /** Any warranty-relevant information mentioned */
+  warrantyInfo?: string;
+}
+
+/**
+ * Full result from the HVAC Voice Intelligence pipeline
+ */
+export interface VoiceInterpretResult {
+  /** The raw transcript exactly as received — never modified */
+  original: string;
+  /** Professional HVAC service documentation suitable for service records */
+  professional: string;
+  /** Plain-English summary suitable for building owners or facilities managers */
+  customer: string;
+  /**
+   * Overall interpretation confidence score (0–100)
+   * @minimum 0
+   * @maximum 100
+   */
+  confidence: number;
+  /** Phrases the AI was less than 85% confident in interpreting */
+  uncertainPhrases: VoiceUncertainPhrase[];
+  memoryExtracts: VoiceMemoryExtracts;
+}
+
 export interface HealthStatus {
   status: string;
 }

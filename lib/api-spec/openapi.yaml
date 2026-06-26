@@ -51,6 +51,34 @@ paths:
           description: Invalid request body
         "429":
           description: Rate limited or Pro subscription required
+  /ai/voice/interpret:
+    post:
+      operationId: voiceInterpret
+      tags: [ai]
+      summary: HVAC Voice Intelligence — interpret a voice transcript
+      description: >
+        Runs a raw voice transcript through the HVAC Voice Intelligence pipeline.
+        Applies HVAC terminology correction, generates three documentation versions
+        (original, professional, customer), scores interpretation confidence,
+        identifies uncertain phrases, and extracts equipment memory data —
+        all in a single call.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceInterpretBody"
+      responses:
+        "200":
+          description: HVAC-interpreted voice result with all documentation versions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceInterpretResult"
+        "400":
+          description: Invalid request body
+        "500":
+          description: AI interpretation unavailable
   /hvac/diagnose:
     post:
       operationId: diagnoseHvac
@@ -108,6 +136,123 @@ components:
           description: Improved version of the input text
       required:
         - polished
+    UserVoiceCorrection:
+      type: object
+      description: A learned correction from a technician's personal vocabulary profile
+      properties:
+        original:
+          type: string
+          description: The word or phrase as the technician spoke it
+        preferred:
+          type: string
+          description: The technician's preferred interpretation or spelling
+        count:
+          type: integer
+          minimum: 1
+          description: Number of times the technician has confirmed this preference
+      required:
+        - original
+        - preferred
+        - count
+    VoiceInterpretBody:
+      type: object
+      properties:
+        rawTranscript:
+          type: string
+          description: Raw speech-recognition transcript from the technician
+        userCorrections:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserVoiceCorrection"
+          description: Optional personal vocabulary corrections learned from this technician's past usage
+      required:
+        - rawTranscript
+    VoiceUncertainPhrase:
+      type: object
+      description: A phrase the AI was less than 85% confident in interpreting
+      properties:
+        original:
+          type: string
+          description: The phrase exactly as it appeared in the raw transcript
+        suggested:
+          type: string
+          description: The AI's HVAC interpretation of the phrase
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Confidence score for this specific phrase (0–100)
+      required:
+        - original
+        - suggested
+        - confidence
+    VoiceMemoryExtracts:
+      type: object
+      description: Structured equipment memory data extracted from the interpreted transcript
+      properties:
+        componentsReplaced:
+          type: array
+          items:
+            type: string
+          description: Parts or components that were replaced
+        repairsPerformed:
+          type: array
+          items:
+            type: string
+          description: Repairs or corrective actions performed
+        refrigerantType:
+          type: string
+          description: Refrigerant type if mentioned (e.g. R-22, R-410A)
+        refrigerantAmount:
+          type: string
+          description: Refrigerant amount with units if mentioned (e.g. 8 lb 12 oz)
+        followUp:
+          type: string
+          description: Follow-up work recommended or required
+        pmReminders:
+          type: string
+          description: Preventive maintenance reminders extracted
+        observedConditions:
+          type: string
+          description: Notable conditions observed during the visit
+        warrantyInfo:
+          type: string
+          description: Any warranty-relevant information mentioned
+      required:
+        - componentsReplaced
+        - repairsPerformed
+    VoiceInterpretResult:
+      type: object
+      description: Full result from the HVAC Voice Intelligence pipeline
+      properties:
+        original:
+          type: string
+          description: The raw transcript exactly as received — never modified
+        professional:
+          type: string
+          description: Professional HVAC service documentation suitable for service records
+        customer:
+          type: string
+          description: Plain-English summary suitable for building owners or facilities managers
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Overall interpretation confidence score (0–100)
+        uncertainPhrases:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceUncertainPhrase"
+          description: Phrases the AI was less than 85% confident in interpreting
+        memoryExtracts:
+          $ref: "#/components/schemas/VoiceMemoryExtracts"
+      required:
+        - original
+        - professional
+        - customer
+        - confidence
+        - uncertainPhrases
+        - memoryExtracts
     HealthStatus:
       type: object
       properties:

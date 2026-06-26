@@ -22,6 +22,8 @@ import type {
   DiagnoseHvacBody,
   HealthStatus,
   HvacDiagnosisResult,
+  VoiceInterpretBody,
+  VoiceInterpretResult,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -194,6 +196,94 @@ export const useAiPolish = <
   TContext
 > => {
   return useMutation(getAiPolishMutationOptions(options));
+};
+
+/**
+ * Runs a raw voice transcript through the HVAC Voice Intelligence pipeline. Applies HVAC terminology correction, generates three documentation versions (original, professional, customer), scores interpretation confidence, identifies uncertain phrases, and extracts equipment memory data — all in a single call.
+
+ * @summary HVAC Voice Intelligence — interpret a voice transcript
+ */
+export const getVoiceInterpretUrl = () => {
+  return `/api/ai/voice/interpret`;
+};
+
+export const voiceInterpret = async (
+  voiceInterpretBody: VoiceInterpretBody,
+  options?: RequestInit,
+): Promise<VoiceInterpretResult> => {
+  return customFetch<VoiceInterpretResult>(getVoiceInterpretUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(voiceInterpretBody),
+  });
+};
+
+export const getVoiceInterpretMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voiceInterpret>>,
+    TError,
+    { data: BodyType<VoiceInterpretBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof voiceInterpret>>,
+  TError,
+  { data: BodyType<VoiceInterpretBody> },
+  TContext
+> => {
+  const mutationKey = ["voiceInterpret"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof voiceInterpret>>,
+    { data: BodyType<VoiceInterpretBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return voiceInterpret(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VoiceInterpretMutationResult = NonNullable<
+  Awaited<ReturnType<typeof voiceInterpret>>
+>;
+export type VoiceInterpretMutationBody = BodyType<VoiceInterpretBody>;
+export type VoiceInterpretMutationError = ErrorType<void>;
+
+/**
+ * @summary HVAC Voice Intelligence — interpret a voice transcript
+ */
+export const useVoiceInterpret = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voiceInterpret>>,
+    TError,
+    { data: BodyType<VoiceInterpretBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof voiceInterpret>>,
+  TError,
+  { data: BodyType<VoiceInterpretBody> },
+  TContext
+> => {
+  return useMutation(getVoiceInterpretMutationOptions(options));
 };
 
 /**

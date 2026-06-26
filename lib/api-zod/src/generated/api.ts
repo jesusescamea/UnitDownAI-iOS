@@ -49,6 +49,133 @@ export const AiPolishResponse = zod.object({
 });
 
 /**
+ * Runs a raw voice transcript through the HVAC Voice Intelligence pipeline. Applies HVAC terminology correction, generates three documentation versions (original, professional, customer), scores interpretation confidence, identifies uncertain phrases, and extracts equipment memory data — all in a single call.
+
+ * @summary HVAC Voice Intelligence — interpret a voice transcript
+ */
+
+export const VoiceInterpretBody = zod.object({
+  rawTranscript: zod
+    .string()
+    .describe("Raw speech-recognition transcript from the technician"),
+  userCorrections: zod
+    .array(
+      zod
+        .object({
+          original: zod
+            .string()
+            .describe("The word or phrase as the technician spoke it"),
+          preferred: zod
+            .string()
+            .describe("The technician's preferred interpretation or spelling"),
+          count: zod
+            .number()
+            .min(1)
+            .describe(
+              "Number of times the technician has confirmed this preference",
+            ),
+        })
+        .describe(
+          "A learned correction from a technician's personal vocabulary profile",
+        ),
+    )
+    .optional()
+    .describe(
+      "Optional personal vocabulary corrections learned from this technician's past usage",
+    ),
+});
+
+export const voiceInterpretResponseConfidenceMin = 0;
+export const voiceInterpretResponseConfidenceMax = 100;
+
+export const voiceInterpretResponseUncertainPhrasesItemConfidenceMin = 0;
+export const voiceInterpretResponseUncertainPhrasesItemConfidenceMax = 100;
+
+export const VoiceInterpretResponse = zod
+  .object({
+    original: zod
+      .string()
+      .describe("The raw transcript exactly as received — never modified"),
+    professional: zod
+      .string()
+      .describe(
+        "Professional HVAC service documentation suitable for service records",
+      ),
+    customer: zod
+      .string()
+      .describe(
+        "Plain-English summary suitable for building owners or facilities managers",
+      ),
+    confidence: zod
+      .number()
+      .min(voiceInterpretResponseConfidenceMin)
+      .max(voiceInterpretResponseConfidenceMax)
+      .describe("Overall interpretation confidence score (0–100)"),
+    uncertainPhrases: zod
+      .array(
+        zod
+          .object({
+            original: zod
+              .string()
+              .describe(
+                "The phrase exactly as it appeared in the raw transcript",
+              ),
+            suggested: zod
+              .string()
+              .describe("The AI's HVAC interpretation of the phrase"),
+            confidence: zod
+              .number()
+              .min(voiceInterpretResponseUncertainPhrasesItemConfidenceMin)
+              .max(voiceInterpretResponseUncertainPhrasesItemConfidenceMax)
+              .describe("Confidence score for this specific phrase (0–100)"),
+          })
+          .describe(
+            "A phrase the AI was less than 85% confident in interpreting",
+          ),
+      )
+      .describe("Phrases the AI was less than 85% confident in interpreting"),
+    memoryExtracts: zod
+      .object({
+        componentsReplaced: zod
+          .array(zod.string())
+          .describe("Parts or components that were replaced"),
+        repairsPerformed: zod
+          .array(zod.string())
+          .describe("Repairs or corrective actions performed"),
+        refrigerantType: zod
+          .string()
+          .optional()
+          .describe("Refrigerant type if mentioned (e.g. R-22, R-410A)"),
+        refrigerantAmount: zod
+          .string()
+          .optional()
+          .describe(
+            "Refrigerant amount with units if mentioned (e.g. 8 lb 12 oz)",
+          ),
+        followUp: zod
+          .string()
+          .optional()
+          .describe("Follow-up work recommended or required"),
+        pmReminders: zod
+          .string()
+          .optional()
+          .describe("Preventive maintenance reminders extracted"),
+        observedConditions: zod
+          .string()
+          .optional()
+          .describe("Notable conditions observed during the visit"),
+        warrantyInfo: zod
+          .string()
+          .optional()
+          .describe("Any warranty-relevant information mentioned"),
+      })
+      .describe(
+        "Structured equipment memory data extracted from the interpreted transcript",
+      ),
+  })
+  .describe("Full result from the HVAC Voice Intelligence pipeline");
+
+/**
  * Analyzes HVAC symptoms against the knowledge base and returns the top 3 matching diagnoses
  * @summary Diagnose HVAC symptoms
  */

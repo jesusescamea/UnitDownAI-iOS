@@ -4,6 +4,11 @@ export type {
   HvacDiagnosisEntry,
   HvacDiagnosisEntryPriorityLevel,
   HealthStatus,
+  // Voice Intelligence types (VoiceInterpretBody is a Zod const — exported above via generated/api)
+  VoiceInterpretResult,
+  VoiceMemoryExtracts,
+  VoiceUncertainPhrase,
+  UserVoiceCorrection,
 } from "./generated/types";
 
 // ─── Object Storage schemas (manually maintained) ────────────────────────────

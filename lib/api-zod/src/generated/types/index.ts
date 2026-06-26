@@ -14,3 +14,8 @@ export * from "./healthStatus";
 export * from "./hvacDiagnosisEntry";
 export * from "./hvacDiagnosisEntryPriorityLevel";
 export * from "./hvacDiagnosisResult";
+export * from "./userVoiceCorrection";
+export * from "./voiceInterpretBody";
+export * from "./voiceInterpretResult";
+export * from "./voiceMemoryExtracts";
+export * from "./voiceUncertainPhrase";
