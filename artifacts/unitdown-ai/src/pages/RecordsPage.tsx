@@ -60,6 +60,8 @@ type FilteredView =
   | "saved-units"
   | null;
 
+type KpiFilterType = "attention" | "monitoring" | "return-visits" | null;
+
 type CalendarMode = "week" | "month" | "agenda";
 
 interface SiteGroup {
@@ -309,27 +311,23 @@ function matchesLogSearch(q: string, log: DiagnosticLog): boolean {
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function KPICard({
-  value, label, Icon, colorClass, accentIcon, onClick, onMouseEnter, onMouseLeave, active,
+  value, label, subtitle, Icon, colorClass, accentIcon, onClick, isSelected,
 }: {
   value: number | string;
   label: string;
+  subtitle?: string;
   Icon: React.ElementType;
   colorClass: string;
   accentIcon: string;
   onClick?: () => void;
-  onMouseEnter?: () => void;
-  onMouseLeave?: () => void;
-  active?: boolean;
+  isSelected?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
       className={`relative flex flex-col justify-between p-2.5 rounded-2xl border text-left
         transition-all duration-150 ease-out active:scale-[0.96]
-        hover:scale-[1.03] hover:shadow-md
-        ${active ? "ring-2 ring-blue-400 ring-offset-1" : ""}
+        ${isSelected ? "ring-2 ring-blue-500 ring-offset-1 shadow-sm scale-[1.01]" : "hover:shadow-sm"}
         ${colorClass}`}
     >
       <div className={`w-5 h-5 rounded-md flex items-center justify-center mb-1.5 ${accentIcon}`}>
@@ -337,8 +335,8 @@ function KPICard({
       </div>
       <span className="text-lg font-extrabold leading-none block">{value}</span>
       <span className="text-[10px] font-semibold mt-0.5 opacity-70 leading-tight block">{label}</span>
-      {onClick && (
-        <ArrowRight className="absolute bottom-2 right-2 w-2.5 h-2.5 opacity-30 group-hover:opacity-70 transition-opacity" />
+      {subtitle && (
+        <span className="text-[9px] font-medium opacity-50 leading-none block mt-0.5">{subtitle}</span>
       )}
     </button>
   );
@@ -1058,9 +1056,9 @@ export default function RecordsPage() {
   const [monthOffset, setMonthOffset] = useState(0);
   const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
-  // KPI hover preview (desktop only)
-  const [hoveredKpi, setHoveredKpi] = useState<string | null>(null);
-  const hoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // KPI quick-nav filter (null = show all)
+  const [kpiFilter, setKpiFilter] = useState<KpiFilterType>(null);
+  const customerSectionRef = useRef<HTMLElement | null>(null);
 
   // Location browse
   const [locationViewOpen, setLocationViewOpen] = useState(false);
@@ -1156,17 +1154,6 @@ export default function RecordsPage() {
     } catch { loadData(); }
   }, [clientId, loadData]);
 
-  // ─── KPI hover handlers ───────────────────────────────────────────────────
-
-  const handleKpiEnter = useCallback((kpi: string) => {
-    if (hoverTimeout.current) clearTimeout(hoverTimeout.current);
-    setHoveredKpi(kpi);
-  }, []);
-
-  const handleKpiLeave = useCallback(() => {
-    hoverTimeout.current = setTimeout(() => setHoveredKpi(null), 150);
-  }, []);
-
   // ─── Derived data ─────────────────────────────────────────────────────────
 
   const unitMap = useMemo(() => {
@@ -1259,6 +1246,11 @@ export default function RecordsPage() {
     units.forEach((u) => { map[u.id] = computeHealthScore(u.id, logs); });
     return map;
   }, [units, logs]);
+
+  const needsAttentionCount = useMemo(
+    () => units.filter((u) => (healthScoreMap[u.id] ?? 100) < 60).length,
+    [units, healthScoreMap],
+  );
 
   const unitStatusMap = useMemo(() => {
     const map: Record<string, UnitStatus> = {};
@@ -1366,24 +1358,33 @@ export default function RecordsPage() {
   }, [units, logs, healthScoreMap, scheduledEvents]);
 
   const filteredLocationGroups = useMemo(() => {
-    if (!q && !typeFilter) return locationGroups;
-    return locationGroups
-      .map((group) => {
-        const filteredSites = group.sites
-          .map((site) => ({
-            ...site,
-            units: site.units.filter((u) => {
-              if (typeFilter && !(u.equipmentType ?? "").toLowerCase().includes(typeFilter)) return false;
-              if (q && !matchesSearch(q, u)) return false;
-              return true;
-            }),
-          }))
-          .filter((site) => site.units.length > 0);
-        const totalUnits = filteredSites.reduce((s, g) => s + g.units.length, 0);
-        return { ...group, sites: filteredSites, totalUnits };
-      })
-      .filter((group) => group.sites.length > 0);
-  }, [locationGroups, q, typeFilter]);
+    let groups = locationGroups;
+
+    if (q || typeFilter) {
+      groups = groups
+        .map((group) => {
+          const filteredSites = group.sites
+            .map((site) => ({
+              ...site,
+              units: site.units.filter((u) => {
+                if (typeFilter && !(u.equipmentType ?? "").toLowerCase().includes(typeFilter)) return false;
+                if (q && !matchesSearch(q, u)) return false;
+                return true;
+              }),
+            }))
+            .filter((site) => site.units.length > 0);
+          const totalUnits = filteredSites.reduce((s, g) => s + g.units.length, 0);
+          return { ...group, sites: filteredSites, totalUnits };
+        })
+        .filter((group) => group.sites.length > 0);
+    }
+
+    if (kpiFilter === "attention")        groups = groups.filter((g) => g.criticalCount > 0);
+    else if (kpiFilter === "monitoring")  groups = groups.filter((g) => g.monitoringCount > 0);
+    else if (kpiFilter === "return-visits") groups = groups.filter((g) => g.followUpCount > 0);
+
+    return groups;
+  }, [locationGroups, q, typeFilter, kpiFilter]);
 
   const briefingSummary = useMemo(() => {
     const parts: string[] = [];
@@ -1848,7 +1849,7 @@ export default function RecordsPage() {
             </section>
 
             {/* ── Customers & Sites ─────────────────────────────────────────────── */}
-            <section aria-label="Customers & Sites">
+            <section ref={customerSectionRef} aria-label="Customers & Sites">
               {/* Section header */}
               <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
@@ -2032,66 +2033,105 @@ export default function RecordsPage() {
               )}
             </section>
 
-            {/* ── KPI Cards (4×2) ───────────────────────────────────────────── */}
-            <section aria-label="Key metrics">
-              <div className="grid grid-cols-4 gap-2">
-                {[
-                  { key: "active-jobs",   label: "Active Jobs",   Icon: Zap,          value: activeWork.length,   active: activeWork.length > 0,   colorOn: "bg-amber-50 text-amber-900 border-amber-200",   colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-amber-100 text-amber-600" },
-                  { key: "on-parts",      label: "On Parts",      Icon: Package,      value: partsWaiting.length, active: partsWaiting.length > 0, colorOn: "bg-purple-50 text-purple-900 border-purple-200", colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-purple-100 text-purple-600" },
-                  { key: "return-visits", label: "Return Visits", Icon: Calendar,     value: returnVisitCount,    active: returnVisitCount > 0,    colorOn: "bg-orange-50 text-orange-900 border-orange-200", colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-orange-100 text-orange-600" },
-                  { key: "pm-due",        label: "PM Due",        Icon: Wrench,       value: pmDueCount,          active: pmDueCount > 0,          colorOn: "bg-emerald-50 text-emerald-900 border-emerald-200", colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-emerald-100 text-emerald-600" },
-                  { key: "unresolved",    label: "Unresolved",    Icon: AlertCircle,  value: unresolvedCount,     active: unresolvedCount > 0,     colorOn: "bg-red-50 text-red-900 border-red-200",         colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-red-100 text-red-600" },
-                  { key: "monitoring",    label: "Monitoring",    Icon: CircleDot,    value: monitoringCount,     active: monitoringCount > 0,     colorOn: "bg-blue-50 text-blue-900 border-blue-200",      colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-blue-100 text-blue-600" },
-                  { key: "completed",     label: "Done / Week",   Icon: CheckCircle2, value: resolvedThisWeek,    active: resolvedThisWeek > 0,    colorOn: "bg-emerald-50 text-emerald-900 border-emerald-200", colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-emerald-100 text-emerald-600" },
-                  { key: "saved-units",   label: "Equipment",     Icon: Building2,    value: units.length,        active: false,                   colorOn: "bg-slate-100 text-slate-700 border-slate-300",   colorOff: "bg-slate-50 text-slate-500 border-slate-200", accent: "bg-slate-200 text-slate-500" },
-                ].map(({ key, label, Icon, value, active, colorOn, colorOff, accent }) => (
-                  <KPICard
-                    key={key}
-                    value={value}
-                    label={label}
-                    Icon={Icon}
-                    colorClass={active ? colorOn : colorOff}
-                    accentIcon={active ? accent : "bg-slate-100 text-slate-400"}
-                    active={hoveredKpi === key}
-                    onClick={() => setFilteredBy(key as FilteredView)}
-                    onMouseEnter={() => handleKpiEnter(key)}
-                    onMouseLeave={handleKpiLeave}
-                  />
-                ))}
+            {/* ── KPI Quick-Nav (2×2) ────────────────────────────────────────── */}
+            <section aria-label="Quick navigation">
+              <div className="grid grid-cols-2 gap-2">
+                {([
+                  {
+                    filterKey: null as KpiFilterType,
+                    label: "Equipment",
+                    subtitle: `${units.length} total`,
+                    Icon: Building2,
+                    value: units.length,
+                    hasItems: units.length > 0,
+                    colorOn:  "bg-slate-100 text-slate-800 border-slate-300",
+                    colorOff: "bg-white text-slate-600 border-slate-200",
+                    accentOn:  "bg-slate-300 text-slate-600",
+                    accentOff: "bg-slate-100 text-slate-400",
+                  },
+                  {
+                    filterKey: "attention" as KpiFilterType,
+                    label: "Needs Attention",
+                    subtitle: needsAttentionCount > 0
+                      ? `${needsAttentionCount} unit${needsAttentionCount !== 1 ? "s" : ""}`
+                      : "All clear",
+                    Icon: AlertCircle,
+                    value: needsAttentionCount,
+                    hasItems: needsAttentionCount > 0,
+                    colorOn:  "bg-red-50 text-red-900 border-red-200",
+                    colorOff: "bg-white text-slate-600 border-slate-200",
+                    accentOn:  "bg-red-100 text-red-600",
+                    accentOff: "bg-slate-100 text-slate-400",
+                  },
+                  {
+                    filterKey: "monitoring" as KpiFilterType,
+                    label: "Monitoring",
+                    subtitle: monitoringCount > 0 ? `${monitoringCount} active` : "None active",
+                    Icon: CircleDot,
+                    value: monitoringCount,
+                    hasItems: monitoringCount > 0,
+                    colorOn:  "bg-blue-50 text-blue-900 border-blue-200",
+                    colorOff: "bg-white text-slate-600 border-slate-200",
+                    accentOn:  "bg-blue-100 text-blue-600",
+                    accentOff: "bg-slate-100 text-slate-400",
+                  },
+                  {
+                    filterKey: "return-visits" as KpiFilterType,
+                    label: "Return Visits",
+                    subtitle: returnVisitCount > 0 ? `${returnVisitCount} scheduled` : "None pending",
+                    Icon: Calendar,
+                    value: returnVisitCount,
+                    hasItems: returnVisitCount > 0,
+                    colorOn:  "bg-amber-50 text-amber-900 border-amber-200",
+                    colorOff: "bg-white text-slate-600 border-slate-200",
+                    accentOn:  "bg-amber-100 text-amber-600",
+                    accentOff: "bg-slate-100 text-slate-400",
+                  },
+                ] as const).map(({ filterKey, label, subtitle, Icon, value, hasItems, colorOn, colorOff, accentOn, accentOff }) => {
+                  const isSelected = filterKey !== null && kpiFilter === filterKey;
+                  return (
+                    <KPICard
+                      key={label}
+                      value={value}
+                      label={label}
+                      subtitle={subtitle}
+                      Icon={Icon}
+                      colorClass={hasItems ? colorOn : colorOff}
+                      accentIcon={hasItems ? accentOn : accentOff}
+                      isSelected={isSelected}
+                      onClick={() => {
+                        if (filterKey === null) {
+                          setKpiFilter(null);
+                          setTimeout(() => {
+                            customerSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          }, 50);
+                        } else {
+                          setKpiFilter((prev) => (prev === filterKey ? null : filterKey));
+                        }
+                      }}
+                    />
+                  );
+                })}
               </div>
 
-              {/* Desktop-only hover preview panel */}
-              <div
-                onMouseEnter={() => { if (hoverTimeout.current) clearTimeout(hoverTimeout.current); }}
-                onMouseLeave={handleKpiLeave}
-                className={`hidden md:block mt-2 bg-white border border-slate-200 rounded-2xl shadow-lg overflow-hidden transition-all duration-200 ${
-                  hoveredKpi ? "max-h-60 opacity-100" : "max-h-0 opacity-0 pointer-events-none"
-                }`}
-              >
-                {hoveredKpi && (
-                  <>
-                    <div className="flex items-center justify-between px-4 py-2.5 border-b border-slate-100">
-                      <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">
-                        {hoveredKpi.replace(/-/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())}
-                      </span>
-                      <button
-                        onClick={() => setFilteredBy(hoveredKpi as FilteredView)}
-                        className="text-xs text-blue-600 font-bold hover:underline flex items-center gap-1"
-                      >
-                        View all <ArrowRight className="w-3 h-3" />
-                      </button>
-                    </div>
-                    <KpiHoverPreview
-                      kpi={hoveredKpi}
-                      logs={logs}
-                      scheduledEvents={scheduledEvents}
-                      units={units}
-                      unitMap={unitMap}
-                      onNavigate={(path) => navigate(path)}
-                    />
-                  </>
-                )}
-              </div>
+              {/* Active filter pill */}
+              {kpiFilter && (
+                <div className="flex items-center gap-1.5 mt-2">
+                  <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-0.5 flex items-center gap-1">
+                    Filtered
+                    <button
+                      onClick={() => setKpiFilter(null)}
+                      className="ml-0.5 opacity-60 hover:opacity-100"
+                      aria-label="Clear filter"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  </span>
+                  <span className="text-[11px] text-slate-400">
+                    Tap card again to clear
+                  </span>
+                </div>
+              )}
             </section>
 
             {/* ── Calendar + Agenda ────────────────────────────────────────────── */}
