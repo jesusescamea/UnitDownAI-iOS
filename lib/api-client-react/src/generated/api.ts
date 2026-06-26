@@ -17,6 +17,8 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  AiPolishBody,
+  AiPolishResponse,
   DiagnoseHvacBody,
   HealthStatus,
   HvacDiagnosisResult,
@@ -106,6 +108,93 @@ export function useHealthCheck<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Rewrites technician field notes in a chosen style without adding or fabricating any technical facts.
+ * @summary Polish HVAC field notes with AI
+ */
+export const getAiPolishUrl = () => {
+  return `/api/ai/polish`;
+};
+
+export const aiPolish = async (
+  aiPolishBody: AiPolishBody,
+  options?: RequestInit,
+): Promise<AiPolishResponse> => {
+  return customFetch<AiPolishResponse>(getAiPolishUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(aiPolishBody),
+  });
+};
+
+export const getAiPolishMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiPolish>>,
+    TError,
+    { data: BodyType<AiPolishBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof aiPolish>>,
+  TError,
+  { data: BodyType<AiPolishBody> },
+  TContext
+> => {
+  const mutationKey = ["aiPolish"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof aiPolish>>,
+    { data: BodyType<AiPolishBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return aiPolish(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AiPolishMutationResult = NonNullable<
+  Awaited<ReturnType<typeof aiPolish>>
+>;
+export type AiPolishMutationBody = BodyType<AiPolishBody>;
+export type AiPolishMutationError = ErrorType<void>;
+
+/**
+ * @summary Polish HVAC field notes with AI
+ */
+export const useAiPolish = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof aiPolish>>,
+    TError,
+    { data: BodyType<AiPolishBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof aiPolish>>,
+  TError,
+  { data: BodyType<AiPolishBody> },
+  TContext
+> => {
+  return useMutation(getAiPolishMutationOptions(options));
+};
 
 /**
  * Analyzes HVAC symptoms against the knowledge base and returns the top 3 matching diagnoses

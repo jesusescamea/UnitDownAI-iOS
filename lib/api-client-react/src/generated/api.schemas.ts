@@ -5,6 +5,34 @@
  * API specification
  * OpenAPI spec version: 0.2.0
  */
+/**
+ * Writing style to apply when polishing
+ */
+export type AiPolishMode = (typeof AiPolishMode)[keyof typeof AiPolishMode];
+
+export const AiPolishMode = {
+  professional: "professional",
+  technician: "technician",
+  warranty: "warranty",
+  "equipment-memory": "equipment-memory",
+  "pm-summary": "pm-summary",
+  "email-customer": "email-customer",
+  "work-order": "work-order",
+} as const;
+
+export interface AiPolishBody {
+  /** Raw field notes to polish */
+  text: string;
+  mode: AiPolishMode;
+  /** Optional Clerk user ID for Pro status lookup */
+  clientId?: string;
+}
+
+export interface AiPolishResponse {
+  /** Improved version of the input text */
+  polished: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -14,8 +42,7 @@ export interface DiagnoseHvacBody {
   symptoms: string;
   /** Anonymous client identifier for Pro status lookup */
   clientId?: string;
-  // Google Play closed testing whitelist — remove or replace after testing.
-  /** Tester email for closed testing whitelist bypass */
+  /** Optional tester email for Apple/Google review bypass */
   testerEmail?: string;
 }
 

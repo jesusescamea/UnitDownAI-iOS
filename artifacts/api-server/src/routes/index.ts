@@ -16,6 +16,7 @@ import storageRouter from "./storage";
 import unitPhotosRouter from "./unitPhotos";
 import scheduledEventsRouter from "./scheduledEvents";
 import devicesRouter from "./devices";
+import aiPolishRouter from "./aiPolish";
 
 const router: IRouter = Router();
 
@@ -36,5 +37,6 @@ router.use(storageRouter);
 router.use(unitPhotosRouter);
 router.use(scheduledEventsRouter);
 router.use(devicesRouter);
+router.use(aiPolishRouter);
 
 export default router;

@@ -1,5 +1,5 @@
 /**
- * VoiceNoteRecorder — segment-based transcript engine
+ * VoiceNoteRecorder — segment-based transcript engine with AI Polish
  *
  * === Transcript architecture ===
  *
@@ -14,50 +14,25 @@
  *     The current in-progress phrase. Replaced entirely each onresult event.
  *     Never appended to finalSegmentsRef during live recording.
  *
- * Display formula (the only thing shown to the user):
- *   displayFinal + (displayInterim ? " " + displayInterim : "")
+ * Display formula: displayFinal + (displayInterim ? " " + displayInterim : "")
  *
- * On stop:
- *   If interimRef has content not already represented in the final segments,
- *   it is merged in via buildNextSegments() exactly once before review.
+ * On stop: interimRef is promoted → finalSegments exactly once (if not already captured).
+ * On review: cleanupTranscript() removes adjacent n-gram repeats (n=1,2,3) before
+ *   seeding the edit textarea.
  *
- * On review:
- *   cleanupTranscript() removes any remaining adjacent repeated 1-, 2-, and
- *   3-word n-grams from the joined final text before seeding the edit textarea.
+ * === AI Polish ===
+ * The reviewing stage exposes an "AI Polish" button. When tapped, AIPolishPanel
+ * renders in place of the normal edit UI. The technician always stays in control:
+ *   • Keep Original — returns to edit textarea unchanged
+ *   • Edit AI Version — pre-fills textarea with polished text
+ *   • Save AI Version — saves immediately
  *
- * === buildNextSegments (overlap remover) ===
- *
- *   Problem: The browser fires "High head" → "High head pressure" as successive
- *   final events. Naive append produces "High head High head pressure".
- *
- *   Solution: Find the longest suffix of the current joined text that is also a
- *   prefix of the new phrase (case-insensitive). Replace those overlapping words
- *   with the new (longer) phrase.
- *
- *   Example:
- *     prevJoined = "High head"
- *     newPhrase  = "High head pressure"
- *     overlap    = 2 words ("High head")
- *     result     = "High head pressure"   ← NOT "High head High head pressure"
- *
- * === cleanupTranscript (n-gram dedup) ===
- *
- *   Removes adjacent repeated sequences of 1, 2, and 3 words (in that order)
- *   using an in-place scan with splice. Runs once before the review textarea is
- *   seeded, as a final safety net.
- *
- *   Test cases:
- *     ["High head", "High head pressure", "High head pressure on RTU"]
- *       → "High head pressure on RTU"
- *
- *     ["Come back", "come back and check", "come back and check on unit Friday"]
- *       → "Come back and check on unit Friday"
- *
- * Phase-2 ready: onSave(entry) can be intercepted for AI cleanup before persisting.
+ * Phase-2 ready: onSave(entry) can be intercepted for additional processing.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, Mic, MicOff, RotateCcw, X } from "lucide-react";
+import { CheckCircle2, Mic, MicOff, RotateCcw, Sparkles, X } from "lucide-react";
+import { AIPolishPanel } from "./AIPolishPanel";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -74,6 +49,7 @@ interface VoiceNoteRecorderProps {
   onSave: (entry: VoiceNoteEntry) => void;
   onDiscard?: () => void;
   placeholder?: string;
+  isPro?: boolean;
 }
 
 // ─── Browser support ──────────────────────────────────────────────────────────
@@ -92,13 +68,13 @@ function getSpeechRecognitionClass(): AnySpeechRecognition | null {
 /**
  * Merges `newPhrase` into `segments` by detecting suffix/prefix overlaps.
  *
- * Steps:
- *  1. Skip if newPhrase is already contained in the joined segments (exact duplicate).
- *  2. Find the longest suffix of the joined text that matches a prefix of newPhrase
- *     (case-insensitive, word-boundary aligned).
- *  3. If overlap found: replace those trailing words with the full new phrase,
- *     returning a single flattened segment.
- *  4. If no overlap: append newPhrase as a new segment.
+ * Finds the longest suffix of the joined segments that is also a prefix of
+ * the new phrase (case-insensitive). Replaces those overlapping words with
+ * the full new phrase, flattening into a single coherent segment.
+ *
+ * Example:
+ *   prev: "High head"  +  new: "High head pressure"
+ *   → overlap=2 → "High head pressure"   (NOT "High head High head pressure")
  */
 function buildNextSegments(segments: string[], newRaw: string): string[] {
   const newPhrase = newRaw.trim();
@@ -106,9 +82,8 @@ function buildNextSegments(segments: string[], newRaw: string): string[] {
 
   const prevJoined = segments.join(" ").trim();
 
-  // Skip exact duplicates (case-insensitive substring)
   if (prevJoined && prevJoined.toLowerCase().includes(newPhrase.toLowerCase())) {
-    return segments;
+    return segments; // exact duplicate — skip
   }
 
   if (!prevJoined) {
@@ -118,8 +93,6 @@ function buildNextSegments(segments: string[], newRaw: string): string[] {
   const prevWords = prevJoined.split(/\s+/).filter(Boolean);
   const newWords  = newPhrase.split(/\s+/).filter(Boolean);
 
-  // Find longest suffix of prevWords that equals prefix of newWords
-  // Only consider overlaps where newPhrase is strictly longer (progress forward)
   let overlapLen = 0;
   const maxCheck = Math.min(prevWords.length, newWords.length - 1);
   for (let len = maxCheck; len >= 1; len--) {
@@ -132,12 +105,11 @@ function buildNextSegments(segments: string[], newRaw: string): string[] {
   }
 
   if (overlapLen > 0) {
-    // Remove overlapping tail of prevWords, append all of newWords
     const merged = [
       ...prevWords.slice(0, prevWords.length - overlapLen),
       ...newWords,
     ].join(" ");
-    return [merged]; // flatten into one coherent segment
+    return [merged];
   }
 
   return [...segments, newPhrase];
@@ -145,12 +117,6 @@ function buildNextSegments(segments: string[], newRaw: string): string[] {
 
 // ─── N-gram adjacent dedup ────────────────────────────────────────────────────
 
-/**
- * Removes adjacent repeated sequences of `n` words in-place (case-insensitive).
- *
- * Example (n=2): "High head High head pressure" → "High head pressure"
- * Example (n=1): "come come back"               → "come back"
- */
 function removeAdjacentNgramRepeats(words: string[], n: number): string[] {
   const result = [...words];
   let i = n;
@@ -158,7 +124,7 @@ function removeAdjacentNgramRepeats(words: string[], n: number): string[] {
     const prev = result.slice(i - n, i).map((w) => w.toLowerCase()).join(" ");
     const curr = result.slice(i, i + n).map((w) => w.toLowerCase()).join(" ");
     if (prev === curr) {
-      result.splice(i, n); // remove the repeated block, re-check same index
+      result.splice(i, n);
     } else {
       i++;
     }
@@ -166,11 +132,6 @@ function removeAdjacentNgramRepeats(words: string[], n: number): string[] {
   return result;
 }
 
-/**
- * Final cleanup applied before the review textarea is seeded.
- * Runs n-gram dedup for n = 3, 2, 1 (largest first to catch phrase-level repeats
- * before single-word repeats).
- */
 function cleanupTranscript(text: string): string {
   let words = text.trim().split(/\s+/).filter(Boolean);
   for (const n of [3, 2, 1]) {
@@ -181,19 +142,25 @@ function cleanupTranscript(text: string): string {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteRecorderProps) {
+export function VoiceNoteRecorder({
+  onSave,
+  onDiscard,
+  placeholder,
+  isPro = false,
+}: VoiceNoteRecorderProps) {
   const [stage,        setStage]        = useState<Stage>("idle");
   const [micStatus,    setMicStatus]    = useState<MicStatus>("listening");
   const [editText,     setEditText]     = useState("");
   const [error,        setError]        = useState<string | null>(null);
+  const [polishOpen,   setPolishOpen]   = useState(false);
 
-  // Display mirrors — React state derived from refs; updated inside event handlers
-  const [displayFinal,   setDisplayFinal]   = useState(""); // finalSegmentsRef.join(" ")
-  const [displayInterim, setDisplayInterim] = useState(""); // interimRef
+  // Display mirrors — React state derived from refs
+  const [displayFinal,   setDisplayFinal]   = useState("");
+  const [displayInterim, setDisplayInterim] = useState("");
 
-  // ── Refs — single source of truth; never stale inside callbacks ─────────────
-  const finalSegmentsRef = useRef<string[]>([]); // confirmed final segments only
-  const interimRef       = useRef<string>("");   // current interim — replace, never append
+  // Refs — single source of truth; never stale inside callbacks
+  const finalSegmentsRef = useRef<string[]>([]);
+  const interimRef       = useRef<string>("");
   const recognitionRef   = useRef<AnySpeechRecognition>(null);
 
   const isSupported = !!getSpeechRecognitionClass();
@@ -210,6 +177,17 @@ export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteR
     setDisplayInterim(interimRef.current);
   }
 
+  // Shared save logic — accepts the text to save (original or AI-polished)
+  const handleSaveText = (text: string) => {
+    if (!text.trim()) return;
+    onSave({ id: `vn-${Date.now()}`, text: text.trim(), savedAt: Date.now() });
+    resetRefs();
+    setStage("idle");
+    setPolishOpen(false);
+    setDisplayFinal("");
+    setEditText("");
+  };
+
   // ── start ──────────────────────────────────────────────────────────────────
   const startRecording = useCallback(() => {
     const SR = getSpeechRecognitionClass();
@@ -218,6 +196,7 @@ export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteR
     resetRefs();
     setDisplayFinal("");
     setDisplayInterim("");
+    setPolishOpen(false);
     setError(null);
 
     const r = new SR();
@@ -232,18 +211,15 @@ export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteR
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     r.onresult = (event: any) => {
-      // Reset interim — it is a full replacement, never appended
-      interimRef.current = "";
+      interimRef.current = ""; // replace, never append
 
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const result = event.results[i];
         const transcript: string = result[0].transcript;
 
         if (result.isFinal) {
-          // Merge into finalSegments with overlap detection — never touch interim
           finalSegmentsRef.current = buildNextSegments(finalSegmentsRef.current, transcript);
         } else {
-          // Replace interimRef with the latest single interim phrase only
           interimRef.current = transcript;
         }
       }
@@ -260,7 +236,7 @@ export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteR
         setError("Microphone access denied. Allow microphone access and try again.");
       } else if (event.error === "no-speech") {
         setMicStatus("listening");
-        return; // benign — keep recording
+        return;
       } else if (event.error !== "aborted") {
         setError("Could not reach speech recognition. Check your connection and try again.");
       }
@@ -268,8 +244,6 @@ export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteR
     };
 
     r.onend = () => {
-      // Promote interimRef → finalSegments if it exists and isn't already captured.
-      // This handles short phrases that never received an isFinal event before stop().
       const pending = interimRef.current.trim();
       if (pending) {
         const joined = finalSegmentsRef.current.join(" ").toLowerCase();
@@ -301,33 +275,28 @@ export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteR
     recognitionRef.current = null;
     resetRefs();
     setStage("idle");
+    setPolishOpen(false);
     setDisplayFinal("");
     setDisplayInterim("");
   }, []);
 
-  // Seed edit textarea on entering review — run final cleanup here
+  // Seed edit textarea on entering review — run final cleanup
   useEffect(() => {
     if (stage === "reviewing") {
       const raw = finalSegmentsRef.current.join(" ");
       setEditText(cleanupTranscript(raw));
+      setPolishOpen(false);
     }
   }, [stage]);
 
-  // ── save ───────────────────────────────────────────────────────────────────
-  const handleSave = () => {
-    const text = editText.trim();
-    if (!text) return;
-    onSave({ id: `vn-${Date.now()}`, text, savedAt: Date.now() });
-    resetRefs();
-    setStage("idle");
-    setDisplayFinal("");
-    setEditText("");
-  };
+  // ── save original ──────────────────────────────────────────────────────────
+  const handleSave = () => handleSaveText(editText);
 
   // ── discard ────────────────────────────────────────────────────────────────
   const handleDiscard = () => {
     resetRefs();
     setStage("idle");
+    setPolishOpen(false);
     setDisplayFinal("");
     setEditText("");
     onDiscard?.();
@@ -337,6 +306,7 @@ export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteR
   const handleReRecord = () => {
     resetRefs();
     setStage("idle");
+    setPolishOpen(false);
     setDisplayFinal("");
     setEditText("");
     setTimeout(startRecording, 80);
@@ -431,8 +401,23 @@ export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteR
   // ─────────────────────────────────────────────────────────────────────────
   // REVIEWING
   // ─────────────────────────────────────────────────────────────────────────
+
+  // AI Polish panel replaces the normal review UI when open
+  if (polishOpen) {
+    return (
+      <AIPolishPanel
+        originalText={editText}
+        isPro={isPro}
+        onKeepOriginal={() => setPolishOpen(false)}
+        onEditPolished={(text) => { setEditText(text); setPolishOpen(false); }}
+        onSavePolished={handleSaveText}
+      />
+    );
+  }
+
   return (
     <div className="space-y-3">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
@@ -444,6 +429,7 @@ export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteR
         </button>
       </div>
 
+      {/* Editable transcript */}
       <textarea
         value={editText}
         onChange={(e) => setEditText(e.target.value)}
@@ -453,6 +439,27 @@ export function VoiceNoteRecorder({ onSave, onDiscard, placeholder }: VoiceNoteR
         className="w-full text-sm text-slate-800 bg-white border border-slate-200 focus:border-blue-300 rounded-xl px-3 py-2.5 resize-none focus:outline-none leading-relaxed"
       />
 
+      {/* AI Polish — secondary action */}
+      {isPro ? (
+        <button
+          onClick={() => setPolishOpen(true)}
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-sm font-bold active:bg-violet-100 transition-colors"
+        >
+          <Sparkles className="w-4 h-4" />
+          AI Polish
+        </button>
+      ) : (
+        <button
+          disabled
+          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-sm font-semibold cursor-not-allowed"
+        >
+          <Sparkles className="w-4 h-4" />
+          AI Polish
+          <span className="text-[10px] font-extrabold bg-slate-200 text-slate-500 rounded-full px-1.5 py-0.5 leading-none tracking-wide uppercase">Pro</span>
+        </button>
+      )}
+
+      {/* Primary actions */}
       <div className="flex gap-2">
         <button
           onClick={handleDiscard}

@@ -1686,6 +1686,7 @@ function EquipmentDetailPreview({
                 <VoiceNoteRecorder
                   onSave={(entry) => setVoiceNotes((prev) => [entry, ...prev])}
                   placeholder="Tap the mic and speak — edit before saving…"
+                  isPro
                 />
               </div>
             </div>

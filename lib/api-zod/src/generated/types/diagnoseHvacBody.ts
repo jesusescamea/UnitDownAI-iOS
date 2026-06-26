@@ -11,7 +11,6 @@ export interface DiagnoseHvacBody {
   symptoms: string;
   /** Anonymous client identifier for Pro status lookup */
   clientId?: string;
-  // Google Play closed testing whitelist — remove or replace after testing.
-  /** Tester email for closed testing whitelist bypass */
+  /** Optional tester email for Apple/Google review bypass */
   testerEmail?: string;
 }

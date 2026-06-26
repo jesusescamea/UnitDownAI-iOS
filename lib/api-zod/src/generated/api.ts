@@ -16,6 +16,33 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
+ * Rewrites technician field notes in a chosen style without adding or fabricating any technical facts.
+ * @summary Polish HVAC field notes with AI
+ */
+export const AiPolishBody = zod.object({
+  text: zod.string().describe("Raw field notes to polish"),
+  mode: zod
+    .enum([
+      "professional",
+      "technician",
+      "warranty",
+      "equipment-memory",
+      "pm-summary",
+      "email-customer",
+      "work-order",
+    ])
+    .describe("Writing style to apply when polishing"),
+  clientId: zod
+    .string()
+    .optional()
+    .describe("Optional Clerk user ID for Pro status lookup"),
+});
+
+export const AiPolishResponse = zod.object({
+  polished: zod.string().describe("Improved version of the input text"),
+});
+
+/**
  * Analyzes HVAC symptoms against the knowledge base and returns the top 3 matching diagnoses
  * @summary Diagnose HVAC symptoms
  */
@@ -25,11 +52,10 @@ export const DiagnoseHvacBody = zod.object({
     .string()
     .optional()
     .describe("Anonymous client identifier for Pro status lookup"),
-  // Google Play closed testing whitelist — remove or replace after testing.
   testerEmail: zod
     .string()
     .optional()
-    .describe("Tester email for closed testing whitelist bypass"),
+    .describe("Optional tester email for Apple\/Google review bypass"),
 });
 
 export const diagnoseHvacResponsePrimaryConfidencePercentMin = 0;

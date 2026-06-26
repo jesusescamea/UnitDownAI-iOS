@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: hvac
     description: HVAC diagnosis operations
+  - name: ai
+    description: AI-assisted documentation tools
 paths:
   /healthz:
     get:
@@ -26,6 +28,29 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /ai/polish:
+    post:
+      operationId: aiPolish
+      tags: [ai]
+      summary: Polish HVAC field notes with AI
+      description: Rewrites technician field notes in a chosen style without adding or fabricating any technical facts.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiPolishBody"
+      responses:
+        "200":
+          description: Polished text result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiPolishResponse"
+        "400":
+          description: Invalid request body
+        "429":
+          description: Rate limited or Pro subscription required
   /hvac/diagnose:
     post:
       operationId: diagnoseHvac
@@ -47,6 +72,39 @@ paths:
                 $ref: "#/components/schemas/HvacDiagnosisResult"
 components:
   schemas:
+    AiPolishMode:
+      type: string
+      enum:
+        - professional
+        - technician
+        - warranty
+        - equipment-memory
+        - pm-summary
+        - email-customer
+        - work-order
+      description: Writing style to apply when polishing
+    AiPolishBody:
+      type: object
+      properties:
+        text:
+          type: string
+          description: Raw field notes to polish
+        mode:
+          $ref: "#/components/schemas/AiPolishMode"
+        clientId:
+          type: string
+          description: Optional Clerk user ID for Pro status lookup
+      required:
+        - text
+        - mode
+    AiPolishResponse:
+      type: object
+      properties:
+        polished:
+          type: string
+          description: Improved version of the input text
+      required:
+        - polished
     HealthStatus:
       type: object
       properties:
@@ -63,6 +121,9 @@ components:
         clientId:
           type: string
           description: Anonymous client identifier for Pro status lookup
+        testerEmail:
+          type: string
+          description: Optional tester email for Apple/Google review bypass
       required:
         - symptoms
     HvacDiagnosisEntry:
