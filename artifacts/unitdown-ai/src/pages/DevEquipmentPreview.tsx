@@ -1082,8 +1082,20 @@ function EquipmentLibraryPreview({
             <div className="w-7 h-7 bg-blue-100 rounded-xl flex items-center justify-center">
               <Building2 className="w-3.5 h-3.5 text-blue-600" />
             </div>
-            <h2 className="font-extrabold text-slate-800 text-sm">Customers & Sites</h2>
-            <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{MOCK_UNITS.length}</span>
+            <h2 className="font-extrabold text-slate-800 text-sm">
+              {viewMode === "all"
+                ? "All Equipment"
+                : kpiFilter === "attention"
+                ? "Sites Needing Service"
+                : kpiFilter === "monitoring"
+                ? "Sites Being Monitored"
+                : kpiFilter === "return-visits"
+                ? "Sites With Return Visits"
+                : "Active Sites"}
+            </h2>
+            <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">
+              {viewMode === "all" ? kpiFilteredUnits.length : kpiFilteredGroups.length}
+            </span>
           </div>
           <div className="flex bg-slate-100 rounded-full p-0.5">
             <button
