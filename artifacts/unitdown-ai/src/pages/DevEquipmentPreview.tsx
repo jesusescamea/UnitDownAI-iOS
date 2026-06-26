@@ -5,11 +5,12 @@
  * Blocked from rendering in production via import.meta.env.DEV guard.
  */
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import {
-  Activity, Bell, Brain, Building2, Camera, CheckCircle2, ChevronDown, ChevronRight,
+  Activity, AlertCircle, Bell, Brain, Building2, Calendar, Camera, CheckCircle2,
+  ChevronDown, ChevronRight, CircleDot,
   Clock, Edit2, FileText, History, Info,
-  Map as MapIcon, MapPin, Plus, Search, Settings, Star, Trash2, TrendingUp, Wrench, ZoomIn,
+  Map as MapIcon, MapPin, Plus, Search, Settings, Star, Trash2, TrendingUp, Wrench, X, ZoomIn,
 } from "lucide-react";
 import RtuIcon from "@/components/RtuIcon";
 import { Button } from "@/components/ui/button";
@@ -703,11 +704,15 @@ function CustomerGroupCard({
   );
 }
 
+type KpiFilterType = "attention" | "monitoring" | "return-visits" | null;
+
 function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUnit) => void }) {
   const [typeFilter, setTypeFilter] = useState("");
   const [q, setQ] = useState("");
   const [viewMode, setViewMode] = useState<"customers" | "all">("customers");
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
+  const [kpiFilter, setKpiFilter] = useState<KpiFilterType>(null);
+  const customerSectionRef = useRef<HTMLDivElement | null>(null);
 
   const filtered = MOCK_UNITS.filter((u) => {
     if (q && !`${u.nickname} ${u.siteCustomerName} ${u.manufacturer} ${u.modelNumber} ${u.serialNumber} ${u.location}`
@@ -726,6 +731,29 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
     }
     seenCustomers.get(cust)!.push(u);
   });
+
+  const kpiFilteredGroups = kpiFilter === null
+    ? customerGroups
+    : customerGroups.filter(({ units }) => {
+        if (kpiFilter === "attention")     return units.some((u) => u.status === "critical");
+        if (kpiFilter === "monitoring")    return units.some((u) => u.status === "monitoring");
+        if (kpiFilter === "return-visits") return units.some((u) => u.status === "needs-follow-up");
+        return true;
+      });
+
+  const kpiFilteredUnits = kpiFilter === null
+    ? filtered
+    : filtered.filter((u) => {
+        if (kpiFilter === "attention")     return u.status === "critical";
+        if (kpiFilter === "monitoring")    return u.status === "monitoring";
+        if (kpiFilter === "return-visits") return u.status === "needs-follow-up";
+        return true;
+      });
+
+  const needsAttentionCount = MOCK_UNITS.filter((u) => u.status === "critical").length;
+  const monitoringCount     = MOCK_UNITS.filter((u) => u.status === "monitoring").length;
+  const returnVisitCount    = MOCK_UNITS.filter((u) => u.status === "needs-follow-up").length;
+  const equipmentCount      = MOCK_UNITS.filter((u) => !u.isArchived).length;
 
   const toggleCustomer = (customer: string) => {
     setExpandedCustomers((prev) => {
@@ -766,23 +794,103 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
           />
         </div>
 
-        {/* KPI row */}
-        <div className="grid grid-cols-4 gap-2">
-          {[
-            { label: "Equipment",  value: MOCK_UNITS.filter((u) => !u.isArchived).length },
-            { label: "Critical",   value: MOCK_UNITS.filter((u) => u.status === "critical").length },
-            { label: "Monitoring", value: MOCK_UNITS.filter((u) => u.status === "monitoring").length },
-            { label: "Follow-up",  value: MOCK_UNITS.filter((u) => u.status === "needs-follow-up").length },
-          ].map(({ label, value }) => (
-            <div key={label} className="bg-white rounded-2xl border border-slate-200 px-3 py-2.5 text-center">
-              <p className="text-lg font-extrabold text-slate-900">{value}</p>
-              <p className="text-[10px] text-slate-400 font-medium leading-tight mt-0.5">{label}</p>
-            </div>
-          ))}
+        {/* KPI Quick-Nav (2×2) */}
+        <div className="grid grid-cols-2 gap-2">
+          {([
+            {
+              filterKey: null as KpiFilterType,
+              label: "Equipment",
+              subtitle: `${equipmentCount} total`,
+              Icon: Building2,
+              value: equipmentCount,
+              hasItems: equipmentCount > 0,
+              colorOn:  "bg-slate-100 text-slate-800 border-slate-300",
+              colorOff: "bg-white text-slate-600 border-slate-200",
+              accentOn:  "bg-slate-300 text-slate-600",
+              accentOff: "bg-slate-100 text-slate-400",
+            },
+            {
+              filterKey: "attention" as KpiFilterType,
+              label: "Needs Attention",
+              subtitle: needsAttentionCount > 0
+                ? `${needsAttentionCount} unit${needsAttentionCount !== 1 ? "s" : ""}`
+                : "All clear",
+              Icon: AlertCircle,
+              value: needsAttentionCount,
+              hasItems: needsAttentionCount > 0,
+              colorOn:  "bg-red-50 text-red-900 border-red-200",
+              colorOff: "bg-white text-slate-600 border-slate-200",
+              accentOn:  "bg-red-100 text-red-600",
+              accentOff: "bg-slate-100 text-slate-400",
+            },
+            {
+              filterKey: "monitoring" as KpiFilterType,
+              label: "Monitoring",
+              subtitle: monitoringCount > 0 ? `${monitoringCount} active` : "None active",
+              Icon: CircleDot,
+              value: monitoringCount,
+              hasItems: monitoringCount > 0,
+              colorOn:  "bg-blue-50 text-blue-900 border-blue-200",
+              colorOff: "bg-white text-slate-600 border-slate-200",
+              accentOn:  "bg-blue-100 text-blue-600",
+              accentOff: "bg-slate-100 text-slate-400",
+            },
+            {
+              filterKey: "return-visits" as KpiFilterType,
+              label: "Return Visits",
+              subtitle: returnVisitCount > 0 ? `${returnVisitCount} scheduled` : "None pending",
+              Icon: Calendar,
+              value: returnVisitCount,
+              hasItems: returnVisitCount > 0,
+              colorOn:  "bg-amber-50 text-amber-900 border-amber-200",
+              colorOff: "bg-white text-slate-600 border-slate-200",
+              accentOn:  "bg-amber-100 text-amber-600",
+              accentOff: "bg-slate-100 text-slate-400",
+            },
+          ] as const).map(({ filterKey, label, subtitle, Icon, value, hasItems, colorOn, colorOff, accentOn, accentOff }) => {
+            const isSelected = filterKey !== null && kpiFilter === filterKey;
+            return (
+              <button
+                key={label}
+                onClick={() => {
+                  if (filterKey === null) {
+                    setKpiFilter(null);
+                    setTimeout(() => customerSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
+                  } else {
+                    setKpiFilter((prev) => (prev === filterKey ? null : filterKey));
+                  }
+                }}
+                className={`flex flex-col justify-between p-2.5 rounded-2xl border text-left
+                  transition-all duration-150 active:scale-[0.96]
+                  ${isSelected ? "ring-2 ring-blue-500 ring-offset-1 shadow-sm scale-[1.01]" : "hover:shadow-sm"}
+                  ${hasItems ? colorOn : colorOff}`}
+              >
+                <div className={`w-5 h-5 rounded-md flex items-center justify-center mb-1.5 ${hasItems ? accentOn : accentOff}`}>
+                  <Icon className="w-3 h-3" />
+                </div>
+                <span className="text-lg font-extrabold leading-none block">{value}</span>
+                <span className="text-[10px] font-semibold mt-0.5 opacity-70 leading-tight block">{label}</span>
+                <span className="text-[9px] font-medium opacity-50 leading-none block mt-0.5">{subtitle}</span>
+              </button>
+            );
+          })}
         </div>
 
+        {/* Active filter pill */}
+        {kpiFilter && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-200 rounded-full px-2.5 py-0.5 flex items-center gap-1">
+              Filtered
+              <button onClick={() => setKpiFilter(null)} className="ml-0.5 opacity-60 hover:opacity-100" aria-label="Clear filter">
+                <X className="w-2.5 h-2.5" />
+              </button>
+            </span>
+            <span className="text-[11px] text-slate-400">Tap card again to clear</span>
+          </div>
+        )}
+
         {/* Section header + view toggle */}
-        <div className="flex items-center justify-between">
+        <div ref={customerSectionRef} className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-blue-50 rounded-xl flex items-center justify-center">
               <Building2 className="w-3.5 h-3.5 text-blue-600" />
@@ -837,14 +945,14 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
 
         {/* Content: customer-grouped or flat */}
         {viewMode === "customers" ? (
-          customerGroups.length === 0 ? (
+          kpiFilteredGroups.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
               <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
               <p className="text-sm text-slate-400">No customers match your filter.</p>
             </div>
           ) : (
             <div className="space-y-2.5">
-              {customerGroups.map(({ customer, units }) => (
+              {kpiFilteredGroups.map(({ customer, units }) => (
                 <CustomerGroupCard
                   key={customer}
                   customer={customer}
@@ -857,14 +965,14 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
             </div>
           )
         ) : (
-          filtered.length === 0 ? (
+          kpiFilteredUnits.length === 0 ? (
             <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
               <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
               <p className="text-sm text-slate-400">No units match your filter.</p>
             </div>
           ) : (
             <div className="space-y-2">
-              {filtered.map((u) => (
+              {kpiFilteredUnits.map((u) => (
                 <UnitCard key={u.id} unit={u} onSelect={() => onSelectUnit(u)} />
               ))}
             </div>
