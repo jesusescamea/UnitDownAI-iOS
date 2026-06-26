@@ -15,6 +15,7 @@ import {
 import RtuIcon from "@/components/RtuIcon";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { VoiceNoteRecorder, type VoiceNoteEntry } from "@/components/VoiceNoteRecorder";
 
 // ─── Types & mock data ────────────────────────────────────────────────────────
 
@@ -1107,6 +1108,7 @@ function EquipmentDetailPreview({
 }) {
   const [activeTab, setActiveTab] = useState<ActiveTab>("timeline");
   const [progressOpen, setProgressOpen] = useState(true);
+  const [voiceNotes, setVoiceNotes] = useState<VoiceNoteEntry[]>([]);
   const sc = unitStatusConfig(unit.status);
 
   const hasEquipment = unit.manufacturer || unit.modelNumber || unit.serialNumber ||
@@ -1473,12 +1475,45 @@ function EquipmentDetailPreview({
               </div>
             )}
 
-            {/* Voice Notes — roadmap marker */}
-            <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-dashed border-slate-200 bg-slate-50">
-              <Mic className="w-3.5 h-3.5 text-slate-300 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-slate-400 leading-snug">
-                <span className="font-semibold text-slate-500">Roadmap:</span> Voice Notes will let techs dictate notes and attach them to customer, site, or equipment timeline entries.
-              </p>
+            {/* Voice Notes */}
+            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+              {/* Section header */}
+              <div className="flex items-center justify-between px-4 pt-4 pb-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-6 h-6 bg-blue-50 rounded-lg flex items-center justify-center">
+                    <Mic className="w-3.5 h-3.5 text-blue-600" />
+                  </div>
+                  <p className="text-xs font-extrabold text-slate-700 uppercase tracking-widest">Voice Notes</p>
+                  {voiceNotes.length > 0 && (
+                    <span className="text-[10px] font-bold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-full">
+                      {voiceNotes.length}
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Saved voice notes list */}
+              {voiceNotes.length > 0 && (
+                <div className="px-4 pb-2 space-y-2">
+                  {voiceNotes.map((vn) => (
+                    <div key={vn.id} className="bg-slate-50 rounded-xl px-3 py-2.5">
+                      <p className="text-sm text-slate-800 leading-relaxed">{vn.text}</p>
+                      <p className="text-[10px] text-slate-400 mt-1.5">
+                        {new Date(vn.savedAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                        {" · "}Voice note
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Recorder */}
+              <div className="px-4 pb-4 pt-1">
+                <VoiceNoteRecorder
+                  onSave={(entry) => setVoiceNotes((prev) => [entry, ...prev])}
+                  placeholder="Tap the mic and speak — edit before saving…"
+                />
+              </div>
             </div>
 
             {/* Service Checklist */}
