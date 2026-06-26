@@ -2083,7 +2083,7 @@ export default function RecordsPage() {
                   },
                   {
                     filterKey: "attention" as KpiFilterType,
-                    label: "Needs Attention",
+                    label: "Needs Service",
                     subtitle: needsAttentionCount > 0
                       ? `${needsAttentionCount} unit${needsAttentionCount !== 1 ? "s" : ""}`
                       : "All clear",

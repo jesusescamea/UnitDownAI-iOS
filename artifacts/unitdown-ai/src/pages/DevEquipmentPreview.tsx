@@ -10,7 +10,7 @@ import {
   Activity, AlertCircle, Bell, Brain, Building2, Calendar, Camera, CheckCircle2,
   ChevronDown, ChevronRight, CircleDot,
   Clock, Edit2, FileText, History, Info,
-  Map as MapIcon, MapPin, Plus, Search, Settings, Star, Trash2, TrendingUp, Wrench, X, ZoomIn,
+  Map as MapIcon, MapPin, Mic, Plus, Search, Settings, Star, Trash2, TrendingUp, Wrench, X, ZoomIn,
 } from "lucide-react";
 import RtuIcon from "@/components/RtuIcon";
 import { Button } from "@/components/ui/button";
@@ -852,7 +852,7 @@ function EquipmentLibraryPreview({
             },
             {
               filterKey: "attention" as KpiFilterType,
-              label: "Needs Attention",
+              label: "Needs Service",
               subtitle: needsAttentionCount > 0
                 ? `${needsAttentionCount} unit${needsAttentionCount !== 1 ? "s" : ""}`
                 : "All clear",
@@ -915,6 +915,18 @@ function EquipmentLibraryPreview({
               </button>
             );
           })}
+        </div>
+
+        {/* PM Due — future KPI placeholder (dev preview only) */}
+        <div className="flex items-center gap-3 px-3 py-2 rounded-2xl border border-dashed border-slate-200 bg-white">
+          <div className="w-5 h-5 bg-slate-100 rounded-md flex items-center justify-center flex-shrink-0">
+            <Wrench className="w-3 h-3 text-slate-300" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <span className="text-xs font-semibold text-slate-400">PM Due</span>
+            <span className="text-[10px] text-slate-300 ml-1.5">— KPI planned for next release</span>
+          </div>
+          <span className="text-[9px] font-bold text-slate-300 border border-slate-200 px-1.5 py-0.5 rounded-full flex-shrink-0">Soon</span>
         </div>
 
         {/* Active filter pill */}
@@ -1353,10 +1365,18 @@ function EquipmentDetailPreview({
 
         {/* Photos Tab */}
         {activeTab === "photos" && (
-          <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center">
-            <Camera className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-sm font-semibold text-slate-500">Photo Album</p>
-            <p className="text-xs text-slate-400 mt-1">Unit photos, field snapshots, and inspection images appear here.</p>
+          <div className="space-y-3">
+            <div className="bg-white rounded-2xl border border-slate-200 p-6 text-center">
+              <Camera className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm font-semibold text-slate-500">Photo Album</p>
+              <p className="text-xs text-slate-400 mt-1">Unit photos, field snapshots, and inspection images appear here.</p>
+            </div>
+            <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-dashed border-slate-200 bg-slate-50">
+              <Camera className="w-3.5 h-3.5 text-slate-300 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-slate-400 leading-snug">
+                <span className="font-semibold text-slate-500">Roadmap:</span> One-tap photo capture will attach photos directly to the current site, equipment, or timeline entry.
+              </p>
+            </div>
           </div>
         )}
 
@@ -1394,6 +1414,14 @@ function EquipmentDetailPreview({
                 <p className="text-sm font-semibold text-slate-500">No notes yet</p>
               </div>
             )}
+
+            {/* Voice Notes — roadmap marker */}
+            <div className="flex items-start gap-2.5 px-3 py-2.5 rounded-xl border border-dashed border-slate-200 bg-slate-50">
+              <Mic className="w-3.5 h-3.5 text-slate-300 flex-shrink-0 mt-0.5" />
+              <p className="text-xs text-slate-400 leading-snug">
+                <span className="font-semibold text-slate-500">Roadmap:</span> Voice Notes will let techs dictate notes and attach them to customer, site, or equipment timeline entries.
+              </p>
+            </div>
 
             {/* Service Checklist */}
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
@@ -1451,6 +1479,9 @@ function SiteNavigatorDrawer({
   selectedUnit,
   onSelectCustomer,
   onSelectUnit,
+  pinnedCustomers,
+  onTogglePin,
+  recentCustomerNames,
 }: {
   open: boolean;
   onClose: () => void;
@@ -1459,19 +1490,28 @@ function SiteNavigatorDrawer({
   selectedUnit: MockUnit | null;
   onSelectCustomer: (customer: string) => void;
   onSelectUnit: (unit: MockUnit) => void;
+  pinnedCustomers: Set<string>;
+  onTogglePin: (customer: string) => void;
+  recentCustomerNames: string[];
 }) {
   const lower = q.toLowerCase();
+  const isSearching = q.trim().length > 0;
 
-  const matchedUnits = q.trim()
+  const matchedUnits = isSearching
     ? MOCK_UNITS.filter((u) =>
         [u.siteCustomerName, u.location, u.nickname, u.manufacturer, u.modelNumber, u.serialNumber]
           .some((v) => v?.toLowerCase().includes(lower))
       )
     : MOCK_UNITS;
 
-  const customerNames = Array.from(
+  const allCustomerNames = Array.from(
     new Set(matchedUnits.map((u) => u.siteCustomerName ?? "Uncategorized"))
   ).sort();
+
+  // Pinned customers float to top
+  const pinnedInList   = allCustomerNames.filter((c) => pinnedCustomers.has(c));
+  const unpinnedInList = allCustomerNames.filter((c) => !pinnedCustomers.has(c));
+  const customerNames  = [...pinnedInList, ...unpinnedInList];
 
   return (
     <>
@@ -1486,8 +1526,7 @@ function SiteNavigatorDrawer({
       {/* Bottom sheet */}
       <div
         className={`fixed bottom-0 left-0 right-0 z-[201] bg-white rounded-t-3xl shadow-2xl
-          flex flex-col transition-transform duration-300 ease-out
-          max-h-[80vh]
+          flex flex-col transition-transform duration-300 ease-out max-h-[80vh]
           ${open ? "translate-y-0" : "translate-y-full"}`}
       >
         {/* Drag handle */}
@@ -1521,23 +1560,21 @@ function SiteNavigatorDrawer({
         {/* Scrollable results */}
         <div className="overflow-y-auto flex-1 px-4 pb-10 space-y-5">
 
-          {/* Customers */}
-          {customerNames.length > 0 && (
+          {/* Recent Sites — shown only when not actively searching */}
+          {!isSearching && recentCustomerNames.length > 0 && (
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
-                Customers
-              </p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Recent</p>
               <div className="space-y-1">
-                {customerNames.map((customer) => (
+                {recentCustomerNames.map((customer) => (
                   <button
                     key={customer}
                     onClick={() => { onSelectCustomer(customer); onClose(); }}
                     className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 active:bg-blue-50 transition-colors text-left"
                   >
-                    <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
-                      <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                    <div className="w-7 h-7 bg-slate-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Clock className="w-3.5 h-3.5 text-slate-400" />
                     </div>
-                    <span className="text-sm font-semibold text-slate-800">{customer}</span>
+                    <span className="text-sm font-semibold text-slate-700">{customer}</span>
                     <ChevronRight className="w-3.5 h-3.5 text-slate-300 ml-auto flex-shrink-0" />
                   </button>
                 ))}
@@ -1545,12 +1582,48 @@ function SiteNavigatorDrawer({
             </div>
           )}
 
+          {/* Customers — with pin toggles */}
+          {customerNames.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                {isSearching ? "Customers" : "All Customers"}
+              </p>
+              <div className="space-y-1">
+                {customerNames.map((customer) => {
+                  const isPinned = pinnedCustomers.has(customer);
+                  return (
+                    <div key={customer} className="flex items-center gap-1">
+                      <button
+                        onClick={() => { onSelectCustomer(customer); onClose(); }}
+                        className="flex-1 flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 active:bg-blue-50 transition-colors text-left min-w-0"
+                      >
+                        <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${isPinned ? "bg-amber-100" : "bg-blue-100"}`}>
+                          {isPinned
+                            ? <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                            : <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                          }
+                        </div>
+                        <span className="text-sm font-semibold text-slate-800 truncate">{customer}</span>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-300 ml-auto flex-shrink-0" />
+                      </button>
+                      <button
+                        onClick={() => onTogglePin(customer)}
+                        className={`p-2 rounded-xl transition-colors flex-shrink-0 ${isPinned ? "text-amber-400" : "text-slate-300 active:text-amber-300"}`}
+                        aria-label={isPinned ? "Unpin site" : "Pin site"}
+                      >
+                        <Star className={`w-4 h-4 ${isPinned ? "fill-amber-400" : ""}`} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Equipment */}
           {matchedUnits.length > 0 && (
             <div>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
-                Equipment
-              </p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">Equipment</p>
               <div className="space-y-1">
                 {matchedUnits.map((u) => {
                   const sc = unitStatusConfig(u.status);
@@ -1605,11 +1678,69 @@ export default function DevEquipmentPreview() {
     );
   }
 
-  const [selectedUnit, setSelectedUnit] = useState<MockUnit | null>(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
-  const [drawerQ, setDrawerQ] = useState("");
+  // Restore last viewed unit from localStorage on mount
+  const [selectedUnit, setSelectedUnit] = useState<MockUnit | null>(() => {
+    try {
+      const lastId = localStorage.getItem("unitdown_dev_last_unit_id");
+      return lastId ? (MOCK_UNITS.find((u) => u.id === lastId) ?? null) : null;
+    } catch { return null; }
+  });
 
-  const openDrawer = () => { setDrawerQ(""); setDrawerOpen(true); };
+  const [drawerOpen, setDrawerOpen]   = useState(false);
+  const [drawerQ,    setDrawerQ]      = useState("");
+
+  // Pinned customers — persisted to localStorage
+  const [pinnedCustomers, setPinnedCustomers] = useState<Set<string>>(() => {
+    try {
+      const stored = localStorage.getItem("unitdown_dev_pinned");
+      return stored ? new Set<string>(JSON.parse(stored) as string[]) : new Set<string>();
+    } catch { return new Set<string>(); }
+  });
+
+  // Recent unit IDs — persisted to localStorage (max 10 entries)
+  const [recentUnitIds, setRecentUnitIds] = useState<string[]>(() => {
+    try {
+      const stored = localStorage.getItem("unitdown_dev_recents");
+      return stored ? (JSON.parse(stored) as string[]) : [];
+    } catch { return []; }
+  });
+
+  // Derive unique recent customer names (max 4) from recent unit history
+  const recentCustomerNames = useMemo(() => {
+    const seen = new Set<string>();
+    const result: string[] = [];
+    recentUnitIds.forEach((id) => {
+      const cust = MOCK_UNITS.find((u) => u.id === id)?.siteCustomerName;
+      if (cust && !seen.has(cust)) { seen.add(cust); result.push(cust); }
+    });
+    return result.slice(0, 4);
+  }, [recentUnitIds]);
+
+  const handleSelectUnit = (unit: MockUnit) => {
+    setSelectedUnit(unit);
+    try { localStorage.setItem("unitdown_dev_last_unit_id", unit.id); } catch {}
+    setRecentUnitIds((prev) => {
+      const next = [unit.id, ...prev.filter((id) => id !== unit.id)].slice(0, 10);
+      try { localStorage.setItem("unitdown_dev_recents", JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const handleBack = () => {
+    setSelectedUnit(null);
+    try { localStorage.removeItem("unitdown_dev_last_unit_id"); } catch {}
+  };
+
+  const handleTogglePin = (customer: string) => {
+    setPinnedCustomers((prev) => {
+      const next = new Set(prev);
+      next.has(customer) ? next.delete(customer) : next.add(customer);
+      try { localStorage.setItem("unitdown_dev_pinned", JSON.stringify([...next])); } catch {}
+      return next;
+    });
+  };
+
+  const openDrawer  = () => { setDrawerQ(""); setDrawerOpen(true); };
   const closeDrawer = () => { setDrawerOpen(false); };
 
   return (
@@ -1626,19 +1757,25 @@ export default function DevEquipmentPreview() {
         q={drawerQ}
         onQChange={setDrawerQ}
         selectedUnit={selectedUnit}
-        onSelectCustomer={() => setSelectedUnit(null)}
-        onSelectUnit={(unit) => setSelectedUnit(unit)}
+        onSelectCustomer={() => {
+          setSelectedUnit(null);
+          try { localStorage.removeItem("unitdown_dev_last_unit_id"); } catch {}
+        }}
+        onSelectUnit={handleSelectUnit}
+        pinnedCustomers={pinnedCustomers}
+        onTogglePin={handleTogglePin}
+        recentCustomerNames={recentCustomerNames}
       />
 
       {selectedUnit ? (
         <EquipmentDetailPreview
           unit={selectedUnit}
-          onBack={() => setSelectedUnit(null)}
+          onBack={handleBack}
           onOpenDrawer={openDrawer}
         />
       ) : (
         <EquipmentLibraryPreview
-          onSelectUnit={setSelectedUnit}
+          onSelectUnit={handleSelectUnit}
           onOpenDrawer={openDrawer}
         />
       )}
