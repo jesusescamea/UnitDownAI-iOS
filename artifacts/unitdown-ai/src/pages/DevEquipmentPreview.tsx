@@ -513,24 +513,70 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
 
 function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
   const [open, setOpen] = useState(false);
+
   const typeCfgs: Record<string, { bg: string; color: string; Icon: typeof Activity; label: string }> = {
-    diagnostic:  { bg: "bg-blue-50",    color: "text-blue-600",    Icon: Activity, label: "Diagnostic" },
-    repair:      { bg: "bg-orange-50",  color: "text-orange-600",  Icon: Wrench,   label: "Repair"     },
-    maintenance: { bg: "bg-emerald-50", color: "text-emerald-600", Icon: Settings, label: "PM"         },
-    note:        { bg: "bg-slate-100",  color: "text-slate-600",   Icon: FileText, label: "Note"       },
-    reminder:    { bg: "bg-amber-50",   color: "text-amber-600",   Icon: Bell,     label: "Reminder"   },
+    diagnostic:  { bg: "bg-blue-100",    color: "text-blue-600",    Icon: Activity, label: "Diagnostic" },
+    repair:      { bg: "bg-orange-100",  color: "text-orange-600",  Icon: Wrench,   label: "Repair"     },
+    maintenance: { bg: "bg-emerald-100", color: "text-emerald-600", Icon: Settings, label: "PM"         },
+    note:        { bg: "bg-slate-200",   color: "text-slate-500",   Icon: FileText, label: "Note"       },
+    reminder:    { bg: "bg-amber-100",   color: "text-amber-600",   Icon: Bell,     label: "Reminder"   },
   };
-  const stCfg: Record<string, { label: string; className: string }> = {
-    unresolved: { label: "Open Issue", className: "bg-amber-100 text-amber-800 border-amber-200"      },
-    resolved:   { label: "Resolved",   className: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+
+  const stCfg: Record<string, { label: string; pill: string }> = {
+    unresolved: { label: "Open Issue", pill: "bg-amber-100 text-amber-800 border-amber-200"       },
+    resolved:   { label: "Resolved",   pill: "bg-emerald-100 text-emerald-800 border-emerald-200" },
+    monitoring: { label: "Monitoring", pill: "bg-blue-100 text-blue-800 border-blue-200"          },
   };
-  const typeCfg  = typeCfgs[event.eventType] ?? typeCfgs.diagnostic;
+
+  // Card-level color theme: status takes priority, eventType breaks ties for "repair + unresolved"
+  const cardTheme = (() => {
+    if (event.eventType === "repair" && event.status === "unresolved") {
+      return {
+        base:     "bg-orange-50 border-orange-200",
+        opened:   "bg-orange-50 border-orange-300 shadow-md",
+        divider:  "border-orange-100",
+        followUp: "bg-orange-100/60 border-orange-200",
+      };
+    }
+    if (event.status === "unresolved") {
+      return {
+        base:     "bg-amber-50 border-amber-200",
+        opened:   "bg-amber-50 border-amber-300 shadow-md",
+        divider:  "border-amber-100",
+        followUp: "bg-amber-100/60 border-amber-200",
+      };
+    }
+    if (event.status === "resolved") {
+      return {
+        base:     "bg-emerald-50 border-emerald-200",
+        opened:   "bg-emerald-50 border-emerald-300 shadow-md",
+        divider:  "border-emerald-100",
+        followUp: "bg-emerald-100/60 border-emerald-200",
+      };
+    }
+    if (event.status === "monitoring") {
+      return {
+        base:     "bg-blue-50 border-blue-200",
+        opened:   "bg-blue-50 border-blue-300 shadow-md",
+        divider:  "border-blue-100",
+        followUp: "bg-blue-100/60 border-blue-200",
+      };
+    }
+    return {
+      base:     "bg-slate-50 border-slate-200",
+      opened:   "bg-slate-50 border-slate-300 shadow-sm",
+      divider:  "border-slate-100",
+      followUp: "bg-amber-50 border-amber-100",
+    };
+  })();
+
+  const typeCfg   = typeCfgs[event.eventType] ?? typeCfgs.diagnostic;
   const statusCfg = event.status ? stCfg[event.status] : null;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
+    <div className={`rounded-2xl border overflow-hidden transition-all ${open ? cardTheme.opened : cardTheme.base}`}>
       {/* Collapsed header */}
-      <button onClick={() => setOpen((v) => !v)} className="w-full text-left p-4 active:bg-slate-50 transition-colors">
+      <button onClick={() => setOpen((v) => !v)} className="w-full text-left p-4 active:bg-black/5 transition-colors">
         <div className="flex items-center gap-3">
           <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${typeCfg.bg}`}>
             <typeCfg.Icon className={`w-4 h-4 ${typeCfg.color}`} />
@@ -539,7 +585,7 @@ function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-sm font-bold text-slate-900 line-clamp-1 flex-1 min-w-0">{event.title}</span>
               {statusCfg && (
-                <Badge className={`text-xs border flex-shrink-0 ${statusCfg.className}`}>{statusCfg.label}</Badge>
+                <Badge className={`text-xs border flex-shrink-0 ${statusCfg.pill}`}>{statusCfg.label}</Badge>
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
@@ -560,7 +606,7 @@ function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
 
       {/* Expanded — service story narrative */}
       {open && (
-        <div className="border-t border-slate-100">
+        <div className={`border-t ${cardTheme.divider}`}>
           {event.description && (
             <p className="px-4 pt-3 text-sm text-slate-500 leading-relaxed italic">{event.description}</p>
           )}
@@ -584,9 +630,9 @@ function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
               </div>
             )}
             {event.followUp && (
-              <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
-                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1">Return Visit</p>
-                <p className="text-sm text-amber-800 leading-relaxed">{event.followUp}</p>
+              <div className={`border rounded-xl px-3 py-2.5 ${cardTheme.followUp}`}>
+                <p className="text-[10px] font-bold text-amber-700 uppercase tracking-wide mb-1">Return Visit</p>
+                <p className="text-sm text-slate-700 leading-relaxed">{event.followUp}</p>
               </div>
             )}
           </div>
