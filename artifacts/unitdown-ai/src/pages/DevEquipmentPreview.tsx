@@ -56,6 +56,7 @@ interface MockUnit {
   lastVisit: string | null;
   openIssue: string | null;
   nextAction: string;
+  nextVisit: string | null;
 }
 
 const MOCK_UNITS: MockUnit[] = [
@@ -85,6 +86,7 @@ const MOCK_UNITS: MockUnit[] = [
     lastVisit: "Jun 24",
     openIssue: "High-head pressure — compressor fault",
     nextAction: "Schedule service call",
+    nextVisit: "Jul 2",
   },
   {
     id: "2",
@@ -112,6 +114,7 @@ const MOCK_UNITS: MockUnit[] = [
     lastVisit: "Jun 18",
     openIssue: "Low refrigerant charge suspected",
     nextAction: "Verify subcooling at next visit",
+    nextVisit: "Jul 5",
   },
   {
     id: "3",
@@ -139,6 +142,7 @@ const MOCK_UNITS: MockUnit[] = [
     lastVisit: "Apr 2",
     openIssue: null,
     nextAction: "Q3 PM due in 6 weeks",
+    nextVisit: "Aug 6",
   },
   {
     id: "4",
@@ -166,6 +170,7 @@ const MOCK_UNITS: MockUnit[] = [
     lastVisit: "Jun 10",
     openIssue: "Burner lockout — repeated fault",
     nextAction: "Follow up this week",
+    nextVisit: "Jun 30",
   },
   {
     id: "5",
@@ -193,6 +198,7 @@ const MOCK_UNITS: MockUnit[] = [
     lastVisit: "May 14",
     openIssue: null,
     nextAction: "Schedule next PM",
+    nextVisit: null,
   },
   {
     id: "6",
@@ -220,6 +226,7 @@ const MOCK_UNITS: MockUnit[] = [
     lastVisit: "Jun 5",
     openIssue: "Outdoor fan cycling on overload",
     nextAction: "Follow up this week",
+    nextVisit: null,
   },
 ];
 
@@ -380,81 +387,139 @@ function CustomerGroupCard({
   onToggle: () => void;
   onSelectUnit: (u: MockUnit) => void;
 }) {
-  const criticalCount = units.filter((u) => u.status === "critical").length;
-  const activeCount = units.filter((u) => ["monitoring", "needs-follow-up", "unresolved", "waiting-on-parts", "return-visit"].includes(u.status)).length;
-  const lastVisit = units.reduce<string | null>((acc, u) => {
-    if (!u.lastVisit) return acc;
-    if (!acc) return u.lastVisit;
-    return new Date(u.lastVisit) > new Date(acc) ? u.lastVisit : acc;
-  }, null);
+  const criticalCount    = units.filter((u) => u.status === "critical").length;
+  const followUpCount    = units.filter((u) => u.status === "needs-follow-up").length;
+  const monitoringCount  = units.filter((u) => u.status === "monitoring").length;
+  const operationalCount = units.filter((u) => u.status === "operational").length;
 
-  const accentBorder = criticalCount > 0 ? "border-red-300" : activeCount > 0 ? "border-amber-200" : "border-slate-200";
+  const openIssue =
+    units.find((u) => u.status === "critical")?.openIssue ??
+    units.find((u) => u.status === "needs-follow-up")?.openIssue ??
+    units.find((u) => u.status === "monitoring")?.openIssue ??
+    null;
+
+  const nextVisit = units.reduce<string | null>((acc, u) => (!acc && u.nextVisit ? u.nextVisit : acc), null);
+  const lastVisit = units.reduce<string | null>((acc, u) => (!acc && u.lastVisit ? u.lastVisit : acc), null);
+
+  const locationMap: Record<string, MockUnit[]> = {};
+  units.forEach((u) => {
+    const loc = u.location ?? "Main";
+    if (!locationMap[loc]) locationMap[loc] = [];
+    locationMap[loc].push(u);
+  });
+  const locationEntries = Object.entries(locationMap);
+  const primarySite = locationEntries.length === 1 ? locationEntries[0][0] : null;
+
+  const accentBorder = criticalCount > 0 ? "border-red-300" : followUpCount > 0 ? "border-amber-200" : monitoringCount > 0 ? "border-blue-200" : "border-slate-200";
+  const iconBg    = criticalCount > 0 ? "bg-red-100"    : followUpCount > 0 ? "bg-amber-100"   : monitoringCount > 0 ? "bg-blue-100"   : "bg-slate-100";
+  const iconColor = criticalCount > 0 ? "text-red-600"  : followUpCount > 0 ? "text-amber-600" : monitoringCount > 0 ? "text-blue-600" : "text-slate-500";
 
   return (
     <div className={`bg-white border rounded-2xl shadow-sm overflow-hidden transition-all ${expanded ? "border-blue-300" : accentBorder}`}>
-      <button
+      {/* ── Entire header is the tap target ──────────────────────────────────── */}
+      <div
         onClick={onToggle}
-        className="w-full flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors text-left"
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && onToggle()}
+        className="p-4 cursor-pointer hover:bg-slate-50/60 active:bg-slate-100/80 transition-colors select-none"
       >
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-            criticalCount > 0 ? "bg-red-100" : activeCount > 0 ? "bg-amber-100" : "bg-slate-100"
-          }`}>
-            <Building2 className={`w-4.5 h-4.5 ${
-              criticalCount > 0 ? "text-red-600" : activeCount > 0 ? "text-amber-600" : "text-slate-500"
-            }`} style={{ width: "18px", height: "18px" }} />
+        {/* Top row: icon + customer name + open/close badge */}
+        <div className="flex items-start gap-3">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${iconBg}`}>
+            <Building2 className={iconColor} style={{ width: "18px", height: "18px" }} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-slate-900 text-sm truncate">{customer}</p>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-xs text-slate-500">{units.length} unit{units.length !== 1 ? "s" : ""}</span>
-              {criticalCount > 0 && (
-                <span className="inline-flex items-center gap-1 text-xs text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
-                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
-                  {criticalCount} critical
-                </span>
-              )}
-              {activeCount > 0 && (
-                <span className="text-xs text-amber-700 font-semibold bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
-                  {activeCount} active
-                </span>
-              )}
-              {criticalCount === 0 && activeCount === 0 && (
-                <span className="text-xs text-emerald-600 font-medium">All clear</span>
-              )}
-            </div>
+            <p className="font-extrabold text-slate-900 text-sm">{customer}</p>
+            {primarySite ? (
+              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                <MapPin className="w-3 h-3 flex-shrink-0" />
+                {primarySite}
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 mt-0.5">{locationEntries.length} locations · {units.length} equipment</p>
+            )}
           </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {lastVisit && !expanded && (
-            <span className="text-[10px] text-slate-400 font-medium hidden sm:block">
-              {new Date(lastVisit).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-            </span>
-          )}
-          <div className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl transition-colors ${
-            expanded ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-600"
+          <div className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl flex-shrink-0 ${
+            expanded ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
           }`}>
             {expanded ? "Close" : "Open Site"}
             <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
           </div>
         </div>
-      </button>
 
+        {/* Info row: Last Visit / Next Visit / Open Issue */}
+        <div className="grid grid-cols-3 gap-2 mt-3">
+          <div className="bg-slate-50 rounded-xl px-2.5 py-2">
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Last Visit</p>
+            <p className="text-xs font-bold text-slate-700 mt-0.5">{lastVisit ?? "—"}</p>
+          </div>
+          <div className={`rounded-xl px-2.5 py-2 ${nextVisit ? "bg-blue-50" : "bg-slate-50"}`}>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Next Visit</p>
+            <p className={`text-xs font-bold mt-0.5 ${nextVisit ? "text-blue-700" : "text-slate-400"}`}>
+              {nextVisit ?? "Not scheduled"}
+            </p>
+          </div>
+          <div className={`rounded-xl px-2.5 py-2 ${openIssue ? "bg-amber-50" : "bg-slate-50"}`}>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Open Issue</p>
+            <p className={`text-xs font-bold mt-0.5 truncate ${openIssue ? "text-amber-700" : "text-emerald-600"}`}>
+              {openIssue ?? "None"}
+            </p>
+          </div>
+        </div>
+
+        {/* Status breakdown */}
+        <div className="flex items-center gap-3 mt-2.5 flex-wrap">
+          {criticalCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-red-700 font-bold">
+              <span className="w-2 h-2 bg-red-500 rounded-full" />
+              Critical: {criticalCount}
+            </span>
+          )}
+          {followUpCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-amber-700 font-semibold">
+              <span className="w-2 h-2 bg-amber-500 rounded-full" />
+              Follow-up: {followUpCount}
+            </span>
+          )}
+          {monitoringCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-blue-700 font-semibold">
+              <span className="w-2 h-2 bg-blue-500 rounded-full" />
+              Monitoring: {monitoringCount}
+            </span>
+          )}
+          {operationalCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-semibold">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full" />
+              Operational: {operationalCount}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Expanded: Equipment Locations ─────────────────────────────────────── */}
       {expanded && (
         <div className="border-t border-slate-100">
-          {lastVisit && (
-            <div className="flex items-center gap-1.5 px-4 py-2 bg-slate-50 border-b border-slate-100">
-              <Clock className="w-3 h-3 text-slate-400" />
-              <span className="text-xs text-slate-500">Last visit: <span className="font-semibold text-slate-700">
-                {new Date(lastVisit).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-              </span></span>
-            </div>
-          )}
-          <div className="p-3 space-y-2">
-            {units.map((u) => (
-              <UnitCard key={u.id} unit={u} onSelect={() => onSelectUnit(u)} />
-            ))}
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+            <MapPin className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">Equipment Locations</span>
+            <span className="text-xs text-slate-400 ml-auto">{units.length} unit{units.length !== 1 ? "s" : ""}</span>
           </div>
+          {locationEntries.map(([loc, locUnits]) => (
+            <div key={loc}>
+              {locationEntries.length > 1 && (
+                <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-100">
+                  <span className="text-xs font-bold text-slate-500">{loc}</span>
+                  <span className="text-xs text-slate-400">({locUnits.length})</span>
+                </div>
+              )}
+              <div className="p-3 space-y-2">
+                {locUnits.map((u) => (
+                  <UnitCard key={u.id} unit={u} onSelect={() => onSelectUnit(u)} />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

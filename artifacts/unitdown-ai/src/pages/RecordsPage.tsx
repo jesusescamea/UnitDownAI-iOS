@@ -73,6 +73,11 @@ interface LocationGroup {
   totalUnits: number;
   activeCount: number;
   criticalCount: number;
+  followUpCount: number;
+  monitoringCount: number;
+  operationalCount: number;
+  openIssue: string | null;
+  nextVisit: number | null;
   lastVisit: number | null;
 }
 
@@ -81,6 +86,8 @@ interface LocationGroup {
 const ACTIVE_STATUSES = new Set([
   "unresolved", "monitoring", "waiting-on-parts", "return-visit", "customer-callback",
 ]);
+
+const FOLLOW_UP_STATUSES = new Set(["waiting-on-parts", "return-visit", "customer-callback"]);
 
 const RESOLUTION_CATEGORIES = [
   { key: "ignition",    label: "Ignition",        keywords: ["ignit", "flame", "pilot"] },
@@ -166,6 +173,26 @@ function formatScheduleDate(ts: number): string {
   if (diff === 1) return "Tomorrow";
   if (diff < 7) return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
   return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+}
+
+function relativeDate(ms: number): string {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(ms); d.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((today.getTime() - d.getTime()) / 86400000);
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Yesterday";
+  if (diffDays < 7) return `${diffDays}d ago`;
+  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function futureDateLabel(ms: number): string {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const d = new Date(ms); d.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((d.getTime() - today.getTime()) / 86400000);
+  if (diffDays <= 0) return "Today";
+  if (diffDays === 1) return "Tomorrow";
+  if (diffDays < 7) return `In ${diffDays} days`;
+  return new Date(ms).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 function computeHealthScore(unitId: string, logs: DiagnosticLog[]): number {
@@ -795,82 +822,122 @@ function LocationGroupCard({
   onUnitClick: (id: string) => void;
   onToggleFavorite: (unit: UnitRecord, e: React.MouseEvent) => void;
 }) {
-  const lastVisitLabel = group.lastVisit
-    ? new Date(group.lastVisit).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-    : null;
+  const lastVisitLabel = group.lastVisit ? relativeDate(group.lastVisit) : null;
+  const nextVisitLabel = group.nextVisit ? futureDateLabel(group.nextVisit) : null;
+  const primarySite = group.sites.length === 1 ? group.sites[0].site : null;
 
-  const accentColor = group.criticalCount > 0
-    ? "border-red-300 bg-red-50/30"
-    : group.activeCount > 0
-    ? "border-amber-200 bg-amber-50/20"
+  const accentBorder = group.criticalCount > 0
+    ? "border-red-300"
+    : group.followUpCount > 0
+    ? "border-amber-200"
+    : group.monitoringCount > 0
+    ? "border-blue-200"
     : "border-slate-200";
+
+  const iconBg = group.criticalCount > 0 ? "bg-red-100" : group.followUpCount > 0 ? "bg-amber-100" : group.monitoringCount > 0 ? "bg-blue-100" : "bg-slate-100";
+  const iconColor = group.criticalCount > 0 ? "text-red-600" : group.followUpCount > 0 ? "text-amber-600" : group.monitoringCount > 0 ? "text-blue-600" : "text-slate-500";
 
   return (
     <div className={`bg-white border rounded-2xl shadow-sm transition-all duration-150 overflow-hidden ${
-      expanded ? "border-blue-300" : accentColor
+      expanded ? "border-blue-300" : accentBorder
     }`}>
-      <button
+      {/* ── Entire header is the tap target ──────────────────────────────────── */}
+      <div
         onClick={onToggle}
-        className="w-full flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors text-left"
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => e.key === "Enter" && onToggle()}
+        className="p-4 cursor-pointer hover:bg-slate-50/60 active:bg-slate-100/80 transition-colors select-none"
       >
-        <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
-            group.criticalCount > 0 ? "bg-red-100" : group.activeCount > 0 ? "bg-amber-100" : "bg-slate-100"
-          }`}>
-            <Building2 className={`w-4.5 h-4.5 ${
-              group.criticalCount > 0 ? "text-red-600" : group.activeCount > 0 ? "text-amber-600" : "text-slate-500"
-            }`} style={{ width: "18px", height: "18px" }} />
+        {/* Top row: icon + customer name + open/close badge */}
+        <div className="flex items-start gap-3">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5 ${iconBg}`}>
+            <Building2 className={iconColor} style={{ width: "18px", height: "18px" }} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="font-bold text-slate-900 text-sm truncate">{group.customer}</p>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <span className="text-xs text-slate-500">{group.totalUnits} unit{group.totalUnits !== 1 ? "s" : ""}</span>
-              {group.criticalCount > 0 && (
-                <span className="inline-flex items-center gap-1 text-xs text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
-                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
-                  {group.criticalCount} critical
-                </span>
-              )}
-              {group.activeCount > 0 && (
-                <span className="text-xs text-amber-700 font-semibold bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
-                  {group.activeCount} active
-                </span>
-              )}
-              {group.activeCount === 0 && group.criticalCount === 0 && (
-                <span className="text-xs text-emerald-600 font-medium">All clear</span>
-              )}
-            </div>
+            <p className="font-extrabold text-slate-900 text-sm">{group.customer}</p>
+            {primarySite ? (
+              <p className="text-xs text-slate-500 mt-0.5 flex items-center gap-1">
+                <MapPin className="w-3 h-3 flex-shrink-0" />
+                {primarySite}
+              </p>
+            ) : (
+              <p className="text-xs text-slate-500 mt-0.5">{group.sites.length} locations · {group.totalUnits} equipment</p>
+            )}
           </div>
-        </div>
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {lastVisitLabel && !expanded && (
-            <span className="text-[10px] text-slate-400 font-medium hidden sm:block">{lastVisitLabel}</span>
-          )}
-          <div className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl transition-colors ${
-            expanded
-              ? "bg-blue-600 text-white"
-              : "bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-600"
+          <div className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl flex-shrink-0 transition-colors ${
+            expanded ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600"
           }`}>
             {expanded ? "Close" : "Open Site"}
             <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`} />
           </div>
         </div>
-      </button>
 
+        {/* Info row: Last Visit / Next Visit / Open Issue */}
+        <div className="grid grid-cols-3 gap-2 mt-3">
+          <div className="bg-slate-50 rounded-xl px-2.5 py-2">
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Last Visit</p>
+            <p className="text-xs font-bold text-slate-700 mt-0.5">{lastVisitLabel ?? "—"}</p>
+          </div>
+          <div className={`rounded-xl px-2.5 py-2 ${nextVisitLabel ? "bg-blue-50" : "bg-slate-50"}`}>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Next Visit</p>
+            <p className={`text-xs font-bold mt-0.5 ${nextVisitLabel ? "text-blue-700" : "text-slate-400"}`}>
+              {nextVisitLabel ?? "Not scheduled"}
+            </p>
+          </div>
+          <div className={`rounded-xl px-2.5 py-2 ${group.openIssue ? "bg-amber-50" : "bg-slate-50"}`}>
+            <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide">Open Issue</p>
+            <p className={`text-xs font-bold mt-0.5 truncate ${group.openIssue ? "text-amber-700" : "text-emerald-600"}`}>
+              {group.openIssue ?? "None"}
+            </p>
+          </div>
+        </div>
+
+        {/* Status breakdown */}
+        <div className="flex items-center gap-3 mt-2.5 flex-wrap">
+          {group.criticalCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-red-700 font-bold">
+              <span className="w-2 h-2 bg-red-500 rounded-full" />
+              Critical: {group.criticalCount}
+            </span>
+          )}
+          {group.followUpCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-amber-700 font-semibold">
+              <span className="w-2 h-2 bg-amber-500 rounded-full" />
+              Follow-up: {group.followUpCount}
+            </span>
+          )}
+          {group.monitoringCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-blue-700 font-semibold">
+              <span className="w-2 h-2 bg-blue-500 rounded-full" />
+              Monitoring: {group.monitoringCount}
+            </span>
+          )}
+          {group.operationalCount > 0 && (
+            <span className="inline-flex items-center gap-1 text-xs text-emerald-700 font-semibold">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full" />
+              Operational: {group.operationalCount}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ── Expanded: Equipment Locations ─────────────────────────────────────── */}
       {expanded && (
         <div className="border-t border-slate-100">
-          {lastVisitLabel && (
-            <div className="flex items-center gap-1.5 px-4 py-2 bg-slate-50 border-b border-slate-100">
-              <Clock className="w-3 h-3 text-slate-400" />
-              <span className="text-xs text-slate-500">Last visit: <span className="font-semibold text-slate-700">{lastVisitLabel}</span></span>
-            </div>
-          )}
+          {/* Section header */}
+          <div className="flex items-center gap-2 px-4 py-2.5 bg-slate-50 border-b border-slate-100">
+            <MapPin className="w-3.5 h-3.5 text-slate-400" />
+            <span className="text-xs font-bold text-slate-600 uppercase tracking-wide">Equipment Locations</span>
+            <span className="text-xs text-slate-400 ml-auto">{group.totalUnits} unit{group.totalUnits !== 1 ? "s" : ""}</span>
+          </div>
+
+          {/* Sites grouped by location */}
           {group.sites.map(({ site, units }) => (
             <div key={site}>
               {group.sites.length > 1 && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 border-b border-slate-100">
-                  <MapPin className="w-3 h-3 text-slate-400" />
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wide">{site}</span>
+                <div className="flex items-center gap-2 px-4 py-2 border-b border-slate-100">
+                  <span className="text-xs font-bold text-slate-500">{site}</span>
                   <span className="text-xs text-slate-400">({units.length})</span>
                 </div>
               )}
@@ -1171,6 +1238,7 @@ export default function RecordsPage() {
   const pmDueCount = useMemo(() => scheduledEvents.filter((e) => e.eventType === "pm-due").length, [scheduledEvents]);
 
   const locationGroups = useMemo((): LocationGroup[] => {
+    const now = Date.now();
     const customerMap: Record<string, UnitRecord[]> = {};
     units.forEach((u) => {
       const customer = u.siteCustomerName?.trim() || "Uncategorized";
@@ -1186,16 +1254,48 @@ export default function RecordsPage() {
           siteMap[site].push(u);
         });
         const custUnitIds = new Set(custUnits.map((u) => u.id));
-        const activeCount = custUnits.filter((u) => logs.some((l) => l.unitId === u.id && ACTIVE_STATUSES.has(l.status))).length;
-        const criticalCount = custUnits.filter((u) => (healthScoreMap[u.id] ?? 100) < 60).length;
         const custLogs = logs.filter((l) => l.unitId && custUnitIds.has(l.unitId));
+
+        const criticalCount = custUnits.filter((u) => (healthScoreMap[u.id] ?? 100) < 60).length;
+        const followUpCount = custUnits.filter((u) =>
+          (healthScoreMap[u.id] ?? 100) >= 60 &&
+          logs.some((l) => l.unitId === u.id && FOLLOW_UP_STATUSES.has(l.status))
+        ).length;
+        const monitoringCount = custUnits.filter((u) =>
+          (healthScoreMap[u.id] ?? 100) >= 60 &&
+          !logs.some((l) => l.unitId === u.id && FOLLOW_UP_STATUSES.has(l.status)) &&
+          logs.some((l) => l.unitId === u.id && l.status === "monitoring")
+        ).length;
+        const operationalCount = custUnits.filter((u) =>
+          !logs.some((l) => l.unitId === u.id && ACTIVE_STATUSES.has(l.status))
+        ).length;
+        const activeCount = criticalCount + followUpCount + monitoringCount;
+
         const lastVisit = custLogs.length > 0 ? Math.max(...custLogs.map((l) => l.timestamp)) : null;
+
+        const unresolvedLogs = custLogs
+          .filter((l) => ACTIVE_STATUSES.has(l.status))
+          .sort((a, b) => b.timestamp - a.timestamp);
+        const openIssue = unresolvedLogs.length > 0
+          ? (unresolvedLogs[0].diagnosisTitle || unresolvedLogs[0].symptoms).slice(0, 45)
+          : null;
+
+        const futureEvents = scheduledEvents
+          .filter((e) => e.unitId && custUnitIds.has(e.unitId) && e.scheduledDate > now)
+          .sort((a, b) => a.scheduledDate - b.scheduledDate);
+        const nextVisit = futureEvents.length > 0 ? futureEvents[0].scheduledDate : null;
+
         return {
           customer,
           sites: Object.entries(siteMap).map(([site, siteUnits]) => ({ site, units: siteUnits })),
           totalUnits: custUnits.length,
           activeCount,
           criticalCount,
+          followUpCount,
+          monitoringCount,
+          operationalCount,
+          openIssue,
+          nextVisit,
           lastVisit,
         };
       })
@@ -1208,7 +1308,7 @@ export default function RecordsPage() {
         if (a.activeCount === 0 && b.activeCount > 0) return 1;
         return a.customer.localeCompare(b.customer);
       });
-  }, [units, logs, healthScoreMap]);
+  }, [units, logs, healthScoreMap, scheduledEvents]);
 
   const filteredLocationGroups = useMemo(() => {
     if (!q && !typeFilter) return locationGroups;
@@ -1721,7 +1821,7 @@ export default function RecordsPage() {
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search customers, sites, units, models, or serials…"
+                  placeholder="Search customer, site, unit, location, manufacturer, model, or serial…"
                   className="pl-9 pr-8 rounded-xl border-slate-200 text-sm h-10"
                 />
                 {q && (
