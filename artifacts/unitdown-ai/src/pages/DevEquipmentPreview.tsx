@@ -343,6 +343,76 @@ function UnitCard({ unit, onSelect }: { unit: MockUnit; onSelect: () => void }) 
   );
 }
 
+// ─── Job Ticket Unit Card (inside expanded customer card) ─────────────────────
+// Separate from UnitCard (used in library view) so each can evolve independently.
+
+function JobTicketUnitCard({ unit, onSelect }: { unit: MockUnit; onSelect: () => void }) {
+  const sc = unitStatusConfig(unit.status);
+  const eqType = (unit.equipmentType ?? "").toLowerCase();
+  const isRooftop = eqType.includes("rtu") || eqType.includes("rooftop") || eqType.includes("package") || eqType.includes("make-up") || eqType.includes("makeup");
+  const subtitleParts = [unit.manufacturer, unit.capacityTons ? `${unit.capacityTons} tons` : null].filter(Boolean);
+
+  return (
+    <button
+      onClick={onSelect}
+      className="w-full text-left bg-white border border-slate-200 rounded-2xl p-3.5 shadow-sm
+        hover:border-blue-300 hover:shadow-md transition-all duration-150 ease-out
+        active:scale-[0.98]"
+    >
+      <div className="flex items-start gap-3">
+        {/* Type avatar */}
+        <div className={`w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0 border mt-0.5 ${sc.bgCls} ${sc.borderCls}`}>
+          {isRooftop
+            ? <RtuIcon className={sc.textCls} style={{ width: "16px", height: "16px" }} />
+            : <span className={`w-2 h-2 rounded-full ${sc.dot}`} />
+          }
+        </div>
+
+        <div className="min-w-0 flex-1">
+          {/* Name + status pill */}
+          <div className="flex items-start justify-between gap-2">
+            <div className="min-w-0 flex-1">
+              <span className="font-extrabold text-slate-900 text-sm leading-snug truncate block">
+                {unit.nickname ?? unit.modelNumber ?? "Unnamed Unit"}
+              </span>
+              {subtitleParts.length > 0 && (
+                <p className="text-[11px] text-slate-400 mt-0.5">{subtitleParts.join(" · ")}</p>
+              )}
+            </div>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 mt-0.5 ${sc.bgCls} ${sc.textCls} ${sc.borderCls}`}>
+              {sc.label}
+            </span>
+          </div>
+
+          {/* Job ticket rows */}
+          <div className="mt-2.5 space-y-1.5">
+            <div className="flex gap-3">
+              <div className="flex-1">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Open Issue</p>
+                <p className={`text-xs font-medium mt-0.5 leading-snug ${unit.openIssue ? "text-amber-700" : "text-slate-400"}`}>
+                  {unit.openIssue ?? "None"}
+                </p>
+              </div>
+              <div className="flex-1">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Last Visit</p>
+                <p className="text-xs font-medium text-slate-700 mt-0.5">{unit.lastVisit ?? "—"}</p>
+              </div>
+            </div>
+            <div>
+              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Next</p>
+              <p className={`text-xs font-medium mt-0.5 ${unit.nextVisit ? "text-blue-700" : "text-slate-400"}`}>
+                {unit.nextVisit ? `Return ${unit.nextVisit}` : unit.nextAction ?? "—"}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <ChevronRight className="w-4 h-4 text-slate-300 flex-shrink-0 mt-1" />
+      </div>
+    </button>
+  );
+}
+
 function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
   return (
@@ -459,6 +529,14 @@ function CustomerGroupCard({
   const monitoringCount  = units.filter((u) => u.status === "monitoring").length;
   const operationalCount = units.filter((u) => u.status === "operational").length;
 
+  // Identify the highest-priority unit for the attention line
+  const priorityUnit =
+    units.find((u) => u.status === "critical") ??
+    units.find((u) => u.status === "needs-follow-up") ??
+    units.find((u) => u.status === "monitoring") ??
+    null;
+  const priorityUnitLabel = priorityUnit?.nickname ?? priorityUnit?.modelNumber ?? null;
+
   const openIssue =
     units.find((u) => u.status === "critical")?.openIssue ??
     units.find((u) => u.status === "needs-follow-up")?.openIssue ??
@@ -513,6 +591,31 @@ function CustomerGroupCard({
             {expanded ? "Close" : "Open Site"}
             <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
           </div>
+        </div>
+
+        {/* Attention line — which unit needs attention */}
+        <div className="mt-2">
+          {criticalCount > 0 ? (
+            <p className="text-xs font-semibold text-red-700 flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
+              {priorityUnitLabel ? `${priorityUnitLabel} needs attention` : `${criticalCount} unit${criticalCount > 1 ? "s" : ""} need attention`}
+            </p>
+          ) : followUpCount > 0 ? (
+            <p className="text-xs font-semibold text-amber-700 flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0" />
+              {priorityUnitLabel ? `${priorityUnitLabel} — follow-up scheduled` : `${followUpCount} unit${followUpCount > 1 ? "s" : ""} — follow-up scheduled`}
+            </p>
+          ) : monitoringCount > 0 ? (
+            <p className="text-xs font-semibold text-blue-700 flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+              {priorityUnitLabel ? `${priorityUnitLabel} being monitored` : `${monitoringCount} unit${monitoringCount > 1 ? "s" : ""} being monitored`}
+            </p>
+          ) : (
+            <p className="text-xs font-medium text-emerald-600 flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0" />
+              No active issues
+            </p>
+          )}
         </div>
 
         {/* Info row: Last Visit / Next Visit / Open Issue */}
@@ -582,7 +685,7 @@ function CustomerGroupCard({
               )}
               <div className="p-3 space-y-2">
                 {locUnits.map((u) => (
-                  <UnitCard key={u.id} unit={u} onSelect={() => onSelectUnit(u)} />
+                  <JobTicketUnitCard key={u.id} unit={u} onSelect={() => onSelectUnit(u)} />
                 ))}
               </div>
             </div>

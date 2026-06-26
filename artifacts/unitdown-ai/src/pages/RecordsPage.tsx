@@ -79,6 +79,7 @@ interface LocationGroup {
   openIssue: string | null;
   nextVisit: number | null;
   lastVisit: number | null;
+  priorityUnitName: string | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -476,7 +477,17 @@ function CompactUnitCard({
   onToggleFavorite?: (e: React.MouseEvent) => void;
 }) {
   const hs = healthScore ?? 100;
-  const hc = healthColor(hs);
+  // Derive status label and colors from health score
+  const statusLabel  = hs < 60 ? "Critical"    : hs < 75 ? "Follow-up"    : hs < 90 ? "Monitoring"  : "Operational";
+  const statusBg     = hs < 60 ? "bg-red-50"   : hs < 75 ? "bg-amber-50"  : hs < 90 ? "bg-blue-50"  : "bg-emerald-50";
+  const statusText   = hs < 60 ? "text-red-700" : hs < 75 ? "text-amber-700" : hs < 90 ? "text-blue-700" : "text-emerald-700";
+  const statusBorder = hs < 60 ? "border-red-200" : hs < 75 ? "border-amber-200" : hs < 90 ? "border-blue-200" : "border-emerald-200";
+  const statusBlurb  = hs < 60 ? "Active issue — tap to review"
+                     : hs < 75 ? "Follow-up required"
+                     : hs < 90 ? "Being monitored"
+                     : "No active issues";
+  const subtitleParts = [unit.manufacturer, unit.equipmentType].filter(Boolean);
+
   return (
     <button
       onClick={onClick}
@@ -484,27 +495,29 @@ function CompactUnitCard({
         hover:border-blue-300 hover:shadow-md hover:scale-[1.01]
         transition-all duration-150 ease-out active:scale-[0.98]"
     >
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
-          <span className="font-bold text-slate-900 text-sm truncate block">
-            {unit.nickname ?? unit.modelNumber ?? "Unnamed Unit"}
-          </span>
-          {unit.siteCustomerName && (
-            <p className="text-xs text-slate-500 truncate mt-0.5">{unit.siteCustomerName}</p>
-          )}
-          <div className="flex flex-wrap gap-1 mt-1.5 items-center">
-            {unit.manufacturer && (
-              <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">{unit.manufacturer}</span>
-            )}
-            {unit.equipmentType && (
-              <span className="text-xs bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded-full font-medium">{unit.equipmentType}</span>
-            )}
-            {hs < 100 && (
-              <span className={`text-xs font-bold px-1.5 py-0.5 rounded-full border ${hc.bg} ${hc.text} ${hc.border}`}>{hs}</span>
-            )}
+          {/* Name + status pill */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-extrabold text-slate-900 text-sm truncate leading-snug">
+              {unit.nickname ?? unit.modelNumber ?? "Unnamed Unit"}
+            </span>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border flex-shrink-0 ${statusBg} ${statusText} ${statusBorder}`}>
+              {statusLabel}
+            </span>
           </div>
+
+          {/* Subtitle: manufacturer · type */}
+          {subtitleParts.length > 0 && (
+            <p className="text-[11px] text-slate-400 mt-0.5">{subtitleParts.join(" · ")}</p>
+          )}
+
+          {/* Status blurb */}
+          <p className={`text-xs mt-1.5 font-medium ${hs < 60 ? "text-red-600" : hs < 75 ? "text-amber-600" : hs < 90 ? "text-blue-600" : "text-slate-400"}`}>
+            {statusBlurb}
+          </p>
         </div>
-        <div className="flex items-center gap-0.5 flex-shrink-0">
+        <div className="flex items-center gap-0.5 flex-shrink-0 mt-0.5">
           {onToggleFavorite && (
             <button
               onClick={onToggleFavorite}
@@ -871,6 +884,37 @@ function LocationGroupCard({
             {expanded ? "Close" : "Open Site"}
             <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`} />
           </div>
+        </div>
+
+        {/* Attention line — which unit needs attention */}
+        <div className="mt-2">
+          {group.criticalCount > 0 ? (
+            <p className="text-xs font-semibold text-red-700 flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-red-500 rounded-full flex-shrink-0" />
+              {group.priorityUnitName
+                ? `${group.priorityUnitName} needs attention`
+                : `${group.criticalCount} unit${group.criticalCount > 1 ? "s" : ""} need attention`}
+            </p>
+          ) : group.followUpCount > 0 ? (
+            <p className="text-xs font-semibold text-amber-700 flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-amber-500 rounded-full flex-shrink-0" />
+              {group.priorityUnitName
+                ? `${group.priorityUnitName} — follow-up scheduled`
+                : `${group.followUpCount} unit${group.followUpCount > 1 ? "s" : ""} — follow-up scheduled`}
+            </p>
+          ) : group.monitoringCount > 0 ? (
+            <p className="text-xs font-semibold text-blue-700 flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-blue-500 rounded-full flex-shrink-0" />
+              {group.priorityUnitName
+                ? `${group.priorityUnitName} being monitored`
+                : `${group.monitoringCount} unit${group.monitoringCount > 1 ? "s" : ""} being monitored`}
+            </p>
+          ) : (
+            <p className="text-xs font-medium text-emerald-600 flex items-center gap-1.5">
+              <span className="w-2 h-2 bg-emerald-500 rounded-full flex-shrink-0" />
+              No active issues
+            </p>
+          )}
         </div>
 
         {/* Info row: Last Visit / Next Visit / Open Issue */}
@@ -1271,6 +1315,16 @@ export default function RecordsPage() {
         ).length;
         const activeCount = criticalCount + followUpCount + monitoringCount;
 
+        // Identify the single highest-priority unit for the attention line
+        const priorityUnit =
+          custUnits.find((u) => (healthScoreMap[u.id] ?? 100) < 60) ??
+          custUnits.find((u) => logs.some((l) => l.unitId === u.id && FOLLOW_UP_STATUSES.has(l.status))) ??
+          custUnits.find((u) => logs.some((l) => l.unitId === u.id && l.status === "monitoring")) ??
+          null;
+        const priorityUnitName = priorityUnit
+          ? (priorityUnit.nickname ?? priorityUnit.modelNumber ?? priorityUnit.manufacturer ?? priorityUnit.equipmentType ?? null)
+          : null;
+
         const lastVisit = custLogs.length > 0 ? Math.max(...custLogs.map((l) => l.timestamp)) : null;
 
         const unresolvedLogs = custLogs
@@ -1297,6 +1351,7 @@ export default function RecordsPage() {
           openIssue,
           nextVisit,
           lastVisit,
+          priorityUnitName,
         };
       })
       .sort((a, b) => {
