@@ -1226,6 +1226,23 @@ export default function RecordsPage() {
     return groups;
   }, [resolvedLogs]);
 
+  // ─── Search autocomplete ───────────────────────────────────────────────────
+
+  const autocompleteCandidates = useMemo(() => {
+    const seen = new Set<string>();
+    units.forEach((u) => {
+      [u.siteCustomerName, u.nickname, u.location, u.manufacturer, u.modelNumber, u.serialNumber]
+        .forEach((v) => { if (v) seen.add(v); });
+    });
+    return Array.from(seen).sort();
+  }, [units]);
+
+  const searchSuggestion = useMemo(() => {
+    if (!q.trim() || q.length < 2) return "";
+    const lower = q.toLowerCase();
+    return autocompleteCandidates.find((c) => c.toLowerCase().startsWith(lower)) ?? "";
+  }, [q, autocompleteCandidates]);
+
   const avgConfidence = useMemo(() => {
     const withConf = logs.filter((l) => l.confidencePercent != null);
     if (!withConf.length) return null;
@@ -1871,17 +1888,32 @@ export default function RecordsPage() {
                 </button>
               </div>
 
-              {/* Search row */}
+              {/* Search row with ghost-text autocomplete */}
               <div className="relative mb-1.5">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 z-10 pointer-events-none" />
+                {searchSuggestion && searchSuggestion !== q && (
+                  <div
+                    aria-hidden="true"
+                    className="absolute inset-0 flex items-center pl-9 pr-8 pointer-events-none overflow-hidden select-none"
+                  >
+                    <span className="invisible text-sm whitespace-pre">{q}</span>
+                    <span className="text-slate-300 text-sm whitespace-pre">{searchSuggestion.slice(q.length)}</span>
+                  </div>
+                )}
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
+                  onKeyDown={(e) => {
+                    if ((e.key === "Tab" || e.key === "Enter") && searchSuggestion && searchSuggestion !== q) {
+                      e.preventDefault();
+                      setQ(searchSuggestion);
+                    }
+                  }}
                   placeholder="Search customer, site, unit, location, manufacturer, model, or serial…"
                   className="pl-9 pr-8 rounded-xl border-slate-200 text-sm h-9"
                 />
                 {q && (
-                  <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400">
+                  <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 z-10">
                     <X className="w-3.5 h-3.5" />
                   </button>
                 )}

@@ -5,7 +5,7 @@
  * Blocked from rendering in production via import.meta.env.DEV guard.
  */
 
-import { useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   Activity, AlertCircle, Bell, Brain, Building2, Calendar, Camera, CheckCircle2,
   ChevronDown, ChevronRight, CircleDot,
@@ -755,6 +755,22 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
   const returnVisitCount    = MOCK_UNITS.filter((u) => u.status === "needs-follow-up").length;
   const equipmentCount      = MOCK_UNITS.filter((u) => !u.isArchived).length;
 
+  // ─── Search autocomplete ──────────────────────────────────────────────────
+  const autocompleteCandidates = useMemo(() => {
+    const seen = new Set<string>();
+    MOCK_UNITS.forEach((u) => {
+      [u.siteCustomerName, u.location, u.nickname, u.manufacturer, u.modelNumber, u.serialNumber]
+        .forEach((v) => { if (v) seen.add(v); });
+    });
+    return Array.from(seen).sort();
+  }, []);
+
+  const suggestion = useMemo(() => {
+    if (!q.trim() || q.length < 2) return "";
+    const lower = q.toLowerCase();
+    return autocompleteCandidates.find((c) => c.toLowerCase().startsWith(lower)) ?? "";
+  }, [q, autocompleteCandidates]);
+
   const toggleCustomer = (customer: string) => {
     setExpandedCustomers((prev) => {
       const next = new Set(prev);
@@ -782,15 +798,30 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
       </header>
 
       <div className="max-w-2xl mx-auto px-4 py-4 space-y-4">
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
+        {/* Search with ghost-text autocomplete */}
+        <div className="relative bg-white rounded-xl">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 z-10 pointer-events-none" />
+          {suggestion && suggestion !== q && (
+            <div
+              aria-hidden="true"
+              className="absolute inset-0 flex items-center pl-9 pr-4 pointer-events-none overflow-hidden select-none"
+            >
+              <span className="invisible text-sm whitespace-pre">{q}</span>
+              <span className="text-slate-300 text-sm whitespace-pre">{suggestion.slice(q.length)}</span>
+            </div>
+          )}
           <input
             type="text"
             placeholder="Search customers, sites, units, models, or serials…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className="w-full h-10 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300"
+            onKeyDown={(e) => {
+              if ((e.key === "Tab" || e.key === "Enter") && suggestion && suggestion !== q) {
+                e.preventDefault();
+                setQ(suggestion);
+              }
+            }}
+            className="w-full h-10 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-transparent focus:outline-none focus:border-blue-300 relative z-0"
           />
         </div>
 
