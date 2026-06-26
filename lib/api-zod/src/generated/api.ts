@@ -36,6 +36,12 @@ export const AiPolishBody = zod.object({
     .string()
     .optional()
     .describe("Optional Clerk user ID for Pro status lookup"),
+  fromVoice: zod
+    .boolean()
+    .optional()
+    .describe(
+      "When true, applies a speech-interpretation pass first to correct likely speech recognition errors (mishearings, phonetic substitutions) before applying the writing style.",
+    ),
 });
 
 export const AiPolishResponse = zod.object({

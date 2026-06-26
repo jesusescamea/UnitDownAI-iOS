@@ -94,6 +94,9 @@ components:
         clientId:
           type: string
           description: Optional Clerk user ID for Pro status lookup
+        fromVoice:
+          type: boolean
+          description: When true, applies a speech-interpretation pass first to correct likely speech recognition errors (mishearings, phonetic substitutions) before applying the writing style.
       required:
         - text
         - mode

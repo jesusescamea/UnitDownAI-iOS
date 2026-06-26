@@ -26,6 +26,8 @@ export interface AiPolishBody {
   mode: AiPolishMode;
   /** Optional Clerk user ID for Pro status lookup */
   clientId?: string;
+  /** When true, applies a speech-interpretation pass first to correct likely speech recognition errors (mishearings, phonetic substitutions) before applying the writing style. */
+  fromVoice?: boolean;
 }
 
 export interface AiPolishResponse {

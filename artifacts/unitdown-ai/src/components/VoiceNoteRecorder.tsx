@@ -1,49 +1,54 @@
 /**
- * VoiceNoteRecorder — manual-control recording with auto-restart
+ * VoiceNoteRecorder — manual-control recording with 2-step AI review
  *
  * === Manual control model ===
  *
- * Recording only ends when the USER taps Stop (or Done). The browser's
- * SpeechRecognition fires `onend` on any silence/timeout, so we auto-restart
- * the recognition session whenever that happens mid-recording. The transcript
- * accumulates across all sessions into finalSegmentsRef.
+ * Recording only ends when the USER taps Stop. The browser's SpeechRecognition
+ * fires `onend` on any silence/timeout — we auto-restart the session to keep
+ * recording going. Transcript accumulates across sessions in finalSegmentsRef.
  *
- *   Recording state machine:
+ *   Stage machine:
  *     idle → recording (tap mic)
- *       recording / listening — mic active, SR running
- *       recording / paused   — user tapped Pause; SR stopped; no auto-restart
- *       recording / processing — SR heard speech end, restarting
- *     recording → reviewing  (tap Stop only)
- *     recording → idle       (tap Cancel)
- *     paused → recording/listening  (tap Resume)
- *     reviewing → idle       (save or discard)
+ *       recording / listening  — SR active
+ *       recording / paused     — user tapped Pause; SR stopped; no auto-restart
+ *       recording / processing — SR ended naturally, restarting in 250ms
+ *     recording → reviewing    (tap Stop only)
+ *     recording → idle         (tap Cancel)
  *
- * === Transcript architecture ===
+ *   Reviewing sub-states (reviewStage):
+ *     picking    — 3-card choice screen (Original / Professional / Customer)
+ *     generating — AI interpret + polish running; show spinner with phased text
+ *     comparing  — side-by-side original vs AI result; Save This / ← Back
  *
- * Two refs — never React state — are the single source of truth:
+ * === AI writing flow (Professional / Customer) ===
  *
- *   finalSegmentsRef: string[]
- *     Accumulated isFinal results merged via buildNextSegments() which detects
- *     suffix/prefix overlaps before appending. Survives SR session restarts.
+ *   1. Tap "Professional" or "Customer" card → it highlights (no API call yet)
+ *   2. Tap "Preview AI Version →"
+ *   3. Backend runs interpret pass (correct HVAC mishearings) + style pass in one call
+ *   4. Compare view shows original vs AI result
+ *   5. Tech taps "Save This Version" or "← Back" (returns to picking)
  *
- *   interimRef: string
- *     Current in-progress phrase; replaced each onresult event; promoted to
- *     final on session end before the next session starts.
- *
- * === Reviewing flow ===
- *
- * After Stop: 3-card choice screen (Original / Professional / Customer).
- * Tapping Save calls AI Polish if needed, then saves the entry.
+ * Original option saves directly from the picking screen — no AI involved.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Mic, MicOff, Pause, Play, RotateCcw, Square } from "lucide-react";
+import {
+  ArrowLeft,
+  Loader2,
+  Mic,
+  MicOff,
+  Pause,
+  Play,
+  RotateCcw,
+  Square,
+} from "lucide-react";
 import { aiPolish } from "@workspace/api-client-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Stage        = "idle" | "recording" | "reviewing";
-type RecordMode   = "listening" | "paused" | "processing";
+type Stage       = "idle" | "recording" | "reviewing";
+type RecordMode  = "listening" | "paused" | "processing";
+type ReviewStage = "picking" | "generating" | "comparing";
 type ReviewOption = "original" | "professional" | "customer";
 
 export interface VoiceNoteEntry {
@@ -53,8 +58,8 @@ export interface VoiceNoteEntry {
 }
 
 interface VoiceNoteRecorderProps {
-  onSave:     (entry: VoiceNoteEntry) => void;
-  onDiscard?: () => void;
+  onSave:      (entry: VoiceNoteEntry) => void;
+  onDiscard?:  () => void;
   placeholder?: string;
   isPro?: boolean;
 }
@@ -91,10 +96,7 @@ function buildNextSegments(segments: string[], newRaw: string): string[] {
   if (!newPhrase) return segments;
 
   const prevJoined = segments.join(" ").trim();
-
-  if (prevJoined && prevJoined.toLowerCase().includes(newPhrase.toLowerCase())) {
-    return segments;
-  }
+  if (prevJoined && prevJoined.toLowerCase().includes(newPhrase.toLowerCase())) return segments;
   if (!prevJoined) return [newPhrase];
 
   const prevWords = prevJoined.split(/\s+/).filter(Boolean);
@@ -142,24 +144,29 @@ export function VoiceNoteRecorder({
 }: VoiceNoteRecorderProps) {
   const [stage,          setStage]          = useState<Stage>("idle");
   const [recordMode,     setRecordMode]     = useState<RecordMode>("listening");
-  const [reviewText,     setReviewText]     = useState("");
+  const [reviewStage,    setReviewStage]    = useState<ReviewStage>("picking");
+  const [reviewText,     setReviewText]     = useState(""); // cleaned transcript
   const [selectedOption, setSelectedOption] = useState<ReviewOption>("original");
-  const [isSaving,       setIsSaving]       = useState(false);
+  const [polishedText,   setPolishedText]   = useState(""); // AI result
+  const [genPhase,       setGenPhase]       = useState<"interpreting" | "writing">("interpreting");
   const [error,          setError]          = useState<string | null>(null);
 
-  // Display mirrors — derived from refs, updated imperatively
+  // Live display mirrors (derived from refs; updated imperatively)
   const [displayFinal,   setDisplayFinal]   = useState("");
   const [displayInterim, setDisplayInterim] = useState("");
 
-  // Refs — never stale inside callbacks
+  // Accumulation refs — single source of truth; always current inside callbacks
   const finalSegmentsRef = useRef<string[]>([]);
   const interimRef       = useRef<string>("");
   const recognitionRef   = useRef<AnySpeechRecognition>(null);
 
   // Manual-control gate refs
-  const userStoppedRef   = useRef(false); // true after user taps Stop
-  const isPausedRef      = useRef(false); // true while paused (no auto-restart)
-  const isRestartingRef  = useRef(false); // debounce guard for onend auto-restart
+  const userStoppedRef   = useRef(false);
+  const isPausedRef      = useRef(false);
+  const isRestartingRef  = useRef(false);
+
+  // Generation phase timer
+  const genPhaseTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const isSupported = !!getSpeechRecognitionClass();
 
@@ -182,7 +189,7 @@ export function VoiceNoteRecorder({
     setDisplayInterim("");
   }
 
-  // ── Core session starter (safe to call multiple times) ─────────────────────
+  // ── Core SR session (safe to call multiple times across auto-restarts) ──────
 
   const startRecognitionSession = useCallback(() => {
     const SR = getSpeechRecognitionClass();
@@ -226,36 +233,30 @@ export function VoiceNoteRecorder({
         setError("Microphone access denied. Allow microphone access and try again.");
         setStage("idle");
       } else if (event.error === "aborted" || event.error === "no-speech") {
-        // Expected during pause/stop/restart — ignore
+        // Expected during pause/stop/restart — no action needed
       } else {
-        // Network or unknown error — log but don't crash; onend will auto-restart
-        setRecordMode("processing");
+        setRecordMode("processing"); // onend will handle auto-restart
       }
     };
 
     r.onend = () => {
-      // Promote any dangling interim before deciding what to do
       promotePendingInterim();
 
       if (userStoppedRef.current) {
-        // ── User tapped Stop ──────────────────────────────────────────────
         setRecordMode("listening");
         setStage("reviewing");
         return;
       }
 
       if (isPausedRef.current) {
-        // ── User tapped Pause ─────────────────────────────────────────────
         setRecordMode("paused");
         return;
       }
 
-      // ── Browser ended recognition (silence / timeout / glitch) ───────────
-      // Auto-restart to keep recording — this is the core of manual control.
+      // Browser ended naturally (silence/timeout) — auto-restart to keep recording
       if (!isRestartingRef.current) {
         isRestartingRef.current = true;
         setRecordMode("processing");
-        // Small delay lets the browser release the mic before re-acquiring it
         setTimeout(() => {
           if (!userStoppedRef.current && !isPausedRef.current) {
             startRecognitionSession();
@@ -269,28 +270,25 @@ export function VoiceNoteRecorder({
     try {
       r.start();
     } catch {
-      // start() can throw if the browser denies immediately
       setError("Could not start microphone. Check browser permissions.");
       setStage("idle");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Public actions ─────────────────────────────────────────────────────────
+  // ── Recording controls ─────────────────────────────────────────────────────
 
   const startRecording = useCallback(() => {
     resetAccumulators();
     userStoppedRef.current  = false;
     isPausedRef.current     = false;
     isRestartingRef.current = false;
-
     setDisplayFinal("");
     setDisplayInterim("");
     setError(null);
     setSelectedOption("original");
     setRecordMode("listening");
     setStage("recording");
-
     startRecognitionSession();
   }, [startRecognitionSession]);
 
@@ -300,14 +298,12 @@ export function VoiceNoteRecorder({
     isRestartingRef.current = false;
     setRecordMode("processing");
     recognitionRef.current?.stop();
-    // onend will fire → userStoppedRef.current === true → go to reviewing
   }, []);
 
   const pauseRecording = useCallback(() => {
     isPausedRef.current     = true;
     isRestartingRef.current = false;
     recognitionRef.current?.stop();
-    // onend fires → isPausedRef.current === true → setRecordMode("paused")
   }, []);
 
   const resumeRecording = useCallback(() => {
@@ -318,7 +314,7 @@ export function VoiceNoteRecorder({
   }, [startRecognitionSession]);
 
   const cancelRecording = useCallback(() => {
-    userStoppedRef.current  = true; // prevent auto-restart in onend
+    userStoppedRef.current  = true;
     isPausedRef.current     = false;
     isRestartingRef.current = false;
     recognitionRef.current?.abort();
@@ -329,17 +325,25 @@ export function VoiceNoteRecorder({
     setDisplayInterim("");
   }, []);
 
-  // Seed review text when entering review stage
+  // Seed review state on entering reviewing stage
   useEffect(() => {
     if (stage === "reviewing") {
       const raw = finalSegmentsRef.current.join(" ");
       setReviewText(cleanupTranscript(raw));
+      setReviewStage("picking");
       setSelectedOption("original");
-      setIsSaving(false);
+      setPolishedText("");
     }
   }, [stage]);
 
-  // ── Save ───────────────────────────────────────────────────────────────────
+  // Cleanup generation phase timer on unmount
+  useEffect(() => {
+    return () => {
+      if (genPhaseTimerRef.current) clearTimeout(genPhaseTimerRef.current);
+    };
+  }, []);
+
+  // ── Persist entry ──────────────────────────────────────────────────────────
 
   const persistEntry = (text: string) => {
     if (!text.trim()) return;
@@ -347,27 +351,49 @@ export function VoiceNoteRecorder({
     resetAccumulators();
     setStage("idle");
     setReviewText("");
-    setIsSaving(false);
+    setPolishedText("");
   };
 
-  const handleSave = async () => {
-    if (isSaving) return;
-    if (selectedOption === "original") { persistEntry(reviewText); return; }
+  // ── Review actions ─────────────────────────────────────────────────────────
+
+  const handleSaveOriginal = () => persistEntry(reviewText);
+
+  const handlePreviewAI = async () => {
+    if (reviewStage === "generating") return;
+    setReviewStage("generating");
+    setGenPhase("interpreting");
+    setPolishedText("");
+
+    // Phased loading text: "Interpreting speech…" → "Writing X version…" after 2.5s
+    genPhaseTimerRef.current = setTimeout(() => setGenPhase("writing"), 2500);
 
     const mode = selectedOption === "professional" ? "professional" : "email-customer";
-    setIsSaving(true);
     try {
-      const result = await aiPolish({ text: reviewText, mode });
-      persistEntry(result.polished);
+      const result = await aiPolish({ text: reviewText, mode, fromVoice: true });
+      if (genPhaseTimerRef.current) clearTimeout(genPhaseTimerRef.current);
+      setPolishedText(result.polished);
+      setReviewStage("comparing");
     } catch {
-      persistEntry(reviewText); // graceful fallback — never lose the note
+      if (genPhaseTimerRef.current) clearTimeout(genPhaseTimerRef.current);
+      // On failure: return to picking so the tech can try again or save original
+      setReviewStage("picking");
+      setError("AI writing unavailable. You can save the original or try again.");
     }
+  };
+
+  const handleSavePolished = () => persistEntry(polishedText || reviewText);
+
+  const handleBackToPicking = () => {
+    setReviewStage("picking");
+    setPolishedText("");
+    setError(null);
   };
 
   const handleReRecord = () => {
     resetAccumulators();
     setStage("idle");
     setReviewText("");
+    setPolishedText("");
     setTimeout(startRecording, 80);
   };
 
@@ -375,6 +401,7 @@ export function VoiceNoteRecorder({
     resetAccumulators();
     setStage("idle");
     setReviewText("");
+    setPolishedText("");
     onDiscard?.();
   };
 
@@ -414,7 +441,7 @@ export function VoiceNoteRecorder({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // RECORDING (listening | paused | processing)
+  // RECORDING
   // ─────────────────────────────────────────────────────────────────────────
   if (stage === "recording") {
     const isListening  = recordMode === "listening";
@@ -422,9 +449,8 @@ export function VoiceNoteRecorder({
     const isProcessing = recordMode === "processing";
     const hasText      = displayFinal.trim() || displayInterim.trim();
 
-    // Status indicator config
     const statusConfig = isPaused
-      ? { dot: "bg-amber-400",              label: "Paused",      labelCls: "text-amber-600" }
+      ? { dot: "bg-amber-400",              label: "Paused",       labelCls: "text-amber-600" }
       : isProcessing
       ? { dot: "bg-slate-400 animate-pulse", label: "Processing…", labelCls: "text-slate-500" }
       : { dot: "bg-red-500 animate-pulse",   label: "Listening…",  labelCls: "text-red-500"   };
@@ -457,7 +483,6 @@ export function VoiceNoteRecorder({
 
         {/* Large glove-friendly controls */}
         <div className="grid grid-cols-2 gap-2">
-          {/* Pause / Resume */}
           {isPaused ? (
             <button
               onClick={resumeRecording}
@@ -477,7 +502,6 @@ export function VoiceNoteRecorder({
             </button>
           )}
 
-          {/* Stop */}
           <button
             onClick={stopRecording}
             disabled={isProcessing && !hasText}
@@ -488,7 +512,6 @@ export function VoiceNoteRecorder({
           </button>
         </div>
 
-        {/* Cancel — full width, smaller */}
         <button
           onClick={cancelRecording}
           className="w-full h-[48px] rounded-xl border border-slate-200 text-slate-500 font-semibold text-sm active:bg-slate-50 transition-colors"
@@ -500,96 +523,204 @@ export function VoiceNoteRecorder({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // REVIEWING — 3-card choice screen
+  // REVIEWING — sub-stages: picking → generating → comparing
   // ─────────────────────────────────────────────────────────────────────────
-  return (
-    <div className="space-y-3">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Mic className="w-4 h-4 text-emerald-500" />
-          <p className="text-sm font-bold text-slate-700">Recording Complete</p>
-        </div>
+
+  // ── Shared header ──────────────────────────────────────────────────────────
+  const ReviewHeader = () => (
+    <div className="flex items-center justify-between">
+      <div className="flex items-center gap-2">
+        <Mic className="w-4 h-4 text-emerald-500" />
+        <p className="text-sm font-bold text-slate-700">Recording Complete</p>
+      </div>
+      {reviewStage === "picking" && (
         <button
-          disabled={isSaving}
           onClick={handleReRecord}
-          className="flex items-center gap-1 text-xs text-blue-600 font-semibold active:opacity-60 disabled:opacity-30"
+          className="flex items-center gap-1 text-xs text-blue-600 font-semibold active:opacity-60"
         >
           <RotateCcw className="w-3 h-3" />
           Re-record
         </button>
-      </div>
+      )}
+      {reviewStage === "comparing" && (
+        <button
+          onClick={handleBackToPicking}
+          className="flex items-center gap-1 text-xs text-slate-500 font-semibold active:opacity-60"
+        >
+          <ArrowLeft className="w-3 h-3" />
+          Back
+        </button>
+      )}
+    </div>
+  );
 
-      {/* Original transcript preview */}
-      <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
-        <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide mb-1">Original</p>
-        <p className="text-sm text-slate-600 leading-relaxed line-clamp-5">{reviewText}</p>
-      </div>
+  // ── PICKING ────────────────────────────────────────────────────────────────
+  if (reviewStage === "picking") {
+    const aiOptionSelected = selectedOption !== "original";
 
-      {/* Choice label */}
-      <p className="text-xs font-semibold text-slate-500">What would you like to save?</p>
+    return (
+      <div className="space-y-3">
+        <ReviewHeader />
 
-      {/* Option cards */}
-      <div className="space-y-2">
-        {REVIEW_OPTIONS.map((opt) => {
-          const locked = opt.proOnly && !isPro;
-          const active = selectedOption === opt.value;
-          return (
-            <button
-              key={opt.value}
-              onClick={() => !locked && !isSaving && setSelectedOption(opt.value)}
-              disabled={isSaving}
-              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all duration-150 ${
-                locked
-                  ? "border-slate-200 bg-slate-50 opacity-60 cursor-default"
-                  : active
-                  ? "border-blue-500 bg-blue-50 shadow-sm"
-                  : "border-slate-200 bg-white active:border-slate-300"
-              }`}
-            >
-              <span className="text-xl leading-none flex-shrink-0">{opt.emoji}</span>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1.5">
-                  <p className={`text-sm font-bold leading-tight ${active && !locked ? "text-blue-700" : "text-slate-700"}`}>
-                    {opt.label}
-                  </p>
-                  {locked && (
-                    <span className="text-[9px] font-extrabold bg-slate-200 text-slate-500 rounded-full px-1.5 py-0.5 leading-none uppercase tracking-wide">Pro</span>
-                  )}
-                </div>
-                <p className="text-xs text-slate-500 mt-0.5">{opt.sub}</p>
-              </div>
-              {active && !locked && (
-                <div className="w-4 h-4 rounded-full bg-blue-500 flex-shrink-0 flex items-center justify-center">
-                  <div className="w-1.5 h-1.5 rounded-full bg-white" />
-                </div>
-              )}
-            </button>
-          );
-        })}
-      </div>
+        {/* Original transcript */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
+          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide mb-1">Original</p>
+          <p className="text-sm text-slate-600 leading-relaxed line-clamp-5">{reviewText}</p>
+        </div>
 
-      {/* Save */}
-      <button
-        onClick={handleSave}
-        disabled={isSaving}
-        className="w-full py-3.5 rounded-xl bg-blue-600 disabled:bg-blue-400 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors active:bg-blue-700"
-      >
-        {isSaving ? (
-          <>
-            <Loader2 className="w-4 h-4 animate-spin" />
-            {selectedOption === "professional" ? "Writing professional version…" : "Writing customer version…"}
-          </>
-        ) : (
-          "Save"
+        {error && (
+          <p className="text-xs text-red-500 px-1">{error}</p>
         )}
+
+        <p className="text-xs font-semibold text-slate-500">What would you like to save?</p>
+
+        {/* Option cards */}
+        <div className="space-y-2">
+          {REVIEW_OPTIONS.map((opt) => {
+            const locked = opt.proOnly && !isPro;
+            const active = selectedOption === opt.value;
+            return (
+              <button
+                key={opt.value}
+                onClick={() => { if (!locked) { setSelectedOption(opt.value); setError(null); } }}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all duration-150 ${
+                  locked
+                    ? "border-slate-200 bg-slate-50 opacity-60 cursor-default"
+                    : active
+                    ? "border-blue-500 bg-blue-50 shadow-sm"
+                    : "border-slate-200 bg-white active:border-slate-300"
+                }`}
+              >
+                <span className="text-xl leading-none flex-shrink-0">{opt.emoji}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5">
+                    <p className={`text-sm font-bold leading-tight ${active && !locked ? "text-blue-700" : "text-slate-700"}`}>
+                      {opt.label}
+                    </p>
+                    {locked && (
+                      <span className="text-[9px] font-extrabold bg-slate-200 text-slate-500 rounded-full px-1.5 py-0.5 leading-none uppercase tracking-wide">Pro</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">{opt.sub}</p>
+                </div>
+                {active && !locked && (
+                  <div className="w-4 h-4 rounded-full bg-blue-500 flex-shrink-0 flex items-center justify-center">
+                    <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                  </div>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Primary CTA — changes based on selection */}
+        {aiOptionSelected ? (
+          <button
+            onClick={handlePreviewAI}
+            className="w-full py-3.5 rounded-xl bg-blue-600 active:bg-blue-700 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors"
+          >
+            <span>
+              {selectedOption === "professional" ? "✨" : "👤"}
+            </span>
+            Preview AI Version
+          </button>
+        ) : (
+          <button
+            onClick={handleSaveOriginal}
+            className="w-full py-3.5 rounded-xl bg-blue-600 active:bg-blue-700 text-white text-sm font-bold transition-colors"
+          >
+            Save
+          </button>
+        )}
+
+        <button
+          onClick={handleDiscard}
+          className="w-full text-xs text-slate-400 font-medium py-1 text-center"
+        >
+          Discard
+        </button>
+      </div>
+    );
+  }
+
+  // ── GENERATING ─────────────────────────────────────────────────────────────
+  if (reviewStage === "generating") {
+    const optLabel = selectedOption === "professional" ? "professional" : "customer";
+    return (
+      <div className="space-y-3">
+        <ReviewHeader />
+
+        {/* Dimmed original */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 opacity-50">
+          <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide mb-1">Original</p>
+          <p className="text-sm text-slate-600 leading-relaxed line-clamp-3">{reviewText}</p>
+        </div>
+
+        {/* Spinner card */}
+        <div className="rounded-xl border-2 border-blue-200 bg-blue-50 px-4 py-6 flex flex-col items-center gap-3">
+          <Loader2 className="w-7 h-7 text-blue-500 animate-spin" />
+          <div className="text-center">
+            <p className="text-sm font-bold text-blue-700">
+              {genPhase === "interpreting"
+                ? "Interpreting speech…"
+                : `Writing ${optLabel} version…`}
+            </p>
+            <p className="text-xs text-blue-500 mt-0.5">
+              {genPhase === "interpreting"
+                ? "Correcting HVAC terminology and mishearings"
+                : "Preserving all technical facts and measurements"}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── COMPARING ──────────────────────────────────────────────────────────────
+  const optLabel = selectedOption === "professional" ? "Professional" : "Customer";
+  const optEmoji = selectedOption === "professional" ? "✨" : "👤";
+
+  return (
+    <div className="space-y-3">
+      <ReviewHeader />
+
+      {/* Original */}
+      <div>
+        <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide mb-1.5 px-0.5">Original</p>
+        <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
+          <p className="text-xs text-slate-500 leading-relaxed">{reviewText}</p>
+        </div>
+      </div>
+
+      {/* AI result */}
+      <div>
+        <p className="text-[10px] font-extrabold text-blue-500 uppercase tracking-wide mb-1.5 px-0.5">
+          {optEmoji} {optLabel} Version
+        </p>
+        <div className="bg-white border-2 border-blue-400 rounded-xl px-3 py-2.5 shadow-sm">
+          <p className="text-sm text-slate-800 leading-relaxed">{polishedText}</p>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <button
+        onClick={handleSavePolished}
+        className="w-full py-3.5 rounded-xl bg-blue-600 active:bg-blue-700 text-white text-sm font-bold transition-colors"
+      >
+        Save {optLabel} Version
       </button>
 
-      {/* Discard */}
       <button
-        disabled={isSaving}
+        onClick={handleBackToPicking}
+        className="w-full py-2.5 rounded-xl border border-slate-200 text-slate-600 text-sm font-semibold active:bg-slate-50 transition-colors flex items-center justify-center gap-1.5"
+      >
+        <ArrowLeft className="w-3.5 h-3.5" />
+        Try a different option
+      </button>
+
+      <button
         onClick={handleDiscard}
-        className="w-full text-xs text-slate-400 font-medium py-1 text-center disabled:opacity-30"
+        className="w-full text-xs text-slate-400 font-medium py-1 text-center"
       >
         Discard
       </button>
