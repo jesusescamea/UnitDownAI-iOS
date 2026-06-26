@@ -18,26 +18,27 @@
  *
  * On stop: interimRef is promoted → finalSegments exactly once (if not already captured).
  * On review: cleanupTranscript() removes adjacent n-gram repeats (n=1,2,3) before
- *   seeding the edit textarea.
+ *   seeding the review text.
  *
- * === AI Polish ===
- * The reviewing stage exposes an "AI Polish" button. When tapped, AIPolishPanel
- * renders in place of the normal edit UI. The technician always stays in control:
- *   • Keep Original — returns to edit textarea unchanged
- *   • Edit AI Version — pre-fills textarea with polished text
- *   • Save AI Version — saves immediately
+ * === Reviewing flow ===
+ * After stopping, the tech sees a choice screen with three options:
+ *   📝 Original       — save exactly what was said
+ *   ✨ Professional   — AI rewrites for service records
+ *   👤 Customer       — AI rewrites for customer communication
  *
- * Phase-2 ready: onSave(entry) can be intercepted for additional processing.
+ * Tapping Save calls AI Polish (if needed) and saves the result.
+ * Re-record is available at the top. Discard is a link at the bottom.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CheckCircle2, Mic, MicOff, RotateCcw, Sparkles, X } from "lucide-react";
-import { AIPolishPanel } from "./AIPolishPanel";
+import { Loader2, Mic, MicOff, RotateCcw } from "lucide-react";
+import { aiPolish } from "@workspace/api-client-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type Stage = "idle" | "recording" | "reviewing";
 type MicStatus = "listening" | "processing";
+type ReviewOption = "original" | "professional" | "customer";
 
 export interface VoiceNoteEntry {
   id: string;
@@ -51,6 +52,20 @@ interface VoiceNoteRecorderProps {
   placeholder?: string;
   isPro?: boolean;
 }
+
+// ─── Review option config ─────────────────────────────────────────────────────
+
+const REVIEW_OPTIONS: Array<{
+  value: ReviewOption;
+  emoji: string;
+  label: string;
+  sub: string;
+  proOnly: boolean;
+}> = [
+  { value: "original",     emoji: "📝", label: "Original",     sub: "Exactly what I said",              proOnly: false },
+  { value: "professional", emoji: "✨", label: "Professional", sub: "Perfect for service records",       proOnly: true  },
+  { value: "customer",     emoji: "👤", label: "Customer",     sub: "Easy for customers to understand",  proOnly: true  },
+];
 
 // ─── Browser support ──────────────────────────────────────────────────────────
 
@@ -145,14 +160,14 @@ function cleanupTranscript(text: string): string {
 export function VoiceNoteRecorder({
   onSave,
   onDiscard,
-  placeholder,
   isPro = false,
 }: VoiceNoteRecorderProps) {
-  const [stage,        setStage]        = useState<Stage>("idle");
-  const [micStatus,    setMicStatus]    = useState<MicStatus>("listening");
-  const [editText,     setEditText]     = useState("");
-  const [error,        setError]        = useState<string | null>(null);
-  const [polishOpen,   setPolishOpen]   = useState(false);
+  const [stage,          setStage]          = useState<Stage>("idle");
+  const [micStatus,      setMicStatus]      = useState<MicStatus>("listening");
+  const [reviewText,     setReviewText]     = useState("");   // cleaned final transcript
+  const [selectedOption, setSelectedOption] = useState<ReviewOption>("original");
+  const [isSaving,       setIsSaving]       = useState(false);
+  const [error,          setError]          = useState<string | null>(null);
 
   // Display mirrors — React state derived from refs
   const [displayFinal,   setDisplayFinal]   = useState("");
@@ -177,17 +192,6 @@ export function VoiceNoteRecorder({
     setDisplayInterim(interimRef.current);
   }
 
-  // Shared save logic — accepts the text to save (original or AI-polished)
-  const handleSaveText = (text: string) => {
-    if (!text.trim()) return;
-    onSave({ id: `vn-${Date.now()}`, text: text.trim(), savedAt: Date.now() });
-    resetRefs();
-    setStage("idle");
-    setPolishOpen(false);
-    setDisplayFinal("");
-    setEditText("");
-  };
-
   // ── start ──────────────────────────────────────────────────────────────────
   const startRecording = useCallback(() => {
     const SR = getSpeechRecognitionClass();
@@ -196,8 +200,8 @@ export function VoiceNoteRecorder({
     resetRefs();
     setDisplayFinal("");
     setDisplayInterim("");
-    setPolishOpen(false);
     setError(null);
+    setSelectedOption("original");
 
     const r = new SR();
     recognitionRef.current = r;
@@ -275,41 +279,64 @@ export function VoiceNoteRecorder({
     recognitionRef.current = null;
     resetRefs();
     setStage("idle");
-    setPolishOpen(false);
     setDisplayFinal("");
     setDisplayInterim("");
   }, []);
 
-  // Seed edit textarea on entering review — run final cleanup
+  // Seed review text on entering review — run final cleanup
   useEffect(() => {
     if (stage === "reviewing") {
       const raw = finalSegmentsRef.current.join(" ");
-      setEditText(cleanupTranscript(raw));
-      setPolishOpen(false);
+      setReviewText(cleanupTranscript(raw));
+      setSelectedOption("original");
+      setIsSaving(false);
     }
   }, [stage]);
 
-  // ── save original ──────────────────────────────────────────────────────────
-  const handleSave = () => handleSaveText(editText);
-
-  // ── discard ────────────────────────────────────────────────────────────────
-  const handleDiscard = () => {
+  // ── save ───────────────────────────────────────────────────────────────────
+  const persistEntry = (text: string) => {
+    if (!text.trim()) return;
+    onSave({ id: `vn-${Date.now()}`, text: text.trim(), savedAt: Date.now() });
     resetRefs();
     setStage("idle");
-    setPolishOpen(false);
-    setDisplayFinal("");
-    setEditText("");
-    onDiscard?.();
+    setReviewText("");
+    setIsSaving(false);
+  };
+
+  const handleSave = async () => {
+    if (isSaving) return;
+
+    if (selectedOption === "original") {
+      persistEntry(reviewText);
+      return;
+    }
+
+    const mode = selectedOption === "professional" ? "professional" : "email-customer";
+    setIsSaving(true);
+
+    try {
+      const result = await aiPolish({ text: reviewText, mode });
+      persistEntry(result.polished);
+    } catch {
+      // Graceful fallback — save the original if AI is unavailable
+      persistEntry(reviewText);
+    }
   };
 
   // ── re-record ──────────────────────────────────────────────────────────────
   const handleReRecord = () => {
     resetRefs();
     setStage("idle");
-    setPolishOpen(false);
-    setDisplayFinal("");
-    setEditText("");
+    setReviewText("");
     setTimeout(startRecording, 80);
+  };
+
+  // ── discard ────────────────────────────────────────────────────────────────
+  const handleDiscard = () => {
+    resetRefs();
+    setStage("idle");
+    setReviewText("");
+    onDiscard?.();
   };
 
   // ─────────────────────────────────────────────────────────────────────────
@@ -399,84 +426,98 @@ export function VoiceNoteRecorder({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // REVIEWING
+  // REVIEWING — choice screen
   // ─────────────────────────────────────────────────────────────────────────
-
-  // AI Polish panel replaces the normal review UI when open
-  if (polishOpen) {
-    return (
-      <AIPolishPanel
-        originalText={editText}
-        isPro={isPro}
-        onKeepOriginal={() => setPolishOpen(false)}
-        onEditPolished={(text) => { setEditText(text); setPolishOpen(false); }}
-        onSavePolished={handleSaveText}
-      />
-    );
-  }
-
   return (
     <div className="space-y-3">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-1.5">
-          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />
-          <p className="text-[11px] font-bold text-emerald-600 tracking-wide uppercase">Ready to Save</p>
+        <div className="flex items-center gap-2">
+          <Mic className="w-4 h-4 text-emerald-500" />
+          <p className="text-sm font-bold text-slate-700">Recording Complete</p>
         </div>
-        <button onClick={handleReRecord} className="flex items-center gap-1 text-xs text-blue-600 font-semibold active:opacity-60">
+        <button
+          disabled={isSaving}
+          onClick={handleReRecord}
+          className="flex items-center gap-1 text-xs text-blue-600 font-semibold active:opacity-60 disabled:opacity-30"
+        >
           <RotateCcw className="w-3 h-3" />
           Re-record
         </button>
       </div>
 
-      {/* Editable transcript */}
-      <textarea
-        value={editText}
-        onChange={(e) => setEditText(e.target.value)}
-        rows={5}
-        placeholder={placeholder ?? "Transcribed note — edit before saving…"}
-        autoFocus
-        className="w-full text-sm text-slate-800 bg-white border border-slate-200 focus:border-blue-300 rounded-xl px-3 py-2.5 resize-none focus:outline-none leading-relaxed"
-      />
-
-      {/* AI Polish — secondary action */}
-      {isPro ? (
-        <button
-          onClick={() => setPolishOpen(true)}
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-violet-200 bg-violet-50 text-violet-700 text-sm font-bold active:bg-violet-100 transition-colors"
-        >
-          <Sparkles className="w-4 h-4" />
-          AI Polish
-        </button>
-      ) : (
-        <button
-          disabled
-          className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-slate-400 text-sm font-semibold cursor-not-allowed"
-        >
-          <Sparkles className="w-4 h-4" />
-          AI Polish
-          <span className="text-[10px] font-extrabold bg-slate-200 text-slate-500 rounded-full px-1.5 py-0.5 leading-none tracking-wide uppercase">Pro</span>
-        </button>
-      )}
-
-      {/* Primary actions */}
-      <div className="flex gap-2">
-        <button
-          onClick={handleDiscard}
-          className="flex items-center justify-center gap-1.5 flex-1 py-3 rounded-xl border border-slate-200 text-sm font-semibold text-slate-500 active:bg-slate-50 transition-colors"
-        >
-          <X className="w-3.5 h-3.5" />
-          Discard
-        </button>
-        <button
-          onClick={handleSave}
-          disabled={!editText.trim()}
-          className="flex items-center justify-center gap-1.5 flex-1 py-3 rounded-xl bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-bold active:bg-blue-700 transition-colors"
-        >
-          <CheckCircle2 className="w-4 h-4" />
-          Save Note
-        </button>
+      {/* Original transcript preview */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5">
+        <p className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wide mb-1">Original</p>
+        <p className="text-sm text-slate-600 leading-relaxed line-clamp-5">{reviewText}</p>
       </div>
+
+      {/* What would you like to save? */}
+      <p className="text-xs font-semibold text-slate-500">What would you like to save?</p>
+
+      <div className="space-y-2">
+        {REVIEW_OPTIONS.map((opt) => {
+          const locked = opt.proOnly && !isPro;
+          const active = selectedOption === opt.value;
+          return (
+            <button
+              key={opt.value}
+              onClick={() => !locked && !isSaving && setSelectedOption(opt.value)}
+              disabled={isSaving}
+              className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border-2 text-left transition-all duration-150 ${
+                locked
+                  ? "border-slate-200 bg-slate-50 opacity-60 cursor-default"
+                  : active
+                  ? "border-blue-500 bg-blue-50 shadow-sm"
+                  : "border-slate-200 bg-white active:border-slate-300"
+              }`}
+            >
+              <span className="text-xl leading-none flex-shrink-0">{opt.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-1.5">
+                  <p className={`text-sm font-bold leading-tight ${active && !locked ? "text-blue-700" : "text-slate-700"}`}>
+                    {opt.label}
+                  </p>
+                  {locked && (
+                    <span className="text-[9px] font-extrabold bg-slate-200 text-slate-500 rounded-full px-1.5 py-0.5 leading-none uppercase tracking-wide">Pro</span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5">{opt.sub}</p>
+              </div>
+              {active && !locked && (
+                <div className="w-4 h-4 rounded-full bg-blue-500 flex-shrink-0 flex items-center justify-center">
+                  <div className="w-1.5 h-1.5 rounded-full bg-white" />
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Save button */}
+      <button
+        onClick={handleSave}
+        disabled={isSaving}
+        className="w-full py-3.5 rounded-xl bg-blue-600 disabled:bg-blue-400 text-white text-sm font-bold flex items-center justify-center gap-2 transition-colors active:bg-blue-700"
+      >
+        {isSaving ? (
+          <>
+            <Loader2 className="w-4 h-4 animate-spin" />
+            {selectedOption === "professional" ? "Writing professional version…" : "Writing customer version…"}
+          </>
+        ) : (
+          "Save"
+        )}
+      </button>
+
+      {/* Discard */}
+      <button
+        disabled={isSaving}
+        onClick={handleDiscard}
+        className="w-full text-xs text-slate-400 font-medium py-1 text-center disabled:opacity-30"
+      >
+        Discard
+      </button>
     </div>
   );
 }
