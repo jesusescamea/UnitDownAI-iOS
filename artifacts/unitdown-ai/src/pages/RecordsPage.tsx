@@ -326,19 +326,19 @@ function KPICard({
       onClick={onClick}
       onMouseEnter={onMouseEnter}
       onMouseLeave={onMouseLeave}
-      className={`relative flex flex-col justify-between p-3 rounded-2xl border text-left
+      className={`relative flex flex-col justify-between p-2.5 rounded-2xl border text-left
         transition-all duration-150 ease-out active:scale-[0.96]
         hover:scale-[1.03] hover:shadow-md
         ${active ? "ring-2 ring-blue-400 ring-offset-1" : ""}
         ${colorClass}`}
     >
-      <div className={`w-6 h-6 rounded-lg flex items-center justify-center mb-2 ${accentIcon}`}>
-        <Icon className="w-3.5 h-3.5" />
+      <div className={`w-5 h-5 rounded-md flex items-center justify-center mb-1.5 ${accentIcon}`}>
+        <Icon className="w-3 h-3" />
       </div>
-      <span className="text-xl font-extrabold leading-none block">{value}</span>
-      <span className="text-[11px] font-semibold mt-1 opacity-70 leading-tight block">{label}</span>
+      <span className="text-lg font-extrabold leading-none block">{value}</span>
+      <span className="text-[10px] font-semibold mt-0.5 opacity-70 leading-tight block">{label}</span>
       {onClick && (
-        <ArrowRight className="absolute bottom-2.5 right-2.5 w-3 h-3 opacity-30 group-hover:opacity-70 transition-opacity" />
+        <ArrowRight className="absolute bottom-2 right-2 w-2.5 h-2.5 opacity-30 group-hover:opacity-70 transition-opacity" />
       )}
     </button>
   );
@@ -1744,7 +1744,7 @@ export default function RecordsPage() {
         </div>
       </header>
 
-      <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
+      <div className="max-w-2xl mx-auto px-4 py-3 space-y-3">
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 rounded-xl p-3 text-sm flex items-center gap-2">
@@ -1814,19 +1814,19 @@ export default function RecordsPage() {
           <>
             {/* ── Hero / Daily Briefing ──────────────────────────────────────── */}
             <section>
-              <div className="bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 rounded-2xl p-5 text-white shadow-lg shadow-blue-200/60">
-                <div className="flex items-start justify-between gap-3 mb-4">
+              <div className="bg-gradient-to-br from-blue-600 via-blue-600 to-blue-700 rounded-2xl p-4 text-white shadow-lg shadow-blue-200/60">
+                <div className="flex items-start justify-between gap-3 mb-3">
                   <div className="min-w-0">
                     <p className="text-blue-200 text-xs font-semibold uppercase tracking-wider mb-0.5">
                       {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
                     </p>
-                    <p className="text-2xl font-extrabold leading-tight text-white">
+                    <p className="text-xl font-extrabold leading-tight text-white">
                       {getGreeting(clerkUser?.firstName)}
                     </p>
-                    <p className="text-sm text-blue-100 mt-1.5 font-medium leading-snug">{briefingSummary}</p>
+                    <p className="text-xs text-blue-100 mt-1 font-medium leading-snug">{briefingSummary}</p>
                   </div>
-                  <div className="w-11 h-11 bg-white/15 rounded-2xl flex items-center justify-center flex-shrink-0">
-                    <Target className="w-5 h-5 text-white" />
+                  <div className="w-9 h-9 bg-white/15 rounded-xl flex items-center justify-center flex-shrink-0">
+                    <Target className="w-4 h-4 text-white" />
                   </div>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
@@ -1838,7 +1838,7 @@ export default function RecordsPage() {
                     <button
                       key={label}
                       onClick={onClick}
-                      className="bg-white/15 hover:bg-white/25 active:bg-white/35 text-white text-xs font-bold rounded-xl py-2.5 transition-all duration-150 active:scale-95"
+                      className="bg-white/15 hover:bg-white/25 active:bg-white/35 text-white text-xs font-bold rounded-xl py-2 transition-all duration-150 active:scale-95"
                     >
                       + {label}
                     </button>
@@ -1850,10 +1850,10 @@ export default function RecordsPage() {
             {/* ── Customers & Sites ─────────────────────────────────────────────── */}
             <section aria-label="Customers & Sites">
               {/* Section header */}
-              <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center justify-between mb-2">
                 <div className="flex items-center gap-2">
-                  <div className="w-7 h-7 bg-blue-50 rounded-xl flex items-center justify-center">
-                    <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                  <div className="w-6 h-6 bg-blue-50 rounded-lg flex items-center justify-center">
+                    <Building2 className="w-3 h-3 text-blue-600" />
                   </div>
                   <h2 className="font-extrabold text-slate-900 text-sm">Customers & Sites</h2>
                   {units.length > 0 && (
@@ -1871,13 +1871,13 @@ export default function RecordsPage() {
               </div>
 
               {/* Search row */}
-              <div className="relative mb-2.5">
+              <div className="relative mb-1.5">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
                   placeholder="Search customer, site, unit, location, manufacturer, model, or serial…"
-                  className="pl-9 pr-8 rounded-xl border-slate-200 text-sm h-10"
+                  className="pl-9 pr-8 rounded-xl border-slate-200 text-sm h-9"
                 />
                 {q && (
                   <button onClick={() => setQ("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400">
@@ -1887,7 +1887,7 @@ export default function RecordsPage() {
               </div>
 
               {/* View toggle + Type filter chips */}
-              <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <div className="flex items-center gap-2 mb-2 flex-wrap">
                 {/* View mode toggle */}
                 <div className="flex bg-slate-100 rounded-full p-0.5 flex-shrink-0">
                   <button
