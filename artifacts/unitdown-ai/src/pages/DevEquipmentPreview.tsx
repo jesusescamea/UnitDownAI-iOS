@@ -5,7 +5,7 @@
  * Blocked from rendering in production via import.meta.env.DEV guard.
  */
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity, AlertCircle, Bell, Brain, Building2, Calendar, Camera, CheckCircle2,
   ChevronDown, ChevronRight, CircleDot,
@@ -334,6 +334,36 @@ const MOCK_TIMELINE = [
     source: "manual" as const,
     confidencePercent: null,
   },
+  {
+    id: "t4",
+    eventType: "note",
+    title: "Field Observation — Compressor Vibration at Startup",
+    status: null,
+    eventDate: Date.now() - 86400000 * 14,
+    description: "Customer mentioned a low-frequency hum during afternoon peak load.",
+    found: null,
+    action: null,
+    result: null,
+    followUp: null,
+    technicianNotes: "Noticed slight vibration in compressor section at startup. Compressor isolators may need inspection at next scheduled PM. Customer advised to monitor.",
+    source: "manual" as const,
+    confidencePercent: null,
+  },
+  {
+    id: "t5",
+    eventType: "reminder",
+    title: "Return Visit — Verify Compressor Amp Draw",
+    status: "unresolved",
+    eventDate: Date.now() - 86400000 * 2,
+    description: "Set after high-head pressure call. Compressor amp draw was elevated at 22A (RLA 19A). Needs a return check.",
+    found: null,
+    action: null,
+    result: null,
+    followUp: "Return within 7 days. Run compressor amp draw with clamp meter. If still above RLA, recommend compressor evaluation.",
+    technicianNotes: null,
+    source: "manual" as const,
+    confidencePercent: null,
+  },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -487,6 +517,8 @@ function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
     diagnostic:  { bg: "bg-blue-50",    color: "text-blue-600",    Icon: Activity, label: "Diagnostic" },
     repair:      { bg: "bg-orange-50",  color: "text-orange-600",  Icon: Wrench,   label: "Repair"     },
     maintenance: { bg: "bg-emerald-50", color: "text-emerald-600", Icon: Settings, label: "PM"         },
+    note:        { bg: "bg-slate-100",  color: "text-slate-600",   Icon: FileText, label: "Note"       },
+    reminder:    { bg: "bg-amber-50",   color: "text-amber-600",   Icon: Bell,     label: "Reminder"   },
   };
   const stCfg: Record<string, { label: string; className: string }> = {
     unresolved: { label: "Open Issue", className: "bg-amber-100 text-amber-800 border-amber-200"      },
@@ -1097,6 +1129,27 @@ function EquipmentLibraryPreview({
 
 // ─── Equipment Detail Preview ─────────────────────────────────────────────────
 
+// ─── Service History filter config ───────────────────────────────────────────
+
+const HISTORY_FILTER_CHIPS: Array<{ key: string; label: string; types: string[] | null }> = [
+  { key: "All",         label: "All",         types: null                },
+  { key: "Diagnostics", label: "Diagnostics", types: ["diagnostic"]     },
+  { key: "Repairs",     label: "Repairs",     types: ["repair"]         },
+  { key: "Maintenance", label: "Maintenance", types: ["maintenance"]    },
+  { key: "Notes",       label: "Notes",       types: ["note"]           },
+  { key: "Reminders",   label: "Reminders",   types: ["reminder"]       },
+];
+
+const HISTORY_EMPTY_STATES: Record<string, { message: string; action: string }> = {
+  Diagnostics: { message: "No diagnostics recorded yet.",    action: "Run Diagnosis"  },
+  Repairs:     { message: "No repairs recorded yet.",        action: "Add Repair"     },
+  Maintenance: { message: "No maintenance history.",         action: "Add PM Entry"   },
+  Notes:       { message: "No technician notes yet.",        action: "Add Note"       },
+  Reminders:   { message: "No reminders or follow-ups set.", action: "Add Reminder"   },
+};
+
+// ─── Equipment detail view ────────────────────────────────────────────────────
+
 function EquipmentDetailPreview({
   unit,
   onBack,
@@ -1109,6 +1162,38 @@ function EquipmentDetailPreview({
   const [activeTab, setActiveTab] = useState<ActiveTab>("timeline");
   const [progressOpen, setProgressOpen] = useState(true);
   const [voiceNotes, setVoiceNotes] = useState<VoiceNoteEntry[]>([]);
+
+  // ── Service History filter — persisted per unit in localStorage ─────────────
+  const [historyFilter, setHistoryFilter] = useState<string>(() => {
+    try { return localStorage.getItem(`unitdown_dev_hf_${unit.id}`) ?? "All"; } catch { return "All"; }
+  });
+  const [historySearch, setHistorySearch] = useState("");
+
+  // Restore when the user navigates to a different unit (component stays mounted)
+  useEffect(() => {
+    try { setHistoryFilter(localStorage.getItem(`unitdown_dev_hf_${unit.id}`) ?? "All"); } catch { setHistoryFilter("All"); }
+    setHistorySearch("");
+  }, [unit.id]);
+
+  // Persist filter selection
+  useEffect(() => {
+    try { localStorage.setItem(`unitdown_dev_hf_${unit.id}`, historyFilter); } catch {}
+  }, [historyFilter, unit.id]);
+
+  // Filtered + searched timeline
+  const filteredTimeline = useMemo(() => {
+    const chip = HISTORY_FILTER_CHIPS.find((c) => c.key === historyFilter);
+    let items = chip?.types ? MOCK_TIMELINE.filter((e) => chip.types!.includes(e.eventType)) : MOCK_TIMELINE;
+    const q = historySearch.trim().toLowerCase();
+    if (q) {
+      items = items.filter((e) =>
+        [e.title, e.description, e.found, e.action, e.result, e.technicianNotes, e.followUp]
+          .some((f) => f?.toLowerCase().includes(q))
+      );
+    }
+    return items;
+  }, [historyFilter, historySearch]);
+
   const sc = unitStatusConfig(unit.status);
 
   const hasEquipment = unit.manufacturer || unit.modelNumber || unit.serialNumber ||
@@ -1341,44 +1426,133 @@ function EquipmentDetailPreview({
         {/* Service History Tab */}
         {activeTab === "timeline" && (
           <div>
+            {/* Header */}
             <div className="flex items-center justify-between mb-3">
               <div>
                 <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Service History</p>
-                <p className="text-xs text-slate-400 mt-0.5">{MOCK_TIMELINE.length} site visits on record</p>
+                <p className="text-xs text-slate-400 mt-0.5">
+                  {filteredTimeline.length}{" "}
+                  {historyFilter === "All" && !historySearch
+                    ? "entries on record"
+                    : historySearch
+                    ? "matching"
+                    : `${historyFilter.toLowerCase()} ${filteredTimeline.length === 1 ? "entry" : "entries"}`}
+                </p>
               </div>
               <button className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-3 py-1.5 text-xs transition-colors">
                 <Plus className="w-3.5 h-3.5" />
                 Add Entry
               </button>
             </div>
+
+            {/* Quick-add row */}
             <div className="flex gap-2 mb-3 flex-wrap">
-              {[
-                { Icon: FileText, label: "Note" },
-                { Icon: Wrench,   label: "Repair" },
-                { Icon: Settings, label: "PM" },
+              {([
+                { Icon: FileText, label: "Note"     },
+                { Icon: Wrench,   label: "Repair"   },
+                { Icon: Settings, label: "PM"       },
                 { Icon: Bell,     label: "Reminder" },
-              ].map(({ Icon, label }) => (
+              ] as const).map(({ Icon, label }) => (
                 <button key={label} className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors">
                   <Icon className="w-3.5 h-3.5" />
                   {label}
                 </button>
               ))}
             </div>
+
+            {/* Filter chips */}
             <div className="flex gap-1.5 mb-3 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
-              {["All", "Diagnostics", "Repairs", "Maintenance", "Notes"].map((label, i) => (
-                <button key={label} className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${i === 0 ? "bg-slate-800 text-white" : "bg-white border border-slate-200 text-slate-600"}`}>
-                  {label}
-                  <span className="text-xs opacity-60">{i === 0 ? MOCK_TIMELINE.length : 1}</span>
-                </button>
-              ))}
+              {HISTORY_FILTER_CHIPS.map((chip) => {
+                const count = chip.types === null
+                  ? MOCK_TIMELINE.length
+                  : MOCK_TIMELINE.filter((e) => chip.types!.includes(e.eventType)).length;
+                const active = historyFilter === chip.key;
+                return (
+                  <button
+                    key={chip.key}
+                    onClick={() => setHistoryFilter(chip.key)}
+                    className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-all duration-200 ${
+                      active
+                        ? "bg-slate-800 text-white shadow-sm scale-[1.03]"
+                        : "bg-white border border-slate-200 text-slate-600 hover:border-slate-300"
+                    }`}
+                  >
+                    {chip.label}
+                    <span className={`text-[10px] font-bold tabular-nums ${active ? "opacity-70" : "opacity-50"}`}>
+                      {count}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
+
+            {/* Search */}
             <div className="relative mb-3">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-              <input type="text" placeholder="Search service history…" className="w-full h-9 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300" />
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+                placeholder={`Search ${historyFilter === "All" ? "service history" : historyFilter.toLowerCase()}…`}
+                className="w-full h-9 pl-9 pr-9 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300"
+              />
+              {historySearch && (
+                <button
+                  onClick={() => setHistorySearch("")}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 active:text-slate-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
             </div>
-            <div className="space-y-2">
-              {MOCK_TIMELINE.map((ev) => <TimelineCard key={ev.id} event={ev} />)}
-            </div>
+
+            {/* Results list */}
+            {filteredTimeline.length > 0 ? (
+              <div key={`${historyFilter}::${historySearch}`} className="space-y-2">
+                {filteredTimeline.map((ev, i) => (
+                  <div
+                    key={ev.id}
+                    className="animate-in fade-in-0 slide-in-from-bottom-2 duration-200"
+                    style={{ animationDelay: `${i * 35}ms`, animationFillMode: "backwards" }}
+                  >
+                    <TimelineCard event={ev} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              /* Empty state */
+              <div className="flex flex-col items-center gap-3 py-10 text-center animate-in fade-in-0 duration-200">
+                <div className="w-12 h-12 rounded-2xl bg-slate-100 flex items-center justify-center">
+                  {historyFilter === "Repairs"     && <Wrench   className="w-5 h-5 text-slate-400" />}
+                  {historyFilter === "Maintenance" && <Settings className="w-5 h-5 text-slate-400" />}
+                  {historyFilter === "Notes"       && <FileText className="w-5 h-5 text-slate-400" />}
+                  {historyFilter === "Reminders"   && <Bell     className="w-5 h-5 text-slate-400" />}
+                  {historyFilter === "Diagnostics" && <Activity className="w-5 h-5 text-slate-400" />}
+                  {historyFilter === "All"         && <History  className="w-5 h-5 text-slate-400" />}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-slate-600">
+                    {historySearch
+                      ? `No ${historyFilter === "All" ? "entries" : historyFilter.toLowerCase()} matching "${historySearch}"`
+                      : (HISTORY_EMPTY_STATES[historyFilter]?.message ?? "No entries yet.")}
+                  </p>
+                </div>
+                {!historySearch && historyFilter !== "All" && (
+                  <button className="flex items-center gap-1.5 bg-blue-50 text-blue-700 font-bold rounded-xl px-4 py-2 text-xs hover:bg-blue-100 transition-colors">
+                    <Plus className="w-3.5 h-3.5" />
+                    {HISTORY_EMPTY_STATES[historyFilter]?.action ?? "Add Entry"}
+                  </button>
+                )}
+                {historySearch && (
+                  <button
+                    onClick={() => setHistorySearch("")}
+                    className="text-xs text-blue-600 font-semibold active:opacity-60"
+                  >
+                    Clear search
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         )}
 
