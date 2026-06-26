@@ -2,14 +2,14 @@
  * SmartServiceReport — AI voice-to-structured-report for HVAC technicians.
  *
  * Recording state machine:
- *   idle → recording (tap mic)
- *     listening  — SR active
- *     paused     — user tapped Pause
- *     processing — SR ended naturally, restarting in 250ms
- *   recording → generating (tap Stop → auto-fires AI report call)
- *   generating → report     (AI call succeeds)
- *   generating → error      (AI call fails)
- *   recording  → idle       (tap Cancel)
+ *   idle → recording (tap Start)
+ *     listening  — SR active, waveform animated
+ *     processing — SR ended naturally, restarting in 250ms (appears identical to listening)
+ *   recording → interpreting (tap Stop → runs HVAC speech correction first)
+ *   interpreting → generating  (interpreter complete → runs full report AI call)
+ *   generating   → report      (AI call succeeds)
+ *   generating   → error       (AI call fails)
+ *   recording    → idle        (tap Cancel)
  *
  * On "Add to Service History" → calls onSave(SmartReport).
  */
@@ -23,7 +23,6 @@ import {
 import {
   Activity,
   AlertTriangle,
-  ArrowLeft,
   CalendarDays,
   CheckCircle2,
   ChevronDown,
@@ -34,8 +33,6 @@ import {
   Mic,
   MicOff,
   Package,
-  Pause,
-  Play,
   RotateCcw,
   Shield,
   Square,
@@ -65,7 +62,7 @@ interface SmartServiceReportProps {
 // ─── Stage types ──────────────────────────────────────────────────────────────
 
 type Stage      = "idle" | "recording" | "generating" | "report" | "error";
-type RecordMode = "listening" | "paused" | "processing";
+type RecordMode = "listening" | "processing";
 
 // ─── localStorage learning (reuses same key as VoiceNoteRecorder) ─────────────
 
@@ -97,7 +94,7 @@ function getSRClass(): AnySR | null {
   return (window as any).SpeechRecognition ?? (window as any).webkitSpeechRecognition ?? null;
 }
 
-// ─── Overlap-aware segment merger (same logic as VoiceNoteRecorder) ───────────
+// ─── Overlap-aware segment merger ─────────────────────────────────────────────
 
 function buildNextSegments(segments: string[], newRaw: string): string[] {
   const phrase = newRaw.trim();
@@ -137,13 +134,59 @@ function cleanupTranscript(text: string): string {
   return words.join(" ");
 }
 
-// ─── Loading phase text ───────────────────────────────────────────────────────
+// ─── Elapsed time formatter ────────────────────────────────────────────────────
 
-const GENERATE_PHASES = [
-  "Correcting HVAC speech recognition…",
-  "Analyzing service actions…",
-  "Building report sections…",
-  "Extracting measurements & data…",
+function formatElapsed(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+// ─── Transcript quality estimate ───────────────────────────────────────────────
+
+function transcriptQuality(text: string): { label: string; color: string } {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  if (words === 0) return { label: "Waiting…",         color: "text-slate-400" };
+  if (words < 15)  return { label: "Keep speaking…",   color: "text-slate-400" };
+  if (words < 40)  return { label: "Decent — keep going", color: "text-amber-500" };
+  if (words < 80)  return { label: "Good recording",   color: "text-emerald-500" };
+  return              { label: "Excellent recording", color: "text-emerald-600" };
+}
+
+// ─── Animated waveform ────────────────────────────────────────────────────────
+
+const WAVE_SPEEDS  = [1.1, 0.8, 1.4, 0.9, 1.7, 0.6, 1.3, 1.0, 1.5, 0.7, 1.2, 0.85, 1.6];
+const WAVE_PHASES  = [0, 0.8, 1.6, 0.4, 1.2, 2.0, 0.6, 1.4, 0.2, 1.0, 1.8, 0.3, 1.1];
+const WAVE_MAX_H   = [14, 22, 10, 28, 18, 32, 14, 26, 10, 22, 30, 16, 24]; // px
+
+function waveBarH(i: number, frame: number, active: boolean): number {
+  if (!active) return 3;
+  const t   = frame * 0.11;
+  const raw = (Math.sin(t * WAVE_SPEEDS[i] + WAVE_PHASES[i]) + 1) / 2;
+  return Math.max(3, raw * WAVE_MAX_H[i]);
+}
+
+function Waveform({ frame, active }: { frame: number; active: boolean }) {
+  return (
+    <div className="flex items-center justify-center gap-[3px] h-10">
+      {WAVE_SPEEDS.map((_, i) => (
+        <div
+          key={i}
+          className={`w-[3px] rounded-full transition-none ${active ? "bg-red-400" : "bg-slate-300"}`}
+          style={{ height: `${waveBarH(i, frame, active)}px` }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ─── Loading phase config ──────────────────────────────────────────────────────
+
+const GENERATE_PHASES: Array<{ icon: string; label: string }> = [
+  { icon: "🔤", label: "Running HVAC Speech Interpreter…" },
+  { icon: "📋", label: "Analyzing service actions…"       },
+  { icon: "🏗️", label: "Building report sections…"        },
+  { icon: "📊", label: "Extracting measurements & data…"  },
 ];
 
 // ─── Section display config ───────────────────────────────────────────────────
@@ -168,25 +211,29 @@ const SECTION_CONFIG: Array<{
 
 function workCategoryStyle(cat: string): string {
   const lower = cat.toLowerCase();
-  if (lower.includes("pm") || lower.includes("filter") || lower.includes("belt") || lower.includes("lubrication") || lower.includes("drain") || lower.includes("cleaning")) {
+  if (lower.includes("pm") || lower.includes("filter") || lower.includes("belt") ||
+      lower.includes("lubrication") || lower.includes("drain") || lower.includes("cleaning")) {
     return "bg-emerald-50 text-emerald-700 border-emerald-200";
   }
-  if (lower.includes("replace") || lower.includes("repair") || lower.includes("compressor") || lower.includes("motor") || lower.includes("fan")) {
+  if (lower.includes("replace") || lower.includes("repair") ||
+      lower.includes("compressor") || lower.includes("motor") || lower.includes("fan")) {
     return "bg-orange-50 text-orange-700 border-orange-200";
   }
   if (lower.includes("refrigerant")) {
     return "bg-blue-50 text-blue-700 border-blue-200";
   }
-  if (lower.includes("electrical") || lower.includes("vfd") || lower.includes("thermostat") || lower.includes("control")) {
+  if (lower.includes("electrical") || lower.includes("vfd") ||
+      lower.includes("thermostat") || lower.includes("control")) {
     return "bg-yellow-50 text-yellow-700 border-yellow-200";
   }
-  if (lower.includes("combustion") || lower.includes("gas") || lower.includes("heat") || lower.includes("flame") || lower.includes("ignitor")) {
+  if (lower.includes("combustion") || lower.includes("gas") || lower.includes("heat") ||
+      lower.includes("flame") || lower.includes("ignitor")) {
     return "bg-red-50 text-red-700 border-red-200";
   }
   return "bg-slate-100 text-slate-600 border-slate-200";
 }
 
-// ─── Structured data row helper ───────────────────────────────────────────────
+// ─── Structured data row ──────────────────────────────────────────────────────
 
 function MeasRow({ label, value }: { label: string; value: string | null | undefined }) {
   if (!value) return null;
@@ -205,17 +252,22 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
   const [recordMode,     setRecordMode]     = useState<RecordMode>("listening");
   const [displayFinal,   setDisplayFinal]   = useState("");
   const [displayInterim, setDisplayInterim] = useState("");
-  const [report,         setReport]         = useState<SmartReport | null>(null);
+  const [elapsedSec,     setElapsedSec]     = useState(0);
+  const [animFrame,      setAnimFrame]      = useState(0);
   const [generatePhase,  setGeneratePhase]  = useState(0);
   const [transcriptOpen, setTranscriptOpen] = useState(false);
+  const [report,         setReport]         = useState<SmartReport | null>(null);
   const [error,          setError]          = useState<string | null>(null);
 
   const finalSegmentsRef  = useRef<string[]>([]);
   const interimRef        = useRef<string>("");
   const recognitionRef    = useRef<AnySR>(null);
   const userStoppedRef    = useRef(false);
-  const isPausedRef       = useRef(false);
   const isRestartingRef   = useRef(false);
+
+  const elapsedTimerRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const startTimeRef      = useRef<number>(0);
+  const animTimerRef      = useRef<ReturnType<typeof setInterval> | null>(null);
   const phaseTimerRef     = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const isSupported = !!getSRClass();
@@ -237,6 +289,18 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
     interimRef.current = "";
     setDisplayFinal(finalSegmentsRef.current.join(" "));
     setDisplayInterim("");
+  }
+
+  function stopElapsedTimer() {
+    if (elapsedTimerRef.current) { clearInterval(elapsedTimerRef.current); elapsedTimerRef.current = null; }
+  }
+
+  function stopAnimTimer() {
+    if (animTimerRef.current) { clearInterval(animTimerRef.current); animTimerRef.current = null; }
+  }
+
+  function stopPhaseTimer() {
+    if (phaseTimerRef.current) { clearInterval(phaseTimerRef.current); phaseTimerRef.current = null; }
   }
 
   // ── SR session ────────────────────────────────────────────────────────────────
@@ -279,6 +343,8 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
     r.onerror = (event: any) => {
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         setError("Microphone access denied. Allow microphone access and try again.");
+        stopElapsedTimer();
+        stopAnimTimer();
         setStage("idle");
       } else if (event.error !== "aborted" && event.error !== "no-speech") {
         setRecordMode("processing");
@@ -292,20 +358,17 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
         setStage("generating");
         return;
       }
-      if (isPausedRef.current) {
-        setRecordMode("paused");
-        return;
-      }
+      // Auto-restart on silence — waveform stays "processing" for ~250ms then resumes
       if (!isRestartingRef.current) {
         isRestartingRef.current = true;
         setRecordMode("processing");
         setTimeout(() => {
-          if (!userStoppedRef.current && !isPausedRef.current) {
+          if (!userStoppedRef.current) {
             startRecognitionSession();
           } else {
             isRestartingRef.current = false;
           }
-        }, 250);
+        }, 200);
       }
     };
 
@@ -313,6 +376,8 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
       r.start();
     } catch {
       setError("Could not start microphone. Check browser permissions.");
+      stopElapsedTimer();
+      stopAnimTimer();
       setStage("idle");
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -323,51 +388,53 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
   const startRecording = useCallback(() => {
     resetAccumulators();
     userStoppedRef.current  = false;
-    isPausedRef.current     = false;
     isRestartingRef.current = false;
     setDisplayFinal("");
     setDisplayInterim("");
+    setElapsedSec(0);
+    setAnimFrame(0);
     setError(null);
     setReport(null);
     setRecordMode("listening");
     setStage("recording");
+
+    // Start elapsed timer
+    startTimeRef.current = Date.now();
+    elapsedTimerRef.current = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - startTimeRef.current) / 1000));
+    }, 1000);
+
+    // Start waveform animation
+    animTimerRef.current = setInterval(() => {
+      setAnimFrame((f) => f + 1);
+    }, 80);
+
     startRecognitionSession();
   }, [startRecognitionSession]);
 
   const stopRecording = useCallback(() => {
     userStoppedRef.current  = true;
-    isPausedRef.current     = false;
     isRestartingRef.current = false;
-    setRecordMode("processing");
+    stopElapsedTimer();
+    stopAnimTimer();
     recognitionRef.current?.stop();
   }, []);
-
-  const pauseRecording = useCallback(() => {
-    isPausedRef.current     = true;
-    isRestartingRef.current = false;
-    recognitionRef.current?.stop();
-  }, []);
-
-  const resumeRecording = useCallback(() => {
-    isPausedRef.current     = false;
-    isRestartingRef.current = false;
-    setRecordMode("listening");
-    startRecognitionSession();
-  }, [startRecognitionSession]);
 
   const cancelRecording = useCallback(() => {
     userStoppedRef.current  = true;
-    isPausedRef.current     = false;
     isRestartingRef.current = false;
+    stopElapsedTimer();
+    stopAnimTimer();
     recognitionRef.current?.abort();
     recognitionRef.current = null;
     resetAccumulators();
     setStage("idle");
     setDisplayFinal("");
     setDisplayInterim("");
+    setElapsedSec(0);
   }, []);
 
-  // ── Enter generating — auto-fire AI call ──────────────────────────────────────
+  // ── Enter generating — show interpreter first, then fire AI call ──────────────
 
   useEffect(() => {
     if (stage !== "generating") return;
@@ -389,7 +456,7 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
 
     voiceReport({ rawTranscript: cleaned, userCorrections: corrections })
       .then((result) => {
-        if (phaseTimerRef.current) { clearInterval(phaseTimerRef.current); phaseTimerRef.current = null; }
+        stopPhaseTimer();
         setReport({
           id:                  `sr-${Date.now()}`,
           createdAt:           Date.now(),
@@ -401,15 +468,19 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
         setStage("report");
       })
       .catch(() => {
-        if (phaseTimerRef.current) { clearInterval(phaseTimerRef.current); phaseTimerRef.current = null; }
+        stopPhaseTimer();
         setStage("error");
       });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stage]);
 
+  // ── Cleanup on unmount ────────────────────────────────────────────────────────
+
   useEffect(() => {
     return () => {
-      if (phaseTimerRef.current) clearInterval(phaseTimerRef.current);
+      stopElapsedTimer();
+      stopAnimTimer();
+      stopPhaseTimer();
     };
   }, []);
 
@@ -433,7 +504,7 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
 
   if (!isSupported) {
     return (
-      <div className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200">
+      <div className="flex items-center gap-2.5 px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 m-4">
         <MicOff className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
         <p className="text-xs text-slate-500">Voice recording requires Chrome, Edge, or Safari 14.1+.</p>
       </div>
@@ -446,25 +517,38 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
 
   if (stage === "idle") {
     return (
-      <div className="flex flex-col items-center gap-4 py-6 px-4">
+      <div className="flex flex-col items-center gap-5 py-8 px-4">
         {error && (
           <p className="text-xs text-red-500 text-center max-w-[260px] leading-snug">{error}</p>
         )}
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center shadow-lg shadow-blue-200">
-          <Mic className="w-8 h-8 text-white" />
+
+        {/* Mic icon */}
+        <div className="w-20 h-20 rounded-[22px] bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center shadow-xl shadow-blue-200">
+          <Mic className="w-10 h-10 text-white" />
         </div>
-        <div className="text-center">
-          <p className="text-sm font-bold text-slate-800 mb-1">Ready to Record</p>
-          <p className="text-xs text-slate-400 leading-relaxed max-w-[240px]">
-            Speak naturally about what you found and what you did.
-            AI will build the full service report automatically.
+
+        <div className="text-center space-y-1.5 max-w-[260px]">
+          <p className="text-base font-extrabold text-slate-900">Ready to Record</p>
+          <p className="text-xs text-slate-400 leading-relaxed">
+            Speak naturally about the service call. What you found, what you did, any readings or parts.
+            AI does the rest.
           </p>
         </div>
+
+        {/* Capabilities chips */}
+        <div className="flex flex-wrap justify-center gap-1.5">
+          {["HVAC Terms", "Measurements", "Parts", "Work Categories"].map((cap) => (
+            <span key={cap} className="text-[10px] font-semibold bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+              {cap}
+            </span>
+          ))}
+        </div>
+
         <button
           onClick={startRecording}
-          className="w-full max-w-[280px] h-[52px] rounded-2xl bg-blue-600 active:bg-blue-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-sm shadow-blue-200 active:scale-[0.98] transition-all duration-150"
+          className="w-full max-w-[280px] h-[56px] rounded-2xl bg-blue-600 active:bg-blue-700 text-white font-extrabold text-sm flex items-center justify-center gap-2.5 shadow-md shadow-blue-200 active:scale-[0.97] transition-all duration-150"
         >
-          <Mic className="w-4.5 h-4.5" />
+          <Mic className="w-5 h-5" />
           Start Recording
         </button>
         <button
@@ -482,28 +566,42 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
   // ─────────────────────────────────────────────────────────────────────────────
 
   if (stage === "recording") {
-    const isListening  = recordMode === "listening";
-    const isPaused     = recordMode === "paused";
-    const isProcessing = recordMode === "processing";
-    const hasText      = displayFinal.trim() || displayInterim.trim();
-
-    const statusConfig = isPaused
-      ? { dot: "bg-amber-400",              label: "Paused",       labelCls: "text-amber-600" }
-      : isProcessing
-      ? { dot: "bg-slate-400 animate-pulse", label: "Processing…", labelCls: "text-slate-500" }
-      : { dot: "bg-red-500 animate-pulse",   label: "Listening…",  labelCls: "text-red-500"   };
+    const isListening = recordMode === "listening";
+    const hasText     = displayFinal.trim();
+    const quality     = transcriptQuality(displayFinal + " " + displayInterim);
 
     return (
-      <div className="space-y-3 px-4 py-4">
-        <div className="flex items-center gap-2">
-          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusConfig.dot}`} />
-          <span className={`text-sm font-bold ${statusConfig.labelCls}`}>{statusConfig.label}</span>
-          {isListening && (
-            <span className="text-xs text-slate-400 ml-0.5">· tap Stop when done</span>
-          )}
+      <div className="flex flex-col gap-3 px-4 py-4">
+
+        {/* Status bar */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className={`w-2 h-2 rounded-full flex-shrink-0 ${
+              isListening ? "bg-red-500 animate-pulse" : "bg-amber-400"
+            }`} />
+            <span className={`text-sm font-extrabold ${
+              isListening ? "text-red-600" : "text-slate-500"
+            }`}>
+              {isListening ? "Recording…" : "Reconnecting…"}
+            </span>
+          </div>
+          {/* Elapsed time */}
+          <span className="text-sm font-bold text-slate-500 tabular-nums">
+            {formatElapsed(elapsedSec)}
+          </span>
         </div>
 
-        <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 min-h-[88px]">
+        {/* Animated waveform */}
+        <div className="flex flex-col items-center gap-2 py-3 bg-slate-50 rounded-2xl border border-slate-200">
+          <Waveform frame={animFrame} active={isListening} />
+          {/* Quality indicator */}
+          <p className={`text-[10px] font-bold ${quality.color}`}>
+            {quality.label}
+          </p>
+        </div>
+
+        {/* Rolling transcript */}
+        <div className="min-h-[72px] max-h-[140px] overflow-y-auto bg-white rounded-xl border border-slate-200 px-3 py-2.5">
           {hasText ? (
             <p className="text-sm text-slate-700 leading-relaxed">
               {displayFinal}
@@ -512,43 +610,24 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
             </p>
           ) : (
             <p className="text-sm text-slate-400 italic">
-              {isPaused ? "Recording paused — tap Resume to continue." : "Speak now…"}
+              Speak now — what did you find on this unit?
             </p>
           )}
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
-          {isPaused ? (
-            <button
-              onClick={resumeRecording}
-              className="flex items-center justify-center gap-2 h-[52px] rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 font-bold text-sm active:bg-blue-100 transition-colors"
-            >
-              <Play className="w-4.5 h-4.5" />
-              Resume
-            </button>
-          ) : (
-            <button
-              onClick={pauseRecording}
-              disabled={isProcessing}
-              className="flex items-center justify-center gap-2 h-[52px] rounded-xl border-2 border-slate-300 bg-white text-slate-700 font-bold text-sm active:bg-slate-50 disabled:opacity-40 transition-colors"
-            >
-              <Pause className="w-4.5 h-4.5" />
-              Pause
-            </button>
-          )}
-          <button
-            onClick={stopRecording}
-            disabled={isProcessing && !hasText}
-            className="flex items-center justify-center gap-2 h-[52px] rounded-xl bg-red-500 active:bg-red-600 text-white font-bold text-sm disabled:opacity-40 transition-colors shadow-sm shadow-red-200"
-          >
-            <Square className="w-4.5 h-4.5 fill-white" />
-            Stop
-          </button>
-        </div>
+        {/* STOP button — large, full-width, prominent */}
+        <button
+          onClick={stopRecording}
+          className="w-full h-[64px] rounded-2xl bg-red-500 active:bg-red-600 text-white font-extrabold text-base flex items-center justify-center gap-3 shadow-lg shadow-red-200 active:scale-[0.97] transition-all duration-150"
+        >
+          <Square className="w-6 h-6 fill-white" />
+          Stop Recording
+        </button>
 
+        {/* Cancel — small, unobtrusive */}
         <button
           onClick={cancelRecording}
-          className="w-full h-[40px] rounded-xl border border-slate-200 text-slate-400 font-semibold text-xs active:bg-slate-50 transition-colors"
+          className="text-center text-xs text-slate-400 font-semibold py-1 active:opacity-60"
         >
           Cancel
         </button>
@@ -557,32 +636,77 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
   }
 
   // ─────────────────────────────────────────────────────────────────────────────
-  // GENERATING
+  // GENERATING (interpreter + report generation)
   // ─────────────────────────────────────────────────────────────────────────────
 
   if (stage === "generating") {
+    const phase = GENERATE_PHASES[generatePhase];
+    const isInterpreting = generatePhase === 0;
+
     return (
-      <div className="flex flex-col items-center gap-5 py-10 px-4">
-        <div className="relative w-16 h-16 flex items-center justify-center">
-          <div className="absolute inset-0 rounded-2xl bg-blue-50 animate-pulse" />
-          <Loader2 className="w-7 h-7 text-blue-600 animate-spin relative z-10" />
+      <div className="flex flex-col items-center gap-6 py-10 px-4">
+
+        {/* Animated icon area */}
+        <div className="relative w-20 h-20 flex items-center justify-center">
+          <div className="absolute inset-0 rounded-[22px] bg-blue-50 animate-pulse" />
+          {isInterpreting ? (
+            <span className="text-3xl relative z-10">🔤</span>
+          ) : (
+            <Loader2 className="w-9 h-9 text-blue-600 animate-spin relative z-10" />
+          )}
         </div>
+
+        {/* Phase label */}
         <div className="text-center space-y-1">
-          <p className="text-sm font-bold text-slate-800">Generating Service Report</p>
+          <p className="text-sm font-extrabold text-slate-800">
+            {isInterpreting ? "HVAC Speech Interpreter" : "Generating Service Report"}
+          </p>
           <p className="text-xs text-slate-400 transition-all duration-500">
-            {GENERATE_PHASES[generatePhase]}
+            {phase.icon} {phase.label}
           </p>
         </div>
-        <div className="flex gap-1.5">
+
+        {/* Phase progress dots */}
+        <div className="flex gap-2">
           {GENERATE_PHASES.map((_, i) => (
             <span
               key={i}
-              className={`w-1.5 h-1.5 rounded-full transition-all duration-500 ${
-                i <= generatePhase ? "bg-blue-500" : "bg-slate-200"
+              className={`rounded-full transition-all duration-500 ${
+                i === generatePhase
+                  ? "w-4 h-2 bg-blue-500"
+                  : i < generatePhase
+                  ? "w-2 h-2 bg-blue-300"
+                  : "w-2 h-2 bg-slate-200"
               }`}
             />
           ))}
         </div>
+
+        {/* Sub-steps for interpreter phase */}
+        {isInterpreting && (
+          <div className="w-full max-w-[280px] space-y-2">
+            {[
+              "Correcting speech recognition errors",
+              "Applying HVAC terminology",
+              "Normalizing refrigerant references",
+            ].map((step, i) => (
+              <div key={step} className="flex items-center gap-2">
+                <div className={`w-3.5 h-3.5 rounded-full flex items-center justify-center flex-shrink-0 ${
+                  i === 0 ? "bg-blue-100" : "bg-slate-100"
+                }`}>
+                  {i === 0 ? (
+                    <Loader2 className="w-2.5 h-2.5 text-blue-500 animate-spin" />
+                  ) : (
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                  )}
+                </div>
+                <p className={`text-[11px] font-medium ${i === 0 ? "text-slate-700" : "text-slate-400"}`}>
+                  {step}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -593,12 +717,12 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
 
   if (stage === "error") {
     return (
-      <div className="flex flex-col items-center gap-4 py-8 px-4 text-center">
-        <div className="w-12 h-12 rounded-2xl bg-red-50 flex items-center justify-center">
-          <AlertTriangle className="w-6 h-6 text-red-500" />
+      <div className="flex flex-col items-center gap-5 py-10 px-4 text-center">
+        <div className="w-14 h-14 rounded-2xl bg-red-50 flex items-center justify-center">
+          <AlertTriangle className="w-7 h-7 text-red-500" />
         </div>
         <div>
-          <p className="text-sm font-bold text-slate-800 mb-1">Report Generation Failed</p>
+          <p className="text-sm font-extrabold text-slate-800 mb-1.5">Report Generation Failed</p>
           <p className="text-xs text-slate-400 leading-relaxed max-w-[240px]">
             AI service is temporarily unavailable. Try again or discard this recording.
           </p>
@@ -606,14 +730,14 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
         <div className="flex flex-col gap-2 w-full max-w-[280px]">
           <button
             onClick={handleReRecord}
-            className="w-full h-[48px] rounded-xl bg-blue-600 active:bg-blue-700 text-white font-bold text-sm flex items-center justify-center gap-2"
+            className="w-full h-[52px] rounded-2xl bg-blue-600 active:bg-blue-700 text-white font-bold text-sm flex items-center justify-center gap-2"
           >
             <RotateCcw className="w-4 h-4" />
             Try Again
           </button>
           <button
             onClick={onDiscard}
-            className="w-full h-[40px] rounded-xl border border-slate-200 text-slate-400 font-semibold text-xs"
+            className="w-full h-[44px] rounded-xl border border-slate-200 text-slate-400 font-semibold text-xs"
           >
             Discard
           </button>
@@ -627,8 +751,8 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
   // ─────────────────────────────────────────────────────────────────────────────
 
   if (stage === "report" && report) {
-    const s    = report.sections;
-    const d    = report.structured;
+    const s = report.sections;
+    const d = report.structured;
     const hasMeasurements = !!(d.suctionPressure || d.dischargePressure || d.voltage || d.amperage ||
       d.superheat || d.subcooling || d.deltaT || d.splitTemp || d.gasPressure);
     const hasRefrigerant  = !!(d.refrigerantType || d.refrigerantCharge || d.refrigerantRecovered || d.refrigerantAdded);
@@ -637,10 +761,11 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
 
     return (
       <div className="flex flex-col">
+
         {/* ── Report header ─────────────────────────────────────────────────── */}
         <div className="flex items-center gap-2.5 px-4 pt-4 pb-3 border-b border-slate-100">
-          <div className="w-7 h-7 rounded-xl bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center flex-shrink-0">
-            <Mic className="w-4 h-4 text-white" />
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-500 to-blue-700 flex items-center justify-center flex-shrink-0">
+            <Mic className="w-4.5 h-4.5 text-white" />
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-extrabold text-slate-900 leading-tight">Service Report</p>
@@ -651,11 +776,9 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
             </p>
           </div>
           <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
-            report.confidence >= 85
-              ? "bg-green-50 text-green-700"
-              : report.confidence >= 65
-              ? "bg-amber-50 text-amber-700"
-              : "bg-red-50 text-red-700"
+            report.confidence >= 85 ? "bg-green-50 text-green-700" :
+            report.confidence >= 65 ? "bg-amber-50 text-amber-700" :
+                                      "bg-red-50 text-red-700"
           }`}>
             {report.confidence}% confidence
           </span>
@@ -718,7 +841,7 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
           ))}
         </div>
 
-        {/* ── Measurements grid ─────────────────────────────────────────────── */}
+        {/* ── Extracted data panel ──────────────────────────────────────────── */}
         {(hasMeasurements || hasRefrigerant || d.partsReplaced.length > 0 || hasEquipInfo) && (
           <div className="px-4 pt-3">
             <div className="bg-white rounded-xl border border-[#E6EDF8] overflow-hidden">
@@ -732,31 +855,31 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
                 {hasMeasurements && (
                   <>
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 mt-1">Readings</p>
-                    <MeasRow label="Suction"        value={d.suctionPressure}  />
-                    <MeasRow label="Discharge"      value={d.dischargePressure}/>
-                    <MeasRow label="Voltage"        value={d.voltage}          />
-                    <MeasRow label="Amperage"       value={d.amperage}         />
-                    <MeasRow label="Superheat"      value={d.superheat}        />
-                    <MeasRow label="Subcooling"     value={d.subcooling}       />
-                    <MeasRow label="Delta T"        value={d.deltaT}           />
-                    <MeasRow label="Split Temp"     value={d.splitTemp}        />
-                    <MeasRow label="Gas Pressure"   value={d.gasPressure}      />
+                    <MeasRow label="Suction"      value={d.suctionPressure}   />
+                    <MeasRow label="Discharge"    value={d.dischargePressure} />
+                    <MeasRow label="Voltage"      value={d.voltage}           />
+                    <MeasRow label="Amperage"     value={d.amperage}          />
+                    <MeasRow label="Superheat"    value={d.superheat}         />
+                    <MeasRow label="Subcooling"   value={d.subcooling}        />
+                    <MeasRow label="Delta T"      value={d.deltaT}            />
+                    <MeasRow label="Split Temp"   value={d.splitTemp}         />
+                    <MeasRow label="Gas Pressure" value={d.gasPressure}       />
                   </>
                 )}
                 {hasRefrigerant && (
                   <>
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 mt-2">Refrigerant</p>
-                    <MeasRow label="Type"      value={d.refrigerantType}     />
-                    <MeasRow label="Charge"    value={d.refrigerantCharge}   />
-                    <MeasRow label="Recovered" value={d.refrigerantRecovered}/>
-                    <MeasRow label="Added"     value={d.refrigerantAdded}    />
+                    <MeasRow label="Type"      value={d.refrigerantType}      />
+                    <MeasRow label="Charge"    value={d.refrigerantCharge}    />
+                    <MeasRow label="Recovered" value={d.refrigerantRecovered} />
+                    <MeasRow label="Added"     value={d.refrigerantAdded}     />
                   </>
                 )}
                 {hasEquipInfo && (
                   <>
                     <p className="text-[9px] font-bold text-slate-400 uppercase tracking-widest mb-1 mt-2">Equipment</p>
-                    <MeasRow label="Model"  value={d.modelNumber} />
-                    <MeasRow label="Serial" value={d.serialNumber}/>
+                    <MeasRow label="Model"  value={d.modelNumber}  />
+                    <MeasRow label="Serial" value={d.serialNumber} />
                   </>
                 )}
                 {d.partsReplaced.length > 0 && (
@@ -798,25 +921,25 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
         </div>
 
         {/* ── Actions ───────────────────────────────────────────────────────── */}
-        <div className="px-4 pb-4 pt-2 space-y-2 border-t border-slate-100 mt-1">
+        <div className="px-4 pb-5 pt-2 space-y-2 border-t border-slate-100 mt-1">
           <button
             onClick={handleSave}
-            className="w-full h-[52px] rounded-2xl bg-blue-600 active:bg-blue-700 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-sm shadow-blue-200 active:scale-[0.98] transition-all duration-150"
+            className="w-full h-[56px] rounded-2xl bg-blue-600 active:bg-blue-700 text-white font-extrabold text-sm flex items-center justify-center gap-2 shadow-md shadow-blue-200 active:scale-[0.97] transition-all duration-150"
           >
-            <CheckCircle2 className="w-4.5 h-4.5" />
+            <CheckCircle2 className="w-5 h-5" />
             Add to Service History
           </button>
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={handleReRecord}
-              className="h-[40px] rounded-xl border border-slate-200 text-slate-600 font-semibold text-xs flex items-center justify-center gap-1.5 active:bg-slate-50"
+              className="h-[42px] rounded-xl border border-slate-200 text-slate-600 font-semibold text-xs flex items-center justify-center gap-1.5 active:bg-slate-50"
             >
               <RotateCcw className="w-3.5 h-3.5" />
               Re-record
             </button>
             <button
               onClick={onDiscard}
-              className="h-[40px] rounded-xl border border-slate-200 text-slate-400 font-semibold text-xs active:bg-slate-50"
+              className="h-[42px] rounded-xl border border-slate-200 text-slate-400 font-semibold text-xs active:bg-slate-50"
             >
               Discard
             </button>

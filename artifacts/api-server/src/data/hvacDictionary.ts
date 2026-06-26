@@ -23,11 +23,22 @@ export const HVAC_TERMS: string[] = [
   "Reversing Valve", "Defrost Board",
   "Float Switch", "Pressure Switch", "High Pressure Switch", "Low Pressure Switch",
   "Relief Valve", "Check Valve",
+  // Fan and blower components
+  "Condenser Fan Motor", "Condenser Fan Blade", "Condenser Fan",
+  "Blower Wheel", "Blower Motor", "Blower Assembly", "Blower Housing",
+  "Evaporator Fan Motor", "Indoor Fan Motor",
+  "Hail Guard", "Hail Screen",
+  // Heat section components
+  "Heat Exchanger", "Primary Heat Exchanger", "Secondary Heat Exchanger",
+  "Inducer Motor", "Combustion Blower", "Rollout Switch",
+  "Flame Sensor", "Hot Surface Ignitor", "Ignitor", "Pilot Assembly",
+  "Gas Valve", "Burner Assembly", "Pressure Manifold",
   // Electrical and controls
   "Relay", "Thermostat", "Economizer Controller",
-  "VFD", "ECM", "PSC", "Phase Monitor",
+  "VFD", "ECM", "ECM Motor", "PSC Motor", "PSC", "Phase Monitor",
   "Control Board", "Defrost Timer", "Sequencer",
   "Transformer", "Fuse Block", "Disconnect",
+  "Compressor Contactor", "Fan Contactor",
   // Refrigerants
   "R-22", "R-410A", "R-454B", "R-32", "R-407C", "R-134a",
   "R-404A", "R-448A", "R-449A",
@@ -58,17 +69,55 @@ export const HVAC_TERMS: string[] = [
 // compound phrases before single words.
 
 export const SPEECH_CORRECTIONS: Array<{ speech: string; correction: string }> = [
-  // Expansion valve mishearings
+  // ── Expansion valve mishearings ──────────────────────────────────────────────
   { speech: "TVX",              correction: "TXV" },
   { speech: "XV valve",         correction: "TXV" },
   { speech: "TX valve",         correction: "TXV" },
-  // Filter component
+  { speech: "XV",               correction: "TXV" },
+  // ── Contactor mishearings ────────────────────────────────────────────────────
+  { speech: "contact her",      correction: "contactor" },
+  { speech: "contact tour",     correction: "contactor" },
+  { speech: "contact or",       correction: "contactor" },
+  { speech: "contactor",        correction: "contactor" },  // preserve
+  { speech: "compressor contactor", correction: "compressor contactor" }, // preserve
+  // ── Filter component ─────────────────────────────────────────────────────────
   { speech: "filter dryer",     correction: "filter drier" },
   { speech: "filter driver",    correction: "filter drier" },
-  // Common field phrase mishearings
+  // ── RTU mishearings ──────────────────────────────────────────────────────────
+  { speech: "R2 unit",          correction: "RTU" },
+  { speech: "RTO unit",         correction: "RTU" },
+  { speech: "RTO",              correction: "RTU" },
+  { speech: "R-T-U",            correction: "RTU" },
+  // ── Blower and fan mishearings ───────────────────────────────────────────────
+  { speech: "blower will",      correction: "blower wheel" },
+  { speech: "blower hill",      correction: "blower wheel" },
+  { speech: "blower wheel",     correction: "blower wheel" }, // preserve
+  { speech: "condenser fan",    correction: "condenser fan" }, // preserve
+  { speech: "hail guard",       correction: "hail guard" },   // preserve
+  // ── Heat exchanger ───────────────────────────────────────────────────────────
+  { speech: "heat exchanger",   correction: "heat exchanger" }, // preserve
+  // ── ECM motor mishearings ────────────────────────────────────────────────────
+  { speech: "EEM motor",        correction: "ECM motor" },
+  { speech: "EEM",              correction: "ECM" },
+  { speech: "EZM",              correction: "ECM" },
+  { speech: "E-C-M",            correction: "ECM" },
+  // ── Economizer mishearings ───────────────────────────────────────────────────
+  { speech: "equalizer",        correction: "economizer" },
+  { speech: "economizer",       correction: "economizer" }, // preserve
+  // ── VFD ──────────────────────────────────────────────────────────────────────
+  { speech: "VFD",              correction: "VFD" },         // preserve
+  { speech: "variable frequency drive", correction: "VFD" },
+  // ── Pressure mishearings ─────────────────────────────────────────────────────
+  { speech: "scene pressure",   correction: "suction pressure" },
+  { speech: "seen pressure",    correction: "suction pressure" },
+  { speech: "scene pressures",  correction: "suction pressure" },
+  { speech: "seen pressures",   correction: "system pressures" },
+  { speech: "pressure pressure", correction: "pressure" },
+  // Note: "head pressure" is a real HVAC synonym for discharge pressure — normalized below
+  { speech: "head pressure",    correction: "discharge pressure (head pressure)" },
+  // ── Common field phrase mishearings ──────────────────────────────────────────
   { speech: "Richard system",   correction: "recharged system" },
   { speech: "Richard the system", correction: "recharged the system" },
-  { speech: "seen pressures",   correction: "checked system pressures" },
   { speech: "hooked gauges",    correction: "connected manifold gauges" },
   { speech: "hook gauges",      correction: "connected manifold gauges" },
   { speech: "ran gauges",       correction: "connected manifold gauges" },
@@ -80,17 +129,29 @@ export const SPEECH_CORRECTIONS: Array<{ speech: string; correction: string }> =
   { speech: "condenser dirty",  correction: "condenser coil fouled" },
   { speech: "heat bum",         correction: "heat pump" },
   { speech: "split stem",       correction: "split system" },
-  // Refrigerant name normalization
+  { speech: "system system",    correction: "system" },
+  { speech: "unit unit",        correction: "unit" },
+  // ── Refrigerant name normalization ───────────────────────────────────────────
+  // Full normalizations — most specific first
+  { speech: "R410A",            correction: "R-410A" },
+  { speech: "R 410A",           correction: "R-410A" },
+  { speech: "R410",             correction: "R-410A" },
+  { speech: "410A",             correction: "R-410A" },
+  { speech: "410",              correction: "R-410A" },
+  { speech: "R407C",            correction: "R-407C" },
+  { speech: "R-407",            correction: "R-407C" },
+  { speech: "407C",             correction: "R-407C" },
+  { speech: "407",              correction: "R-407C" },
   { speech: "R22",              correction: "R-22" },
   { speech: "R 22",             correction: "R-22" },
-  { speech: "R410",             correction: "R-410A" },
-  { speech: "R410A",            correction: "R-410A" },
-  { speech: "R454",             correction: "R-454B" },
-  { speech: "freon",            correction: "refrigerant (or specific type if mentioned in context)" },
-  // Duplicate word suppression examples
-  { speech: "pressure pressure", correction: "pressure" },
-  { speech: "system system",     correction: "system" },
-  { speech: "unit unit",         correction: "unit" },
+  { speech: "22 refrigerant",   correction: "R-22" },
+  { speech: "22",               correction: "R-22" }, // only when clearly a refrigerant reference
+  { speech: "R454B",            correction: "R-454B" },
+  { speech: "R 454",            correction: "R-454B" },
+  { speech: "454B",             correction: "R-454B" },
+  { speech: "R32",              correction: "R-32" },
+  { speech: "freon",            correction: "refrigerant" },
+  { speech: "Freon",            correction: "refrigerant" },
 ];
 
 // ─── Prompt fragment ──────────────────────────────────────────────────────────
