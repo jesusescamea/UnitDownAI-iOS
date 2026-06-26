@@ -608,13 +608,15 @@ const TYPE_CHIPS = [
 ];
 
 function CustomerGroupCard({
-  customer, units, expanded, onToggle, onSelectUnit,
+  customer, units, expanded, onToggle, onSelectUnit, isHighlighted, cardRef,
 }: {
   customer: string;
   units: MockUnit[];
   expanded: boolean;
   onToggle: () => void;
   onSelectUnit: (u: MockUnit) => void;
+  isHighlighted?: boolean;
+  cardRef?: (el: HTMLDivElement | null) => void;
 }) {
   const criticalCount    = units.filter((u) => u.status === "critical").length;
   const followUpCount    = units.filter((u) => u.status === "needs-follow-up").length;
@@ -652,7 +654,12 @@ function CustomerGroupCard({
   const iconColor = criticalCount > 0 ? "text-red-600"  : followUpCount > 0 ? "text-amber-600" : monitoringCount > 0 ? "text-blue-600" : "text-slate-500";
 
   return (
-    <div className={`bg-white border rounded-2xl shadow-md shadow-slate-200/80 overflow-hidden transition-all ${expanded ? "border-blue-300 shadow-lg shadow-slate-300/60" : accentBorder}`}>
+    <div
+      ref={cardRef}
+      className={`bg-white border rounded-2xl shadow-md shadow-slate-200/80 overflow-hidden transition-all
+        ${expanded ? "border-blue-300 shadow-lg shadow-slate-300/60" : accentBorder}
+        ${isHighlighted ? "ring-2 ring-blue-400 ring-offset-2 ring-offset-[#EEF4FF]" : ""}`}
+    >
       {/* ── Entire header is the tap target ──────────────────────────────────── */}
       <div
         onClick={onToggle}
@@ -800,16 +807,52 @@ type KpiFilterType = "attention" | "monitoring" | "return-visits" | null;
 function EquipmentLibraryPreview({
   onSelectUnit,
   onOpenDrawer,
+  jumpToCustomer,
+  onJumpHandled,
 }: {
   onSelectUnit: (unit: MockUnit) => void;
   onOpenDrawer: () => void;
+  jumpToCustomer: string | null;
+  onJumpHandled: () => void;
 }) {
   const [typeFilter, setTypeFilter] = useState("");
   const [q, setQ] = useState("");
   const [viewMode, setViewMode] = useState<"customers" | "all">("customers");
   const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
   const [kpiFilter, setKpiFilter] = useState<KpiFilterType>(null);
+  const [highlightedCustomer, setHighlightedCustomer] = useState<string | null>(null);
   const customerSectionRef = useRef<HTMLDivElement | null>(null);
+  const customerCardRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  useEffect(() => {
+    if (!jumpToCustomer) return;
+    // Clear any active filters so the customer is visible
+    setQ("");
+    setTypeFilter("");
+    setKpiFilter(null);
+    setViewMode("customers");
+    // Expand the target customer
+    setExpandedCustomers((prev) => {
+      const next = new Set(prev);
+      next.add(jumpToCustomer);
+      return next;
+    });
+    // Set highlight (clears after 1.8s)
+    setHighlightedCustomer(jumpToCustomer);
+    const clearHighlight = setTimeout(() => setHighlightedCustomer(null), 1800);
+    // Scroll after a brief tick so filters/expansion settle
+    const scrollTimer = setTimeout(() => {
+      const el = customerCardRefs.current.get(jumpToCustomer);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+      onJumpHandled();
+    }, 80);
+    return () => {
+      clearTimeout(clearHighlight);
+      clearTimeout(scrollTimer);
+    };
+  }, [jumpToCustomer]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const filtered = MOCK_UNITS.filter((u) => {
     if (q && !`${u.nickname} ${u.siteCustomerName} ${u.manufacturer} ${u.modelNumber} ${u.serialNumber} ${u.location}`
@@ -1104,6 +1147,11 @@ function EquipmentLibraryPreview({
                   expanded={expandedCustomers.has(customer)}
                   onToggle={() => toggleCustomer(customer)}
                   onSelectUnit={onSelectUnit}
+                  isHighlighted={highlightedCustomer === customer}
+                  cardRef={(el) => {
+                    if (el) customerCardRefs.current.set(customer, el);
+                    else customerCardRefs.current.delete(customer);
+                  }}
                 />
               ))}
             </div>
@@ -1954,8 +2002,9 @@ export default function DevEquipmentPreview() {
     } catch { return null; }
   });
 
-  const [drawerOpen, setDrawerOpen]   = useState(false);
-  const [drawerQ,    setDrawerQ]      = useState("");
+  const [drawerOpen, setDrawerOpen]       = useState(false);
+  const [drawerQ,    setDrawerQ]          = useState("");
+  const [jumpToCustomer, setJumpToCustomer] = useState<string | null>(null);
 
   // Pinned customers — persisted to localStorage
   const [pinnedCustomers, setPinnedCustomers] = useState<Set<string>>(() => {
@@ -2025,9 +2074,10 @@ export default function DevEquipmentPreview() {
         q={drawerQ}
         onQChange={setDrawerQ}
         selectedUnit={selectedUnit}
-        onSelectCustomer={() => {
+        onSelectCustomer={(customer: string) => {
           setSelectedUnit(null);
           try { localStorage.removeItem("unitdown_dev_last_unit_id"); } catch {}
+          setJumpToCustomer(customer);
         }}
         onSelectUnit={handleSelectUnit}
         pinnedCustomers={pinnedCustomers}
@@ -2045,6 +2095,8 @@ export default function DevEquipmentPreview() {
         <EquipmentLibraryPreview
           onSelectUnit={handleSelectUnit}
           onOpenDrawer={openDrawer}
+          jumpToCustomer={jumpToCustomer}
+          onJumpHandled={() => setJumpToCustomer(null)}
         />
       )}
     </div>
