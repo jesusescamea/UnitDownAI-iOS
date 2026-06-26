@@ -77,3 +77,15 @@ id = "UrDqv7FW3rez4XM-NFP8V"
 uri = "file://UnitDownAI-FullProject.zip"
 type = "unspecified"
 title = "UnitDownAI — Full Project (Build 44, iOS assets compiled + Clerk key baked in)"
+
+[[outputs]]
+id = "l9WoVCDN7JpRmMHDH_8_H"
+uri = "file://screenshots/before-bg.jpg"
+type = "image"
+title = "Before — white background"
+
+[[outputs]]
+id = "_tVnLug5IT9MkKFARLYx2"
+uri = "file://screenshots/after-bg.jpg"
+type = "image"
+title = "After — #EEF4FF blue-gray background"
