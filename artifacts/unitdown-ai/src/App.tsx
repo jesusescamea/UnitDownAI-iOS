@@ -2231,7 +2231,7 @@ function Home() {
   }, [clientId, testerEmail, openModal, runDiagnosis, refreshUsageStatus]);
 
   return (
-    <div className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-slate-50 text-slate-900 font-sans selection:bg-blue-100 flex flex-col">
+    <div className="min-h-[100dvh] w-full max-w-full overflow-x-hidden bg-background text-slate-900 font-sans selection:bg-blue-100 flex flex-col">
 
       {/* Email Wall Modal */}
       <EmailWallModal
@@ -2253,7 +2253,7 @@ function Home() {
       />
 
       {/* Navigation */}
-      <header className="bg-white/80 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50">
+      <header className="bg-white/90 backdrop-blur-md border-b border-blue-100 sticky top-0 z-50">
         <div className="container max-w-6xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 rounded-lg flex items-center justify-center shadow-md shadow-blue-600/20">
