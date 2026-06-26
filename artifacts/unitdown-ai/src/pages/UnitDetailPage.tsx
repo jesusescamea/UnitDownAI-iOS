@@ -211,12 +211,17 @@ function TimelineCard({
         <div className="px-4 pb-4 border-t border-slate-100 pt-3 space-y-3">
 
           {event.description && (
-            <p className="text-sm text-slate-600 leading-relaxed">{event.description}</p>
+            <div>
+              {event.eventType === "diagnostic" && (
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">What Was Found</p>
+              )}
+              <p className="text-sm text-slate-600 leading-relaxed">{event.description}</p>
+            </div>
           )}
 
           {event.technicianNotes && (
             <div className="bg-slate-50 rounded-xl px-3 py-2.5">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Technician Notes</p>
+              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Actions Taken</p>
               <p className="text-sm text-slate-700 leading-relaxed">{event.technicianNotes}</p>
             </div>
           )}
@@ -552,6 +557,24 @@ export default function UnitDetailPage() {
     }
   }, [unitStatus]);
 
+  // Contextual primary CTA — text and icon change based on equipment state
+  const ctaConfig = useMemo(() => {
+    if (unitStatus === "critical") {
+      return unitLogs.some((l) => l.status === "unresolved" && l.diagnosisTitle)
+        ? { label: "Continue Diagnosis", Icon: Activity }
+        : { label: "Start Diagnosis",    Icon: Activity };
+    }
+    if (unitStatus === "needs-follow-up") {
+      return unitLogs.some((l) => l.status === "waiting-on-parts")
+        ? { label: "Resume Repair",      Icon: Wrench   }
+        : { label: "Continue Diagnosis", Icon: Activity };
+    }
+    if (unitStatus === "monitoring") return { label: "Continue Diagnosis", Icon: Activity };
+    if (unitStatus === "archived")   return { label: "Restore Unit",       Icon: CheckCircle2 };
+    if (unitLogs.length === 0 && events.length === 0) return { label: "Start Diagnosis", Icon: Activity };
+    return { label: "New Diagnostic", Icon: Plus };
+  }, [unitStatus, unitLogs, events]);
+
   // Handlers
   const handleArchive = useCallback(async () => {
     if (!unit || !window.confirm("Archive this unit? It will be hidden from your unit list.")) return;
@@ -811,13 +834,13 @@ export default function UnitDetailPage() {
               </div>
             )}
 
-            {/* Primary CTA */}
+            {/* Primary CTA — contextual based on equipment state */}
             <Button
               onClick={handleDiagnoseThis}
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-10 text-sm"
             >
-              <Activity className="w-4 h-4 mr-2" />
-              Start Diagnosis
+              <ctaConfig.Icon className="w-4 h-4 mr-2" />
+              {ctaConfig.label}
             </Button>
           </div>
         </div>
@@ -826,7 +849,7 @@ export default function UnitDetailPage() {
         <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
           {(
             [
-              { id: "timeline" as const,  label: "Timeline",   Icon: History   },
+              { id: "timeline" as const,  label: "Service History",   Icon: History   },
               { id: "info" as const,      label: "Info",       Icon: Info      },
               { id: "photos" as const,    label: "Photos",     Icon: Camera    },
               { id: "resources" as const, label: "Resources",  Icon: Search    },
@@ -859,7 +882,7 @@ export default function UnitDetailPage() {
             {/* Section header */}
             <div className="flex items-center justify-between mb-3">
               <div>
-                <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Service Timeline</p>
+                <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Service History</p>
                 <p className="text-xs text-slate-400 mt-0.5">{events.length} event{events.length !== 1 ? "s" : ""}</p>
               </div>
               <button
@@ -925,7 +948,7 @@ export default function UnitDetailPage() {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
               <input
                 type="text"
-                placeholder="Search timeline…"
+                placeholder="Search service history…"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="w-full h-9 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300"

@@ -7,9 +7,9 @@
 
 import { useState } from "react";
 import {
-  Activity, Bell, Building2, Camera, CheckCircle2, ChevronDown, ChevronRight,
+  Activity, Bell, Brain, Building2, Camera, CheckCircle2, ChevronDown, ChevronRight,
   Clock, Edit2, FileText, History, Info,
-  MapPin, Plus, Search, Settings, Star, Trash2, Wrench, ZoomIn,
+  Map as MapIcon, MapPin, Plus, Search, Settings, Star, Trash2, TrendingUp, Wrench, ZoomIn,
 } from "lucide-react";
 import RtuIcon from "@/components/RtuIcon";
 import { Button } from "@/components/ui/button";
@@ -231,9 +231,51 @@ const MOCK_UNITS: MockUnit[] = [
 ];
 
 const MOCK_TIMELINE = [
-  { id: "t1", eventType: "diagnostic", title: "High-head pressure — compressor fault", status: "unresolved", eventDate: Date.now() - 86400000 * 2, description: "Found 410 psi on high side. Ambient 95°F. Condenser coils fouled.", technicianNotes: "Cleaned coils — pressure came down to 340 psi. Scheduling follow-up.", source: "log" as const, confidencePercent: 88 },
-  { id: "t2", eventType: "repair", title: "Contactor replaced — compressor circuit", status: "resolved", eventDate: Date.now() - 86400000 * 30, description: null, technicianNotes: "OEM contactor 40A/3-pole. Unit back online same day.", source: "manual" as const, confidencePercent: null },
-  { id: "t3", eventType: "maintenance", title: "Quarterly PM — filter change", status: "resolved", eventDate: Date.now() - 86400000 * 90, description: "Replaced (4) MERV-13 filters. Checked belts, coils, drain pan.", technicianNotes: null, source: "manual" as const, confidencePercent: null },
+  {
+    id: "t1",
+    eventType: "diagnostic",
+    title: "High-Head Pressure — Compressor Fault",
+    status: "unresolved",
+    eventDate: Date.now() - 86400000 * 2,
+    description: "Customer reported poor cooling. Unit running but not keeping up with demand.",
+    found: "410 psi head pressure. Outdoor ambient 95°F. Condenser coils fouled with cottonwood and debris.",
+    action: "Cleaned condenser coil with coil cleaner and garden hose. Checked refrigerant charge — within spec.",
+    result: "Pressure dropped to 340 psi. Unit back in cooling range.",
+    followUp: "Return next week to verify — compressor amp draw was elevated at 22A (RLA 19A). May be weak.",
+    technicianNotes: "Cleaned coils — pressure came down to 340 psi. Scheduling follow-up.",
+    source: "log" as const,
+    confidencePercent: 88,
+  },
+  {
+    id: "t2",
+    eventType: "repair",
+    title: "Contactor Replaced — Compressor Circuit",
+    status: "resolved",
+    eventDate: Date.now() - 86400000 * 30,
+    description: "Customer reported unit not starting after the weekend.",
+    found: "Primary contactor contacts burned and welded open. No voltage reaching compressor.",
+    action: "Replaced OEM contactor — 40A/3-pole. Verified voltage at load side.",
+    result: "Unit back online same day. Compressor starting normally.",
+    followUp: null,
+    technicianNotes: "OEM contactor 40A/3-pole. Unit back online same day.",
+    source: "manual" as const,
+    confidencePercent: null,
+  },
+  {
+    id: "t3",
+    eventType: "maintenance",
+    title: "Quarterly PM — Filter Change",
+    status: "resolved",
+    eventDate: Date.now() - 86400000 * 90,
+    description: "Scheduled quarterly preventive maintenance visit.",
+    found: "Filters at end of service life — MERV-13 heavily loaded at 90 days. Belts good. Coils clean.",
+    action: "Replaced (4) MERV-13 filters. Checked belts, drain pan, coil condition, and electrical connections.",
+    result: "Unit at full airflow. All checks passed — no issues found.",
+    followUp: null,
+    technicianNotes: null,
+    source: "manual" as const,
+    confidencePercent: null,
+  },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -313,21 +355,22 @@ function InfoRow({ label, value }: { label: string; value: string | null | undef
 
 function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
   const [open, setOpen] = useState(false);
-  const typeCfgs: Record<string, { bg: string; color: string; Icon: typeof Activity }> = {
-    diagnostic: { bg: "bg-blue-50",    color: "text-blue-600",   Icon: Activity  },
-    repair:     { bg: "bg-orange-50",  color: "text-orange-600", Icon: Wrench    },
-    maintenance:{ bg: "bg-emerald-50", color: "text-emerald-600", Icon: Settings  },
+  const typeCfgs: Record<string, { bg: string; color: string; Icon: typeof Activity; label: string }> = {
+    diagnostic:  { bg: "bg-blue-50",    color: "text-blue-600",    Icon: Activity, label: "Diagnostic" },
+    repair:      { bg: "bg-orange-50",  color: "text-orange-600",  Icon: Wrench,   label: "Repair"     },
+    maintenance: { bg: "bg-emerald-50", color: "text-emerald-600", Icon: Settings, label: "PM"         },
   };
   const stCfg: Record<string, { label: string; className: string }> = {
-    unresolved: { label: "Unresolved", className: "bg-amber-100 text-amber-800 border-amber-200" },
+    unresolved: { label: "Open Issue", className: "bg-amber-100 text-amber-800 border-amber-200"      },
     resolved:   { label: "Resolved",   className: "bg-emerald-100 text-emerald-800 border-emerald-200" },
   };
-  const typeCfg = typeCfgs[event.eventType] ?? typeCfgs.diagnostic;
+  const typeCfg  = typeCfgs[event.eventType] ?? typeCfgs.diagnostic;
   const statusCfg = event.status ? stCfg[event.status] : null;
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-      <button onClick={() => setOpen((v) => !v)} className="w-full text-left p-4 active:bg-slate-50">
+      {/* Collapsed header */}
+      <button onClick={() => setOpen((v) => !v)} className="w-full text-left p-4 active:bg-slate-50 transition-colors">
         <div className="flex items-center gap-3">
           <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${typeCfg.bg}`}>
             <typeCfg.Icon className={`w-4 h-4 ${typeCfg.color}`} />
@@ -340,7 +383,7 @@ function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
               )}
             </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className={`text-xs font-semibold ${typeCfg.color} capitalize`}>{event.eventType}</span>
+              <span className={`text-xs font-semibold ${typeCfg.color}`}>{typeCfg.label}</span>
               <span className="text-slate-300 text-xs">·</span>
               <span className="text-xs text-slate-400 flex items-center gap-1">
                 <Clock className="w-3 h-3" />
@@ -354,15 +397,39 @@ function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
           <ChevronRight className={`w-4 h-4 text-slate-300 flex-shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
         </div>
       </button>
+
+      {/* Expanded — service story narrative */}
       {open && (
-        <div className="px-4 pb-4 border-t border-slate-100 pt-3 space-y-2">
-          {event.description && <p className="text-sm text-slate-600 leading-relaxed">{event.description}</p>}
-          {event.technicianNotes && (
-            <div className="bg-slate-50 rounded-xl px-3 py-2.5">
-              <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-1">Technician Notes</p>
-              <p className="text-sm text-slate-700 leading-relaxed">{event.technicianNotes}</p>
-            </div>
+        <div className="border-t border-slate-100">
+          {event.description && (
+            <p className="px-4 pt-3 text-sm text-slate-500 leading-relaxed italic">{event.description}</p>
           )}
+          <div className="px-4 pb-4 pt-3 space-y-3">
+            {event.found && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Found</p>
+                <p className="text-sm text-slate-700 leading-relaxed">{event.found}</p>
+              </div>
+            )}
+            {event.action && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Action</p>
+                <p className="text-sm text-slate-700 leading-relaxed">{event.action}</p>
+              </div>
+            )}
+            {event.result && (
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1">Result</p>
+                <p className="text-sm text-slate-700 leading-relaxed">{event.result}</p>
+              </div>
+            )}
+            {event.followUp && (
+              <div className="bg-amber-50 border border-amber-100 rounded-xl px-3 py-2.5">
+                <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wide mb-1">Return Visit</p>
+                <p className="text-sm text-amber-800 leading-relaxed">{event.followUp}</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -520,6 +587,13 @@ function CustomerGroupCard({
               </div>
             </div>
           ))}
+
+          {/* Future Roof Map — dev preview placeholder only, never in production */}
+          <div className="mx-3 mb-3 mt-1 border border-dashed border-slate-200 rounded-2xl p-4 text-center bg-slate-50/60">
+            <MapIcon className="w-5 h-5 text-slate-300 mx-auto mb-1.5" />
+            <p className="text-xs font-bold text-slate-400">Roof Map</p>
+            <p className="text-[10px] text-slate-300 mt-0.5 leading-relaxed">Coming soon — equipment layout visualized by zone and roof section</p>
+          </div>
         </div>
       )}
     </div>
@@ -824,10 +898,78 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
               </div>
             )}
 
-            <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-10 text-sm">
-              <Activity className="w-4 h-4 mr-2" />
-              Start Diagnosis
-            </Button>
+            {(() => {
+              const hasOpenIssue = !!unit.openIssue;
+              const isFollowUp   = unit.status === "needs-follow-up";
+              const ctaLabel =
+                unit.status === "critical" && hasOpenIssue ? "Continue Diagnosis" :
+                isFollowUp ? "Resume Repair" :
+                unit.status === "monitoring" ? "Continue Diagnosis" :
+                MOCK_TIMELINE.length === 0 ? "Start Diagnosis" :
+                "New Diagnostic";
+              const CtaIcon = isFollowUp ? Wrench : Activity;
+              return (
+                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-10 text-sm">
+                  <CtaIcon className="w-4 h-4 mr-2" />
+                  {ctaLabel}
+                </Button>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* Equipment Memory */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-7 h-7 bg-violet-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <Brain className="w-4 h-4 text-violet-600" />
+              </div>
+              <p className="text-sm font-extrabold text-slate-900 flex-1">Equipment Memory</p>
+              <span className="text-[9px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-semibold tracking-wide">AI · Coming Soon</span>
+            </div>
+            <ul className="space-y-2.5">
+              {[
+                "High head pressure reported 3 times — typically in summer",
+                "Condenser coil cleaned every June–July",
+                "Contactor replaced Nov 2024 — watch for recurrence",
+                "Last refrigerant check: Jun 2026, charge within spec",
+                "Customer usually requests Friday morning visits",
+              ].map((item) => (
+                <li key={item} className="flex items-start gap-2">
+                  <span className="w-1.5 h-1.5 bg-violet-400 rounded-full mt-1.5 flex-shrink-0" />
+                  <span className="text-xs text-slate-600 leading-relaxed">{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+
+        {/* Quick Insights */}
+        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="w-7 h-7 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
+                <TrendingUp className="w-4 h-4 text-amber-600" />
+              </div>
+              <p className="text-sm font-extrabold text-slate-900 flex-1">Quick Insights</p>
+              <span className="text-[9px] text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full font-semibold tracking-wide">Mock data</span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {[
+                { label: "Most Common Issue",        value: "High Head Pressure" },
+                { label: "Avg. Days Between Visits", value: "47 days"            },
+                { label: "Last Repair",              value: "Nov 2024"           },
+                { label: "Most Recent PM",           value: "Q3 2025"            },
+                { label: "Unit Age",                 value: "6 years"            },
+                { label: "Warranty Expires",         value: "May 2027"           },
+              ].map(({ label, value }) => (
+                <div key={label} className="bg-slate-50 rounded-xl px-3 py-2.5">
+                  <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wide leading-tight">{label}</p>
+                  <p className="text-xs font-bold text-slate-800 mt-0.5">{value}</p>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
 
@@ -835,7 +977,7 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
         <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
           {(
             [
-              { id: "timeline"  as const, label: "Timeline",  Icon: History  },
+              { id: "timeline"  as const, label: "Service History",  Icon: History  },
               { id: "info"      as const, label: "Info",      Icon: Info     },
               { id: "photos"    as const, label: "Photos",    Icon: Camera   },
               { id: "resources" as const, label: "Resources", Icon: Search   },
@@ -862,13 +1004,13 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
           ))}
         </div>
 
-        {/* Timeline Tab */}
+        {/* Service History Tab */}
         {activeTab === "timeline" && (
           <div>
             <div className="flex items-center justify-between mb-3">
               <div>
-                <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Service Timeline</p>
-                <p className="text-xs text-slate-400 mt-0.5">{MOCK_TIMELINE.length} events</p>
+                <p className="text-xs font-extrabold text-slate-500 uppercase tracking-wide">Service History</p>
+                <p className="text-xs text-slate-400 mt-0.5">{MOCK_TIMELINE.length} site visits on record</p>
               </div>
               <button className="flex items-center gap-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl px-3 py-1.5 text-xs transition-colors">
                 <Plus className="w-3.5 h-3.5" />
@@ -898,7 +1040,7 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
             </div>
             <div className="relative mb-3">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
-              <input type="text" placeholder="Search timeline…" className="w-full h-9 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300" />
+              <input type="text" placeholder="Search service history…" className="w-full h-9 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300" />
             </div>
             <div className="space-y-2">
               {MOCK_TIMELINE.map((ev) => <TimelineCard key={ev.id} event={ev} />)}
