@@ -9,6 +9,10 @@ export type {
   VoiceMemoryExtracts,
   VoiceUncertainPhrase,
   UserVoiceCorrection,
+  // Smart Service Report types (VoiceReportBody is a Zod const — exported above via generated/api)
+  VoiceReportResult,
+  VoiceReportSections,
+  VoiceReportStructured,
 } from "./generated/types";
 
 // ─── Object Storage schemas (manually maintained) ────────────────────────────

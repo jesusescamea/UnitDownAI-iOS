@@ -16,6 +16,7 @@ import RtuIcon from "@/components/RtuIcon";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { VoiceNoteRecorder, type VoiceNoteEntry } from "@/components/VoiceNoteRecorder";
+import { SmartServiceReport, type SmartReport } from "@/components/SmartServiceReport";
 
 // ─── Types & mock data ────────────────────────────────────────────────────────
 
@@ -1268,6 +1269,8 @@ function EquipmentDetailPreview({
   const [activeTab, setActiveTab] = useState<ActiveTab>("timeline");
   const [progressOpen, setProgressOpen] = useState(true);
   const [voiceNotes, setVoiceNotes] = useState<VoiceNoteEntry[]>([]);
+  const [showVoiceReport, setShowVoiceReport] = useState(false);
+  const [savedReports, setSavedReports] = useState<SmartReport[]>([]);
 
   // ── Service History filter — persisted per unit in localStorage ─────────────
   const [historyFilter, setHistoryFilter] = useState<string>(() => {
@@ -1320,6 +1323,45 @@ function EquipmentDetailPreview({
 
   return (
     <div className="min-h-screen bg-transparent pb-16">
+
+      {/* ── Smart Service Report Modal ─────────────────────────────────────────── */}
+      {showVoiceReport && (
+        <div className="fixed inset-0 z-[200] flex flex-col">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px]"
+            onClick={() => setShowVoiceReport(false)}
+          />
+          <div className="relative mt-auto bg-white rounded-t-3xl max-h-[92dvh] flex flex-col overflow-hidden shadow-2xl animate-in slide-in-from-bottom duration-300">
+            <div className="flex-shrink-0 flex items-center justify-between px-4 pt-4 pb-2 border-b border-slate-100">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
+                  <Mic className="w-4 h-4 text-white" />
+                </div>
+                <div>
+                  <p className="text-sm font-extrabold text-slate-900 leading-tight">Smart Service Report</p>
+                  <p className="text-[10px] text-slate-400 font-medium">AI voice → structured report</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowVoiceReport(false)}
+                className="w-7 h-7 rounded-xl flex items-center justify-center text-slate-400 active:bg-slate-100"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto">
+              <SmartServiceReport
+                onSave={(report) => {
+                  setSavedReports((prev) => [report, ...prev]);
+                  setShowVoiceReport(false);
+                }}
+                onDiscard={() => setShowVoiceReport(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-white border-b border-[#E6EDF8] sticky top-7 z-50">
         <div className="max-w-2xl mx-auto px-4 h-12 flex items-center justify-between">
@@ -1564,6 +1606,13 @@ function EquipmentDetailPreview({
                   {label}
                 </button>
               ))}
+              <button
+                onClick={() => { setActiveTab("timeline"); setShowVoiceReport(true); }}
+                className="flex items-center gap-1.5 bg-blue-50 border border-blue-200 rounded-xl px-3 py-1.5 text-xs font-bold text-blue-700 hover:border-blue-400 hover:bg-blue-100 transition-colors"
+              >
+                <Mic className="w-3.5 h-3.5" />
+                Voice Report
+              </button>
             </div>
 
             {/* Filter chips */}
@@ -1611,6 +1660,56 @@ function EquipmentDetailPreview({
                 </button>
               )}
             </div>
+
+            {/* Saved Smart Service Reports */}
+            {savedReports.length > 0 && (
+              <div className="space-y-2 mb-3">
+                {savedReports.map((report) => {
+                  const firstSection = report.sections.problem ?? report.sections.workPerformed ?? report.sections.findings ?? null;
+                  const cats = report.structured.workCategories.slice(0, 3);
+                  return (
+                    <div
+                      key={report.id}
+                      className="bg-white rounded-2xl border border-blue-200 overflow-hidden shadow-sm animate-in fade-in-0 slide-in-from-bottom-2 duration-200"
+                    >
+                      <div className="flex items-center gap-2 px-3 pt-2.5 pb-2 border-b border-blue-100 bg-blue-50">
+                        <div className="w-5 h-5 bg-gradient-to-br from-blue-500 to-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+                          <Mic className="w-3 h-3 text-white" />
+                        </div>
+                        <p className="text-xs font-extrabold text-blue-800 flex-1">Smart Service Report</p>
+                        <span className="text-[9px] text-blue-500 font-semibold">
+                          {new Date(report.createdAt).toLocaleString("en-US", {
+                            month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+                          })}
+                        </span>
+                      </div>
+                      {firstSection && (
+                        <p className="text-xs text-slate-700 leading-relaxed px-3 pt-2 pb-1 line-clamp-3">{firstSection}</p>
+                      )}
+                      {cats.length > 0 && (
+                        <div className="px-3 pb-2.5 flex flex-wrap gap-1 mt-1">
+                          {cats.map((cat) => (
+                            <span key={cat} className="text-[9px] font-bold bg-slate-100 text-slate-500 border border-slate-200 px-1.5 py-0.5 rounded-full">
+                              {cat}
+                            </span>
+                          ))}
+                          {report.structured.returnVisitRequired && (
+                            <span className="text-[9px] font-bold bg-amber-50 text-amber-700 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                              Return Visit
+                            </span>
+                          )}
+                          {report.structured.safetyFlag && (
+                            <span className="text-[9px] font-bold bg-red-50 text-red-700 border border-red-200 px-1.5 py-0.5 rounded-full">
+                              ⚠ Safety
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             {/* Results list */}
             {filteredTimeline.length > 0 ? (

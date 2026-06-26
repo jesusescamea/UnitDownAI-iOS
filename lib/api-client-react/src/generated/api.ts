@@ -24,6 +24,8 @@ import type {
   HvacDiagnosisResult,
   VoiceInterpretBody,
   VoiceInterpretResult,
+  VoiceReportBody,
+  VoiceReportResult,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -284,6 +286,94 @@ export const useVoiceInterpret = <
   TContext
 > => {
   return useMutation(getVoiceInterpretMutationOptions(options));
+};
+
+/**
+ * Two-stage AI pipeline: first corrects HVAC speech-recognition errors in the raw transcript, then generates a complete structured service report with discrete sections (Problem, Findings, Work Performed, Parts Replaced, Measurements, Verification, Recommendation) and machine-readable structured data extraction (pressures, voltages, refrigerant, parts, work categories, return-visit flags).
+
+ * @summary Smart Service Report — generate structured report from voice
+ */
+export const getVoiceReportUrl = () => {
+  return `/api/ai/voice/report`;
+};
+
+export const voiceReport = async (
+  voiceReportBody: VoiceReportBody,
+  options?: RequestInit,
+): Promise<VoiceReportResult> => {
+  return customFetch<VoiceReportResult>(getVoiceReportUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(voiceReportBody),
+  });
+};
+
+export const getVoiceReportMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voiceReport>>,
+    TError,
+    { data: BodyType<VoiceReportBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof voiceReport>>,
+  TError,
+  { data: BodyType<VoiceReportBody> },
+  TContext
+> => {
+  const mutationKey = ["voiceReport"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof voiceReport>>,
+    { data: BodyType<VoiceReportBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return voiceReport(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type VoiceReportMutationResult = NonNullable<
+  Awaited<ReturnType<typeof voiceReport>>
+>;
+export type VoiceReportMutationBody = BodyType<VoiceReportBody>;
+export type VoiceReportMutationError = ErrorType<void>;
+
+/**
+ * @summary Smart Service Report — generate structured report from voice
+ */
+export const useVoiceReport = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof voiceReport>>,
+    TError,
+    { data: BodyType<VoiceReportBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof voiceReport>>,
+  TError,
+  { data: BodyType<VoiceReportBody> },
+  TContext
+> => {
+  return useMutation(getVoiceReportMutationOptions(options));
 };
 
 /**

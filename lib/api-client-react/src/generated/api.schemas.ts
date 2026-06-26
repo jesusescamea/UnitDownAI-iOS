@@ -116,6 +116,79 @@ export interface VoiceInterpretResult {
   memoryExtracts: VoiceMemoryExtracts;
 }
 
+export interface VoiceReportBody {
+  /** Raw speech-recognition transcript from the technician */
+  rawTranscript: string;
+  /** Optional personal vocabulary corrections learned from this technician's past usage */
+  userCorrections?: UserVoiceCorrection[];
+}
+
+/**
+ * Structured service report sections generated from the corrected transcript
+ */
+export interface VoiceReportSections {
+  /** Reason for the service call or customer complaint */
+  problem?: string | null;
+  /** Conditions observed, readings noted, components inspected on arrival */
+  findings?: string | null;
+  /** All repairs, adjustments, cleaning, replacements, and service actions taken */
+  workPerformed?: string | null;
+  /** Parts or components installed during the visit */
+  partsReplaced?: string | null;
+  /** Instrument readings — pressures, voltages, amperages, temperatures, superheat, subcooling, delta T */
+  measurements?: string | null;
+  /** How the technician confirmed the repair was successful */
+  verification?: string | null;
+  /** Return visits, follow-up actions, monitoring advice, customer advisories */
+  recommendation?: string | null;
+}
+
+/**
+ * Machine-readable structured data extracted from the corrected transcript
+ */
+export interface VoiceReportStructured {
+  refrigerantType?: string | null;
+  refrigerantCharge?: string | null;
+  refrigerantRecovered?: string | null;
+  refrigerantAdded?: string | null;
+  modelNumber?: string | null;
+  serialNumber?: string | null;
+  suctionPressure?: string | null;
+  dischargePressure?: string | null;
+  voltage?: string | null;
+  amperage?: string | null;
+  superheat?: string | null;
+  subcooling?: string | null;
+  deltaT?: string | null;
+  splitTemp?: string | null;
+  gasPressure?: string | null;
+  partsReplaced: string[];
+  returnVisitRequired: boolean;
+  followUpDate?: string | null;
+  safetyFlag?: string | null;
+  warrantyMention?: string | null;
+  /** High-level work category tags (e.g. PM, Filter Change, Refrigerant Work) */
+  workCategories: string[];
+}
+
+/**
+ * Full Smart Service Report result including corrected transcript, sections, structured data, and uncertain phrases
+ */
+export interface VoiceReportResult {
+  /** The raw transcript after HVAC speech-recognition correction — no rewriting, only mishearing fixes */
+  correctedTranscript: string;
+  /**
+   * Overall interpretation confidence score (0–100)
+   * @minimum 0
+   * @maximum 100
+   */
+  confidence: number;
+  sections: VoiceReportSections;
+  structured: VoiceReportStructured;
+  /** Phrases the AI was less than 85% confident in correcting */
+  uncertainPhrases: VoiceUncertainPhrase[];
+}
+
 export interface HealthStatus {
   status: string;
 }

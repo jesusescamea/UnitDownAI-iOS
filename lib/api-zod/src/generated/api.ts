@@ -176,6 +176,162 @@ export const VoiceInterpretResponse = zod
   .describe("Full result from the HVAC Voice Intelligence pipeline");
 
 /**
+ * Two-stage AI pipeline: first corrects HVAC speech-recognition errors in the raw transcript, then generates a complete structured service report with discrete sections (Problem, Findings, Work Performed, Parts Replaced, Measurements, Verification, Recommendation) and machine-readable structured data extraction (pressures, voltages, refrigerant, parts, work categories, return-visit flags).
+
+ * @summary Smart Service Report — generate structured report from voice
+ */
+
+export const VoiceReportBody = zod.object({
+  rawTranscript: zod
+    .string()
+    .describe("Raw speech-recognition transcript from the technician"),
+  userCorrections: zod
+    .array(
+      zod
+        .object({
+          original: zod
+            .string()
+            .describe("The word or phrase as the technician spoke it"),
+          preferred: zod
+            .string()
+            .describe("The technician's preferred interpretation or spelling"),
+          count: zod
+            .number()
+            .min(1)
+            .describe(
+              "Number of times the technician has confirmed this preference",
+            ),
+        })
+        .describe(
+          "A learned correction from a technician's personal vocabulary profile",
+        ),
+    )
+    .optional()
+    .describe(
+      "Optional personal vocabulary corrections learned from this technician's past usage",
+    ),
+});
+
+export const voiceReportResponseConfidenceMin = 0;
+export const voiceReportResponseConfidenceMax = 100;
+
+export const voiceReportResponseUncertainPhrasesItemConfidenceMin = 0;
+export const voiceReportResponseUncertainPhrasesItemConfidenceMax = 100;
+
+export const VoiceReportResponse = zod
+  .object({
+    correctedTranscript: zod
+      .string()
+      .describe(
+        "The raw transcript after HVAC speech-recognition correction — no rewriting, only mishearing fixes",
+      ),
+    confidence: zod
+      .number()
+      .min(voiceReportResponseConfidenceMin)
+      .max(voiceReportResponseConfidenceMax)
+      .describe("Overall interpretation confidence score (0–100)"),
+    sections: zod
+      .object({
+        problem: zod
+          .string()
+          .nullish()
+          .describe("Reason for the service call or customer complaint"),
+        findings: zod
+          .string()
+          .nullish()
+          .describe(
+            "Conditions observed, readings noted, components inspected on arrival",
+          ),
+        workPerformed: zod
+          .string()
+          .nullish()
+          .describe(
+            "All repairs, adjustments, cleaning, replacements, and service actions taken",
+          ),
+        partsReplaced: zod
+          .string()
+          .nullish()
+          .describe("Parts or components installed during the visit"),
+        measurements: zod
+          .string()
+          .nullish()
+          .describe(
+            "Instrument readings — pressures, voltages, amperages, temperatures, superheat, subcooling, delta T",
+          ),
+        verification: zod
+          .string()
+          .nullish()
+          .describe("How the technician confirmed the repair was successful"),
+        recommendation: zod
+          .string()
+          .nullish()
+          .describe(
+            "Return visits, follow-up actions, monitoring advice, customer advisories",
+          ),
+      })
+      .describe(
+        "Structured service report sections generated from the corrected transcript",
+      ),
+    structured: zod
+      .object({
+        refrigerantType: zod.string().nullish(),
+        refrigerantCharge: zod.string().nullish(),
+        refrigerantRecovered: zod.string().nullish(),
+        refrigerantAdded: zod.string().nullish(),
+        modelNumber: zod.string().nullish(),
+        serialNumber: zod.string().nullish(),
+        suctionPressure: zod.string().nullish(),
+        dischargePressure: zod.string().nullish(),
+        voltage: zod.string().nullish(),
+        amperage: zod.string().nullish(),
+        superheat: zod.string().nullish(),
+        subcooling: zod.string().nullish(),
+        deltaT: zod.string().nullish(),
+        splitTemp: zod.string().nullish(),
+        gasPressure: zod.string().nullish(),
+        partsReplaced: zod.array(zod.string()),
+        returnVisitRequired: zod.boolean(),
+        followUpDate: zod.string().nullish(),
+        safetyFlag: zod.string().nullish(),
+        warrantyMention: zod.string().nullish(),
+        workCategories: zod
+          .array(zod.string())
+          .describe(
+            "High-level work category tags (e.g. PM, Filter Change, Refrigerant Work)",
+          ),
+      })
+      .describe(
+        "Machine-readable structured data extracted from the corrected transcript",
+      ),
+    uncertainPhrases: zod
+      .array(
+        zod
+          .object({
+            original: zod
+              .string()
+              .describe(
+                "The phrase exactly as it appeared in the raw transcript",
+              ),
+            suggested: zod
+              .string()
+              .describe("The AI's HVAC interpretation of the phrase"),
+            confidence: zod
+              .number()
+              .min(voiceReportResponseUncertainPhrasesItemConfidenceMin)
+              .max(voiceReportResponseUncertainPhrasesItemConfidenceMax)
+              .describe("Confidence score for this specific phrase (0–100)"),
+          })
+          .describe(
+            "A phrase the AI was less than 85% confident in interpreting",
+          ),
+      )
+      .describe("Phrases the AI was less than 85% confident in correcting"),
+  })
+  .describe(
+    "Full Smart Service Report result including corrected transcript, sections, structured data, and uncertain phrases",
+  );
+
+/**
  * Analyzes HVAC symptoms against the knowledge base and returns the top 3 matching diagnoses
  * @summary Diagnose HVAC symptoms
  */

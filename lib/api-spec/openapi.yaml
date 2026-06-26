@@ -79,6 +79,34 @@ paths:
           description: Invalid request body
         "500":
           description: AI interpretation unavailable
+  /ai/voice/report:
+    post:
+      operationId: voiceReport
+      tags: [ai]
+      summary: Smart Service Report — generate structured report from voice
+      description: >
+        Two-stage AI pipeline: first corrects HVAC speech-recognition errors in the raw
+        transcript, then generates a complete structured service report with discrete
+        sections (Problem, Findings, Work Performed, Parts Replaced, Measurements,
+        Verification, Recommendation) and machine-readable structured data extraction
+        (pressures, voltages, refrigerant, parts, work categories, return-visit flags).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VoiceReportBody"
+      responses:
+        "200":
+          description: Complete structured service report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VoiceReportResult"
+        "400":
+          description: Invalid request body
+        "500":
+          description: Report generation unavailable
   /hvac/diagnose:
     post:
       operationId: diagnoseHvac
@@ -253,6 +281,151 @@ components:
         - confidence
         - uncertainPhrases
         - memoryExtracts
+    VoiceReportBody:
+      type: object
+      properties:
+        rawTranscript:
+          type: string
+          description: Raw speech-recognition transcript from the technician
+        userCorrections:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserVoiceCorrection"
+          description: Optional personal vocabulary corrections learned from this technician's past usage
+      required:
+        - rawTranscript
+    VoiceReportSections:
+      type: object
+      description: Structured service report sections generated from the corrected transcript
+      properties:
+        problem:
+          type: string
+          nullable: true
+          description: Reason for the service call or customer complaint
+        findings:
+          type: string
+          nullable: true
+          description: Conditions observed, readings noted, components inspected on arrival
+        workPerformed:
+          type: string
+          nullable: true
+          description: All repairs, adjustments, cleaning, replacements, and service actions taken
+        partsReplaced:
+          type: string
+          nullable: true
+          description: Parts or components installed during the visit
+        measurements:
+          type: string
+          nullable: true
+          description: Instrument readings — pressures, voltages, amperages, temperatures, superheat, subcooling, delta T
+        verification:
+          type: string
+          nullable: true
+          description: How the technician confirmed the repair was successful
+        recommendation:
+          type: string
+          nullable: true
+          description: Return visits, follow-up actions, monitoring advice, customer advisories
+    VoiceReportStructured:
+      type: object
+      description: Machine-readable structured data extracted from the corrected transcript
+      properties:
+        refrigerantType:
+          type: string
+          nullable: true
+        refrigerantCharge:
+          type: string
+          nullable: true
+        refrigerantRecovered:
+          type: string
+          nullable: true
+        refrigerantAdded:
+          type: string
+          nullable: true
+        modelNumber:
+          type: string
+          nullable: true
+        serialNumber:
+          type: string
+          nullable: true
+        suctionPressure:
+          type: string
+          nullable: true
+        dischargePressure:
+          type: string
+          nullable: true
+        voltage:
+          type: string
+          nullable: true
+        amperage:
+          type: string
+          nullable: true
+        superheat:
+          type: string
+          nullable: true
+        subcooling:
+          type: string
+          nullable: true
+        deltaT:
+          type: string
+          nullable: true
+        splitTemp:
+          type: string
+          nullable: true
+        gasPressure:
+          type: string
+          nullable: true
+        partsReplaced:
+          type: array
+          items:
+            type: string
+        returnVisitRequired:
+          type: boolean
+        followUpDate:
+          type: string
+          nullable: true
+        safetyFlag:
+          type: string
+          nullable: true
+        warrantyMention:
+          type: string
+          nullable: true
+        workCategories:
+          type: array
+          items:
+            type: string
+          description: High-level work category tags (e.g. PM, Filter Change, Refrigerant Work)
+      required:
+        - partsReplaced
+        - returnVisitRequired
+        - workCategories
+    VoiceReportResult:
+      type: object
+      description: Full Smart Service Report result including corrected transcript, sections, structured data, and uncertain phrases
+      properties:
+        correctedTranscript:
+          type: string
+          description: The raw transcript after HVAC speech-recognition correction — no rewriting, only mishearing fixes
+        confidence:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Overall interpretation confidence score (0–100)
+        sections:
+          $ref: "#/components/schemas/VoiceReportSections"
+        structured:
+          $ref: "#/components/schemas/VoiceReportStructured"
+        uncertainPhrases:
+          type: array
+          items:
+            $ref: "#/components/schemas/VoiceUncertainPhrase"
+          description: Phrases the AI was less than 85% confident in correcting
+      required:
+        - correctedTranscript
+        - confidence
+        - sections
+        - structured
+        - uncertainPhrases
     HealthStatus:
       type: object
       properties:

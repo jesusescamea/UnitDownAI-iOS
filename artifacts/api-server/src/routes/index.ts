@@ -18,6 +18,7 @@ import scheduledEventsRouter from "./scheduledEvents";
 import devicesRouter from "./devices";
 import aiPolishRouter from "./aiPolish";
 import voiceInterpretRouter from "./voiceInterpret";
+import voiceReportRouter from "./voiceReport";
 
 const router: IRouter = Router();
 
@@ -40,5 +41,6 @@ router.use(scheduledEventsRouter);
 router.use(devicesRouter);
 router.use(aiPolishRouter);
 router.use(voiceInterpretRouter);
+router.use(voiceReportRouter);
 
 export default router;

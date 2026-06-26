@@ -18,4 +18,8 @@ export * from "./userVoiceCorrection";
 export * from "./voiceInterpretBody";
 export * from "./voiceInterpretResult";
 export * from "./voiceMemoryExtracts";
+export * from "./voiceReportBody";
+export * from "./voiceReportResult";
+export * from "./voiceReportSections";
+export * from "./voiceReportStructured";
 export * from "./voiceUncertainPhrase";
