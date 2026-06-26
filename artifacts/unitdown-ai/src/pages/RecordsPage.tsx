@@ -73,6 +73,7 @@ interface LocationGroup {
   totalUnits: number;
   activeCount: number;
   criticalCount: number;
+  lastVisit: number | null;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -794,40 +795,76 @@ function LocationGroupCard({
   onUnitClick: (id: string) => void;
   onToggleFavorite: (unit: UnitRecord, e: React.MouseEvent) => void;
 }) {
+  const lastVisitLabel = group.lastVisit
+    ? new Date(group.lastVisit).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+    : null;
+
+  const accentColor = group.criticalCount > 0
+    ? "border-red-300 bg-red-50/30"
+    : group.activeCount > 0
+    ? "border-amber-200 bg-amber-50/20"
+    : "border-slate-200";
+
   return (
     <div className={`bg-white border rounded-2xl shadow-sm transition-all duration-150 overflow-hidden ${
-      expanded ? "border-blue-300" : "border-slate-200"
+      expanded ? "border-blue-300" : accentColor
     }`}>
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+        className="w-full flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors text-left"
       >
         <div className="flex items-center gap-3 min-w-0 flex-1">
-          <div className="w-9 h-9 bg-slate-100 rounded-xl flex items-center justify-center flex-shrink-0">
-            <Users className="w-4.5 h-4.5 text-slate-600" style={{ width: "18px", height: "18px" }} />
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+            group.criticalCount > 0 ? "bg-red-100" : group.activeCount > 0 ? "bg-amber-100" : "bg-slate-100"
+          }`}>
+            <Building2 className={`w-4.5 h-4.5 ${
+              group.criticalCount > 0 ? "text-red-600" : group.activeCount > 0 ? "text-amber-600" : "text-slate-500"
+            }`} style={{ width: "18px", height: "18px" }} />
           </div>
-          <div className="min-w-0 text-left">
+          <div className="min-w-0 flex-1">
             <p className="font-bold text-slate-900 text-sm truncate">{group.customer}</p>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              <span className="text-xs text-slate-500 font-medium">{group.totalUnits} unit{group.totalUnits !== 1 ? "s" : ""}</span>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-xs text-slate-500">{group.totalUnits} unit{group.totalUnits !== 1 ? "s" : ""}</span>
+              {group.criticalCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
+                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                  {group.criticalCount} critical
+                </span>
+              )}
               {group.activeCount > 0 && (
                 <span className="text-xs text-amber-700 font-semibold bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
                   {group.activeCount} active
                 </span>
               )}
-              {group.criticalCount > 0 && (
-                <span className="text-xs text-red-700 font-semibold bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
-                  {group.criticalCount} critical
-                </span>
+              {group.activeCount === 0 && group.criticalCount === 0 && (
+                <span className="text-xs text-emerald-600 font-medium">All clear</span>
               )}
             </div>
           </div>
         </div>
-        <ChevronDown className={`w-4 h-4 text-slate-400 flex-shrink-0 transition-transform duration-150 ${expanded ? "" : "-rotate-90"}`} />
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {lastVisitLabel && !expanded && (
+            <span className="text-[10px] text-slate-400 font-medium hidden sm:block">{lastVisitLabel}</span>
+          )}
+          <div className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl transition-colors ${
+            expanded
+              ? "bg-blue-600 text-white"
+              : "bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-600"
+          }`}>
+            {expanded ? "Close" : "Open Site"}
+            <ChevronDown className={`w-3 h-3 transition-transform duration-150 ${expanded ? "rotate-180" : ""}`} />
+          </div>
+        </div>
       </button>
 
       {expanded && (
         <div className="border-t border-slate-100">
+          {lastVisitLabel && (
+            <div className="flex items-center gap-1.5 px-4 py-2 bg-slate-50 border-b border-slate-100">
+              <Clock className="w-3 h-3 text-slate-400" />
+              <span className="text-xs text-slate-500">Last visit: <span className="font-semibold text-slate-700">{lastVisitLabel}</span></span>
+            </div>
+          )}
           {group.sites.map(({ site, units }) => (
             <div key={site}>
               {group.sites.length > 1 && (
@@ -917,6 +954,7 @@ export default function RecordsPage() {
   // Location browse
   const [locationViewOpen, setLocationViewOpen] = useState(false);
   const [expandedLocations, setExpandedLocations] = useState<Set<string>>(new Set());
+  const [equipViewMode, setEquipViewMode] = useState<"customers" | "all">("customers");
 
   // Section collapse
   const [unitsOpen, setUnitsOpen] = useState(true);
@@ -1147,22 +1185,50 @@ export default function RecordsPage() {
           if (!siteMap[site]) siteMap[site] = [];
           siteMap[site].push(u);
         });
+        const custUnitIds = new Set(custUnits.map((u) => u.id));
         const activeCount = custUnits.filter((u) => logs.some((l) => l.unitId === u.id && ACTIVE_STATUSES.has(l.status))).length;
         const criticalCount = custUnits.filter((u) => (healthScoreMap[u.id] ?? 100) < 60).length;
+        const custLogs = logs.filter((l) => l.unitId && custUnitIds.has(l.unitId));
+        const lastVisit = custLogs.length > 0 ? Math.max(...custLogs.map((l) => l.timestamp)) : null;
         return {
           customer,
           sites: Object.entries(siteMap).map(([site, siteUnits]) => ({ site, units: siteUnits })),
           totalUnits: custUnits.length,
           activeCount,
           criticalCount,
+          lastVisit,
         };
       })
       .sort((a, b) => {
         if (a.customer === "Uncategorized") return 1;
         if (b.customer === "Uncategorized") return -1;
-        return b.totalUnits - a.totalUnits;
+        if (a.criticalCount > 0 && b.criticalCount === 0) return -1;
+        if (a.criticalCount === 0 && b.criticalCount > 0) return 1;
+        if (a.activeCount > 0 && b.activeCount === 0) return -1;
+        if (a.activeCount === 0 && b.activeCount > 0) return 1;
+        return a.customer.localeCompare(b.customer);
       });
   }, [units, logs, healthScoreMap]);
+
+  const filteredLocationGroups = useMemo(() => {
+    if (!q && !typeFilter) return locationGroups;
+    return locationGroups
+      .map((group) => {
+        const filteredSites = group.sites
+          .map((site) => ({
+            ...site,
+            units: site.units.filter((u) => {
+              if (typeFilter && !(u.equipmentType ?? "").toLowerCase().includes(typeFilter)) return false;
+              if (q && !matchesSearch(q, u)) return false;
+              return true;
+            }),
+          }))
+          .filter((site) => site.units.length > 0);
+        const totalUnits = filteredSites.reduce((s, g) => s + g.units.length, 0);
+        return { ...group, sites: filteredSites, totalUnits };
+      })
+      .filter((group) => group.sites.length > 0);
+  }, [locationGroups, q, typeFilter]);
 
   const briefingSummary = useMemo(() => {
     const parts: string[] = [];
@@ -1487,9 +1553,9 @@ export default function RecordsPage() {
             </button>
             <div className="flex items-center gap-2 flex-shrink-0">
               <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-                <Layers className="w-4 h-4 text-white" />
+                <Building2 className="w-4 h-4 text-white" />
               </div>
-              <span className="font-extrabold text-slate-900 text-sm hidden sm:block">Equipment Library</span>
+              <span className="font-extrabold text-slate-900 text-sm hidden sm:block">Customers & Sites</span>
             </div>
             {/* Global search in header */}
             <div className="relative flex-1 max-w-xs ml-2">
@@ -1626,15 +1692,15 @@ export default function RecordsPage() {
               </div>
             </section>
 
-            {/* ── Equipment Library ────────────────────────────────────────────── */}
-            <section aria-label="Equipment Library">
+            {/* ── Customers & Sites ─────────────────────────────────────────────── */}
+            <section aria-label="Customers & Sites">
               {/* Section header */}
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
                   <div className="w-7 h-7 bg-blue-50 rounded-xl flex items-center justify-center">
-                    <Layers className="w-3.5 h-3.5 text-blue-600" />
+                    <Building2 className="w-3.5 h-3.5 text-blue-600" />
                   </div>
-                  <h2 className="font-extrabold text-slate-900 text-sm">Equipment Library</h2>
+                  <h2 className="font-extrabold text-slate-900 text-sm">Customers & Sites</h2>
                   {units.length > 0 && (
                     <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
                       {units.length}
@@ -1655,7 +1721,7 @@ export default function RecordsPage() {
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search units, customers, locations, models, or serials…"
+                  placeholder="Search customers, sites, units, models, or serials…"
                   className="pl-9 pr-8 rounded-xl border-slate-200 text-sm h-10"
                 />
                 {q && (
@@ -1665,46 +1731,73 @@ export default function RecordsPage() {
                 )}
               </div>
 
-              {/* Type filter chips */}
-              <div className="flex items-center gap-1.5 overflow-x-auto pb-1 mb-3 scrollbar-hide">
-                <button
-                  onClick={() => setTypeFilter("")}
-                  className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
-                    typeFilter === ""
-                      ? "bg-blue-600 text-white border-blue-600 shadow-sm"
-                      : "bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600"
-                  }`}
-                >
-                  All
-                </button>
-                {EQUIP_TYPE_CHIPS.filter((chip) =>
-                  units.some((u) => (u.equipmentType ?? "").toLowerCase().includes(chip.match))
-                ).map((chip) => (
+              {/* View toggle + Type filter chips */}
+              <div className="flex items-center gap-2 mb-3 flex-wrap">
+                {/* View mode toggle */}
+                <div className="flex bg-slate-100 rounded-full p-0.5 flex-shrink-0">
                   <button
-                    key={chip.label}
-                    onClick={() => setTypeFilter(typeFilter === chip.match ? "" : chip.match)}
+                    onClick={() => setEquipViewMode("customers")}
+                    className={`text-xs font-bold px-3 py-1 rounded-full transition-all ${
+                      equipViewMode === "customers"
+                        ? "bg-white text-blue-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    By Customer
+                  </button>
+                  <button
+                    onClick={() => setEquipViewMode("all")}
+                    className={`text-xs font-bold px-3 py-1 rounded-full transition-all ${
+                      equipViewMode === "all"
+                        ? "bg-white text-blue-600 shadow-sm"
+                        : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    All Units
+                  </button>
+                </div>
+
+                {/* Type filter chips */}
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 flex-1 scrollbar-hide">
+                  <button
+                    onClick={() => setTypeFilter("")}
                     className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
-                      typeFilter === chip.match
+                      typeFilter === ""
                         ? "bg-blue-600 text-white border-blue-600 shadow-sm"
                         : "bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600"
                     }`}
                   >
-                    {chip.label}
+                    All
                   </button>
-                ))}
-                {units.some((u) => unitStatusMap[u.id] === "critical") && (
-                  <span className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border bg-red-50 text-red-600 border-red-200 flex items-center gap-1">
-                    <span className="w-1.5 h-1.5 bg-red-500 rounded-full inline-block" />
-                    {units.filter((u) => unitStatusMap[u.id] === "critical").length} Critical
-                  </span>
-                )}
+                  {EQUIP_TYPE_CHIPS.filter((chip) =>
+                    units.some((u) => (u.equipmentType ?? "").toLowerCase().includes(chip.match))
+                  ).map((chip) => (
+                    <button
+                      key={chip.label}
+                      onClick={() => setTypeFilter(typeFilter === chip.match ? "" : chip.match)}
+                      className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
+                        typeFilter === chip.match
+                          ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                          : "bg-white text-slate-600 border-slate-200 hover:border-blue-300 hover:text-blue-600"
+                      }`}
+                    >
+                      {chip.label}
+                    </button>
+                  ))}
+                  {units.some((u) => unitStatusMap[u.id] === "critical") && (
+                    <span className="flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border bg-red-50 text-red-600 border-red-200 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 bg-red-500 rounded-full inline-block" />
+                      {units.filter((u) => unitStatusMap[u.id] === "critical").length} Critical
+                    </span>
+                  )}
+                </div>
               </div>
 
-              {/* Equipment list */}
+              {/* Equipment display */}
               {units.length === 0 ? (
                 <div className="bg-white border border-dashed border-slate-200 rounded-2xl p-8 text-center">
                   <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center mx-auto mb-3">
-                    <Layers className="w-6 h-6 text-blue-400" />
+                    <Building2 className="w-6 h-6 text-blue-400" />
                   </div>
                   <p className="text-sm font-bold text-slate-700">No equipment yet</p>
                   <p className="text-xs text-slate-400 mt-1 mb-4">Add your first unit to start tracking service history and diagnostics.</p>
@@ -1712,36 +1805,75 @@ export default function RecordsPage() {
                     <Plus className="w-3.5 h-3.5 mr-1" /> Add First Unit
                   </Button>
                 </div>
-              ) : filteredUnits.length === 0 ? (
-                <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
-                  <Search className="w-7 h-7 text-slate-300 mx-auto mb-2" />
-                  <p className="text-sm font-semibold text-slate-500">No matches</p>
-                  <p className="text-xs text-slate-400 mt-1">
-                    {typeFilter ? "Try a different equipment type or clear the filter." : `No results for "${q}"`}
-                  </p>
-                  {typeFilter && (
-                    <button onClick={() => setTypeFilter("")} className="mt-3 text-xs text-blue-600 font-bold hover:underline">
-                      Clear filter
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <>
+              ) : equipViewMode === "customers" ? (
+                /* ── Customer grouped view ── */
+                filteredLocationGroups.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
+                    <Search className="w-7 h-7 text-slate-300 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-slate-500">No matches</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {typeFilter ? "Try a different equipment type." : `No results for "${q}"`}
+                    </p>
+                    {(q || typeFilter) && (
+                      <button onClick={() => { setQ(""); setTypeFilter(""); }} className="mt-3 text-xs text-blue-600 font-bold hover:underline">
+                        Clear search
+                      </button>
+                    )}
+                  </div>
+                ) : (
                   <div className="space-y-2.5">
-                    {(showAllUnits ? filteredUnits : filteredUnits.slice(0, 6)).map((u) => (
-                      <UnitCard key={u.id} unit={u} unitStatus={unitStatusMap[u.id]}
-                        onClick={() => navigate(`/records/unit/${u.id}`)} onToggleFavorite={(e) => toggleFavorite(u, e)} />
+                    {filteredLocationGroups.map((group) => (
+                      <LocationGroupCard
+                        key={group.customer}
+                        group={group}
+                        healthScoreMap={healthScoreMap}
+                        expanded={expandedLocations.has(group.customer)}
+                        onToggle={() => {
+                          setExpandedLocations((prev) => {
+                            const next = new Set(prev);
+                            next.has(group.customer) ? next.delete(group.customer) : next.add(group.customer);
+                            return next;
+                          });
+                        }}
+                        onUnitClick={(id) => navigate(`/records/unit/${id}`)}
+                        onToggleFavorite={toggleFavorite}
+                      />
                     ))}
                   </div>
-                  {filteredUnits.length > 6 && !showAllUnits && (
-                    <button
-                      onClick={() => setShowAllUnits(true)}
-                      className="mt-2.5 w-full flex items-center justify-center gap-1 text-xs text-blue-600 font-bold py-2.5 border border-dashed border-blue-200 rounded-2xl hover:bg-blue-50 transition-colors"
-                    >
-                      Show all {filteredUnits.length} units <ArrowRight className="w-3 h-3" />
-                    </button>
-                  )}
-                </>
+                )
+              ) : (
+                /* ── Flat unit list view ── */
+                filteredUnits.length === 0 ? (
+                  <div className="bg-white border border-slate-200 rounded-2xl p-6 text-center">
+                    <Search className="w-7 h-7 text-slate-300 mx-auto mb-2" />
+                    <p className="text-sm font-semibold text-slate-500">No matches</p>
+                    <p className="text-xs text-slate-400 mt-1">
+                      {typeFilter ? "Try a different equipment type or clear the filter." : `No results for "${q}"`}
+                    </p>
+                    {typeFilter && (
+                      <button onClick={() => setTypeFilter("")} className="mt-3 text-xs text-blue-600 font-bold hover:underline">
+                        Clear filter
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    <div className="space-y-2.5">
+                      {(showAllUnits ? filteredUnits : filteredUnits.slice(0, 6)).map((u) => (
+                        <UnitCard key={u.id} unit={u} unitStatus={unitStatusMap[u.id]}
+                          onClick={() => navigate(`/records/unit/${u.id}`)} onToggleFavorite={(e) => toggleFavorite(u, e)} />
+                      ))}
+                    </div>
+                    {filteredUnits.length > 6 && !showAllUnits && (
+                      <button
+                        onClick={() => setShowAllUnits(true)}
+                        className="mt-2.5 w-full flex items-center justify-center gap-1 text-xs text-blue-600 font-bold py-2.5 border border-dashed border-blue-200 rounded-2xl hover:bg-blue-50 transition-colors"
+                      >
+                        Show all {filteredUnits.length} units <ArrowRight className="w-3 h-3" />
+                      </button>
+                    )}
+                  </>
+                )
               )}
             </section>
 
@@ -2149,39 +2281,6 @@ export default function RecordsPage() {
               </section>
             )}
 
-            {/* ── Location Browse ──────────────────────────────────────────────── */}
-            {locationGroups.length > 0 && (
-              <section aria-label="Browse by Customer">
-                <SectionHeader
-                  title="Browse by Customer"
-                  count={locationGroups.length}
-                  open={locationViewOpen}
-                  onToggle={() => setLocationViewOpen((v) => !v)}
-                  icon={MapPin}
-                />
-                {locationViewOpen && (
-                  <div className="mt-3 space-y-2.5">
-                    {locationGroups.map((group) => (
-                      <LocationGroupCard
-                        key={group.customer}
-                        group={group}
-                        healthScoreMap={healthScoreMap}
-                        expanded={expandedLocations.has(group.customer)}
-                        onToggle={() => {
-                          setExpandedLocations((prev) => {
-                            const next = new Set(prev);
-                            next.has(group.customer) ? next.delete(group.customer) : next.add(group.customer);
-                            return next;
-                          });
-                        }}
-                        onUnitClick={(id) => navigate(`/records/unit/${id}`)}
-                        onToggleFavorite={toggleFavorite}
-                      />
-                    ))}
-                  </div>
-                )}
-              </section>
-            )}
 
             {/* ── Favorites ────────────────────────────────────────────────────── */}
             {favorites.length > 0 && (

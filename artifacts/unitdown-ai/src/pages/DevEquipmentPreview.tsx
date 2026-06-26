@@ -7,7 +7,7 @@
 
 import { useState } from "react";
 import {
-  Activity, Bell, Camera, CheckCircle2, ChevronRight,
+  Activity, Bell, Building2, Camera, CheckCircle2, ChevronDown, ChevronRight,
   Clock, Edit2, FileText, History, Info,
   MapPin, Plus, Search, Settings, Star, Trash2, Wrench, ZoomIn,
 } from "lucide-react";
@@ -362,7 +362,7 @@ function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
   );
 }
 
-// ─── Equipment Library Preview ────────────────────────────────────────────────
+// ─── Customers & Sites Preview ────────────────────────────────────────────────
 
 const TYPE_CHIPS = [
   { label: "RTU",          match: "rtu"        },
@@ -371,9 +371,101 @@ const TYPE_CHIPS = [
   { label: "Split System", match: "split"      },
 ];
 
+function CustomerGroupCard({
+  customer, units, expanded, onToggle, onSelectUnit,
+}: {
+  customer: string;
+  units: MockUnit[];
+  expanded: boolean;
+  onToggle: () => void;
+  onSelectUnit: (u: MockUnit) => void;
+}) {
+  const criticalCount = units.filter((u) => u.status === "critical").length;
+  const activeCount = units.filter((u) => ["monitoring", "needs-follow-up", "unresolved", "waiting-on-parts", "return-visit"].includes(u.status)).length;
+  const lastVisit = units.reduce<string | null>((acc, u) => {
+    if (!u.lastVisit) return acc;
+    if (!acc) return u.lastVisit;
+    return new Date(u.lastVisit) > new Date(acc) ? u.lastVisit : acc;
+  }, null);
+
+  const accentBorder = criticalCount > 0 ? "border-red-300" : activeCount > 0 ? "border-amber-200" : "border-slate-200";
+
+  return (
+    <div className={`bg-white border rounded-2xl shadow-sm overflow-hidden transition-all ${expanded ? "border-blue-300" : accentBorder}`}>
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between p-4 hover:bg-slate-50/80 transition-colors text-left"
+      >
+        <div className="flex items-center gap-3 min-w-0 flex-1">
+          <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${
+            criticalCount > 0 ? "bg-red-100" : activeCount > 0 ? "bg-amber-100" : "bg-slate-100"
+          }`}>
+            <Building2 className={`w-4.5 h-4.5 ${
+              criticalCount > 0 ? "text-red-600" : activeCount > 0 ? "text-amber-600" : "text-slate-500"
+            }`} style={{ width: "18px", height: "18px" }} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-slate-900 text-sm truncate">{customer}</p>
+            <div className="flex items-center gap-2 mt-1 flex-wrap">
+              <span className="text-xs text-slate-500">{units.length} unit{units.length !== 1 ? "s" : ""}</span>
+              {criticalCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs text-red-700 font-bold bg-red-50 px-1.5 py-0.5 rounded-full border border-red-200">
+                  <span className="w-1.5 h-1.5 bg-red-500 rounded-full" />
+                  {criticalCount} critical
+                </span>
+              )}
+              {activeCount > 0 && (
+                <span className="text-xs text-amber-700 font-semibold bg-amber-50 px-1.5 py-0.5 rounded-full border border-amber-200">
+                  {activeCount} active
+                </span>
+              )}
+              {criticalCount === 0 && activeCount === 0 && (
+                <span className="text-xs text-emerald-600 font-medium">All clear</span>
+              )}
+            </div>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          {lastVisit && !expanded && (
+            <span className="text-[10px] text-slate-400 font-medium hidden sm:block">
+              {new Date(lastVisit).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+            </span>
+          )}
+          <div className={`flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-xl transition-colors ${
+            expanded ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-blue-50 hover:text-blue-600"
+          }`}>
+            {expanded ? "Close" : "Open Site"}
+            <ChevronDown className={`w-3 h-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          </div>
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="border-t border-slate-100">
+          {lastVisit && (
+            <div className="flex items-center gap-1.5 px-4 py-2 bg-slate-50 border-b border-slate-100">
+              <Clock className="w-3 h-3 text-slate-400" />
+              <span className="text-xs text-slate-500">Last visit: <span className="font-semibold text-slate-700">
+                {new Date(lastVisit).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </span></span>
+            </div>
+          )}
+          <div className="p-3 space-y-2">
+            {units.map((u) => (
+              <UnitCard key={u.id} unit={u} onSelect={() => onSelectUnit(u)} />
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUnit) => void }) {
   const [typeFilter, setTypeFilter] = useState("");
   const [q, setQ] = useState("");
+  const [viewMode, setViewMode] = useState<"customers" | "all">("customers");
+  const [expandedCustomers, setExpandedCustomers] = useState<Set<string>>(new Set());
 
   const filtered = MOCK_UNITS.filter((u) => {
     if (q && !`${u.nickname} ${u.siteCustomerName} ${u.manufacturer} ${u.modelNumber} ${u.serialNumber} ${u.location}`
@@ -382,6 +474,25 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
     return true;
   });
 
+  const customerGroups: Array<{ customer: string; units: MockUnit[] }> = [];
+  const seenCustomers = new Map<string, MockUnit[]>();
+  filtered.forEach((u) => {
+    const cust = u.siteCustomerName ?? "Uncategorized";
+    if (!seenCustomers.has(cust)) {
+      seenCustomers.set(cust, []);
+      customerGroups.push({ customer: cust, units: seenCustomers.get(cust)! });
+    }
+    seenCustomers.get(cust)!.push(u);
+  });
+
+  const toggleCustomer = (customer: string) => {
+    setExpandedCustomers((prev) => {
+      const next = new Set(prev);
+      next.has(customer) ? next.delete(customer) : next.add(customer);
+      return next;
+    });
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
       {/* Header */}
@@ -389,9 +500,9 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-              <RtuIcon className="w-4 h-4 text-white" />
+              <Building2 className="w-4 h-4 text-white" />
             </div>
-            <span className="font-extrabold text-slate-900 text-sm">Equipment Library</span>
+            <span className="font-extrabold text-slate-900 text-sm">Customers & Sites</span>
           </div>
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-8 px-3 text-xs">
             <Plus className="w-3.5 h-3.5 mr-1" />
@@ -406,7 +517,7 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search units, customers, locations, models, or serials…"
+            placeholder="Search customers, sites, units, models, or serials…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
             className="w-full h-10 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300"
@@ -426,6 +537,31 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
               <p className="text-[10px] text-slate-400 font-medium leading-tight mt-0.5">{label}</p>
             </div>
           ))}
+        </div>
+
+        {/* Section header + view toggle */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="w-7 h-7 bg-blue-50 rounded-xl flex items-center justify-center">
+              <Building2 className="w-3.5 h-3.5 text-blue-600" />
+            </div>
+            <h2 className="font-extrabold text-slate-900 text-sm">Customers & Sites</h2>
+            <span className="text-xs font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{MOCK_UNITS.length}</span>
+          </div>
+          <div className="flex bg-slate-100 rounded-full p-0.5">
+            <button
+              onClick={() => setViewMode("customers")}
+              className={`text-xs font-bold px-2.5 py-0.5 rounded-full transition-all ${viewMode === "customers" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
+            >
+              By Customer
+            </button>
+            <button
+              onClick={() => setViewMode("all")}
+              className={`text-xs font-bold px-2.5 py-0.5 rounded-full transition-all ${viewMode === "all" ? "bg-white text-blue-600 shadow-sm" : "text-slate-500"}`}
+            >
+              All Units
+            </button>
+          </div>
         </div>
 
         {/* Type chips */}
@@ -457,24 +593,40 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
           ))}
         </div>
 
-        {/* Section header */}
-        <div className="flex items-center justify-between">
-          <h2 className="font-extrabold text-slate-900 text-sm">Equipment Library</h2>
-          <span className="text-xs text-slate-400">{filtered.length} unit{filtered.length !== 1 ? "s" : ""}</span>
-        </div>
-
-        {/* Unit cards */}
-        {filtered.length === 0 ? (
-          <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-            <RtuIcon className="w-8 h-8 text-slate-300 mx-auto mb-2" />
-            <p className="text-sm text-slate-400">No units match your filter.</p>
-          </div>
+        {/* Content: customer-grouped or flat */}
+        {viewMode === "customers" ? (
+          customerGroups.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+              <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm text-slate-400">No customers match your filter.</p>
+            </div>
+          ) : (
+            <div className="space-y-2.5">
+              {customerGroups.map(({ customer, units }) => (
+                <CustomerGroupCard
+                  key={customer}
+                  customer={customer}
+                  units={units}
+                  expanded={expandedCustomers.has(customer)}
+                  onToggle={() => toggleCustomer(customer)}
+                  onSelectUnit={onSelectUnit}
+                />
+              ))}
+            </div>
+          )
         ) : (
-          <div className="space-y-2">
-            {filtered.map((u) => (
-              <UnitCard key={u.id} unit={u} onSelect={() => onSelectUnit(u)} />
-            ))}
-          </div>
+          filtered.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
+              <Search className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm text-slate-400">No units match your filter.</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {filtered.map((u) => (
+                <UnitCard key={u.id} unit={u} onSelect={() => onSelectUnit(u)} />
+              ))}
+            </div>
+          )
         )}
       </div>
     </div>
@@ -840,26 +992,55 @@ export default function DevEquipmentPreview() {
         DEV PREVIEW · Mock data only · Not visible in production
       </div>
 
-      {/* Quick-jump unit selector */}
-      <div className="bg-slate-900 px-4 py-2 flex items-center gap-2 flex-wrap">
-        <span className="text-slate-400 text-xs font-bold uppercase tracking-wide mr-1">Jump:</span>
+      {/* Quick-jump unit selector — customer-grouped "walking the roof" nav */}
+      <div className="bg-slate-900 px-3 py-2 flex items-center gap-1.5 flex-wrap">
         <button
           onClick={() => setSelectedUnit(null)}
-          className={`text-xs px-2.5 py-1 rounded-full font-bold transition-all ${!selectedUnit ? "bg-blue-500 text-white" : "text-slate-400 hover:text-white"}`}
+          className={`text-xs px-2.5 py-1.5 rounded-full font-bold transition-all flex-shrink-0 ${
+            !selectedUnit ? "bg-blue-500 text-white" : "text-slate-400 hover:text-white border border-slate-700"
+          }`}
         >
-          Library
+          ← Customers
         </button>
-        {MOCK_UNITS.map((u) => {
-          const sc = unitStatusConfig(u.status);
+
+        {/* Group units by customer */}
+        {Array.from(
+          MOCK_UNITS.reduce((map, u) => {
+            const cust = u.siteCustomerName ?? "Uncategorized";
+            if (!map.has(cust)) map.set(cust, []);
+            map.get(cust)!.push(u);
+            return map;
+          }, new Map<string, typeof MOCK_UNITS>())
+        ).map(([customer, custUnits], idx) => {
+          const isActiveCustomer = selectedUnit ? custUnits.some((u) => u.id === selectedUnit.id) : false;
           return (
-            <button
-              key={u.id}
-              onClick={() => setSelectedUnit(u)}
-              className={`text-xs px-2.5 py-1 rounded-full font-bold transition-all flex items-center gap-1.5 ${selectedUnit?.id === u.id ? "bg-blue-500 text-white" : "text-slate-400 hover:text-white"}`}
-            >
-              <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-              {u.nickname ?? u.modelNumber}
-            </button>
+            <div key={customer} className="flex items-center gap-1 flex-shrink-0">
+              {idx > 0 && <span className="text-slate-700 text-xs">·</span>}
+              <span className={`text-[10px] font-bold uppercase tracking-widest px-1 ${
+                isActiveCustomer ? "text-blue-400" : "text-slate-600"
+              }`}>
+                {customer.split(" ").slice(0, 2).join(" ")}
+              </span>
+              {custUnits.map((u) => {
+                const sc = unitStatusConfig(u.status);
+                return (
+                  <button
+                    key={u.id}
+                    onClick={() => setSelectedUnit(u)}
+                    className={`text-xs px-2 py-1 rounded-full font-bold transition-all flex items-center gap-1 ${
+                      selectedUnit?.id === u.id
+                        ? "bg-blue-500 text-white"
+                        : isActiveCustomer
+                        ? "text-slate-300 hover:text-white bg-slate-800"
+                        : "text-slate-500 hover:text-slate-300"
+                    }`}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${sc.dot}`} />
+                    {u.nickname ?? u.modelNumber}
+                  </button>
+                );
+              })}
+            </div>
           );
         })}
       </div>
