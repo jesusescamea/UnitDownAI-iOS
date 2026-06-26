@@ -7,11 +7,11 @@
 
 import { useState } from "react";
 import {
-  Activity, AlertCircle, Bell, Camera, CheckCircle2, ChevronRight,
-  CircleDot, Clock, Edit2, FileText, History, Info, Layers,
-  Loader2, MapPin, Plus, Search, Settings, Star, Trash2, Wrench,
-  ZoomIn,
+  Activity, Bell, Camera, CheckCircle2, ChevronRight,
+  Clock, Edit2, FileText, History, Info,
+  MapPin, Plus, Search, Settings, Star, Trash2, Wrench, ZoomIn,
 } from "lucide-react";
+import RtuIcon from "@/components/RtuIcon";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 
@@ -53,16 +53,19 @@ interface MockUnit {
   isFavorite: boolean;
   isArchived: boolean;
   status: UnitStatus;
+  lastVisit: string | null;
+  openIssue: string | null;
+  nextAction: string;
 }
 
 const MOCK_UNITS: MockUnit[] = [
   {
     id: "1",
-    nickname: "Roof Unit A",
+    nickname: "RTU-1",
     siteCustomerName: "Sunrise Medical Center",
     location: "Roof — Zone A",
     manufacturer: "Carrier",
-    modelNumber: "48XLT016-6",
+    modelNumber: "48XLT016A-6",
     serialNumber: "0920A1234",
     equipmentType: "RTU",
     systemType: "Packaged",
@@ -79,9 +82,93 @@ const MOCK_UNITS: MockUnit[] = [
     isFavorite: true,
     isArchived: false,
     status: "critical",
+    lastVisit: "Jun 24",
+    openIssue: "High-head pressure — compressor fault",
+    nextAction: "Schedule service call",
   },
   {
     id: "2",
+    nickname: "RTU-2",
+    siteCustomerName: "Lakewood Office Park",
+    location: "Roof — Zone B",
+    manufacturer: "Lennox",
+    modelNumber: "LGH210H4BS1G",
+    serialNumber: "5521B8890",
+    equipmentType: "RTU",
+    systemType: "Packaged",
+    refrigerantType: "R-410A",
+    voltage: "460",
+    phase: "3",
+    mca: "38.0",
+    mocp: "45",
+    rla: "34.2",
+    lra: "198",
+    capacityTons: "17.5",
+    manufactureDate: "2022-03",
+    notes: null,
+    isFavorite: false,
+    isArchived: false,
+    status: "monitoring",
+    lastVisit: "Jun 18",
+    openIssue: "Low refrigerant charge suspected",
+    nextAction: "Verify subcooling at next visit",
+  },
+  {
+    id: "3",
+    nickname: "RTU-7",
+    siteCustomerName: "Harbor View Hotel",
+    location: "Roof — West Wing",
+    manufacturer: "York",
+    modelNumber: "ZJ210000BD4BAAA",
+    serialNumber: "NUPM77241",
+    equipmentType: "RTU",
+    systemType: "Packaged",
+    refrigerantType: "R-410A",
+    voltage: "460",
+    phase: "3",
+    mca: "52.0",
+    mocp: "60",
+    rla: "47.5",
+    lra: "245",
+    capacityTons: "17.5",
+    manufactureDate: "2021-06",
+    notes: "Annual PM completed 2025-04. Condenser coils cleaned.",
+    isFavorite: false,
+    isArchived: false,
+    status: "operational",
+    lastVisit: "Apr 2",
+    openIssue: null,
+    nextAction: "Q3 PM due in 6 weeks",
+  },
+  {
+    id: "4",
+    nickname: "Kitchen MUA",
+    siteCustomerName: "Harbor View Hotel",
+    location: "Roof — Kitchen",
+    manufacturer: "Greenheck",
+    modelNumber: "MUA-36-14",
+    serialNumber: "GH-2209-3344",
+    equipmentType: "Make-Up Air",
+    systemType: "Direct-Gas",
+    refrigerantType: null,
+    voltage: "208",
+    phase: "3",
+    mca: "18.5",
+    mocp: "25",
+    rla: null,
+    lra: null,
+    capacityTons: null,
+    manufactureDate: "2019-11",
+    notes: "Burner lockout logged twice this month. Check gas valve solenoid.",
+    isFavorite: false,
+    isArchived: false,
+    status: "needs-follow-up",
+    lastVisit: "Jun 10",
+    openIssue: "Burner lockout — repeated fault",
+    nextAction: "Follow up this week",
+  },
+  {
+    id: "5",
     nickname: "AHU-2B",
     siteCustomerName: "Lakewood Office Park",
     location: "Mechanical Room B2",
@@ -102,37 +189,16 @@ const MOCK_UNITS: MockUnit[] = [
     notes: null,
     isFavorite: false,
     isArchived: false,
-    status: "monitoring",
-  },
-  {
-    id: "3",
-    nickname: "Chiller #1",
-    siteCustomerName: "Harbor View Hotel",
-    location: "Central Plant",
-    manufacturer: "York",
-    modelNumber: "YLAA0152SE",
-    serialNumber: "NUPM123456",
-    equipmentType: "Chiller",
-    systemType: "Air-Cooled",
-    refrigerantType: "R-134a",
-    voltage: "480",
-    phase: "3",
-    mca: "86.0",
-    mocp: "100",
-    rla: "78.4",
-    lra: null,
-    capacityTons: "45.0",
-    manufactureDate: "2019-06",
-    notes: "Annual PM completed 2025-04. Condenser coils cleaned.",
-    isFavorite: false,
-    isArchived: false,
     status: "operational",
+    lastVisit: "May 14",
+    openIssue: null,
+    nextAction: "Schedule next PM",
   },
   {
-    id: "4",
-    nickname: "Split #4 Office",
+    id: "6",
+    nickname: "Split #4",
     siteCustomerName: "Greenfield Realty",
-    location: "3rd Floor East Wing",
+    location: "3rd Floor — East Wing",
     manufacturer: "Daikin",
     modelNumber: "RXS12LVJU",
     serialNumber: "E005G1001",
@@ -151,30 +217,9 @@ const MOCK_UNITS: MockUnit[] = [
     isFavorite: false,
     isArchived: false,
     status: "needs-follow-up",
-  },
-  {
-    id: "5",
-    nickname: "Old Boiler",
-    siteCustomerName: "Riverside Elementary",
-    location: "Boiler Room",
-    manufacturer: "Weil-McLain",
-    modelNumber: "80-5",
-    serialNumber: null,
-    equipmentType: "Boiler",
-    systemType: "Hot Water",
-    refrigerantType: null,
-    voltage: "120",
-    phase: "1",
-    mca: null,
-    mocp: null,
-    rla: null,
-    lra: null,
-    capacityTons: null,
-    manufactureDate: "2003-01",
-    notes: "Unit slated for replacement. Track-only.",
-    isFavorite: false,
-    isArchived: true,
-    status: "archived",
+    lastVisit: "Jun 5",
+    openIssue: "Outdoor fan cycling on overload",
+    nextAction: "Follow up this week",
   },
 ];
 
@@ -186,64 +231,61 @@ const MOCK_TIMELINE = [
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatusDot({ status }: { status: UnitStatus }) {
-  const colors: Record<UnitStatus, string> = {
-    operational: "bg-emerald-500",
-    monitoring: "bg-blue-500",
-    "needs-follow-up": "bg-amber-400",
-    critical: "bg-red-500",
-    archived: "bg-slate-400",
-  };
-  return <span className={`w-2 h-2 rounded-full flex-shrink-0 ${colors[status]}`} />;
-}
-
 function UnitCard({ unit, onSelect }: { unit: MockUnit; onSelect: () => void }) {
   const sc = unitStatusConfig(unit.status);
+  const showBadge = unit.status !== "operational" && unit.status !== "archived";
+  const eqType = (unit.equipmentType ?? "").toLowerCase();
+  const isRooftop = eqType.includes("rtu") || eqType.includes("rooftop") || eqType.includes("package") || eqType.includes("make-up") || eqType.includes("makeup");
+
   return (
     <button
       onClick={onSelect}
-      className="w-full text-left bg-white rounded-2xl border border-slate-200 p-3.5 shadow-sm active:bg-slate-50 transition-colors hover:border-blue-300 hover:shadow-md"
+      className="w-full text-left bg-white rounded-2xl border border-slate-200 px-4 py-4 shadow-sm active:bg-slate-50 transition-all hover:border-blue-300 hover:shadow-md hover:scale-[1.01] active:scale-[0.98] duration-150"
     >
       <div className="flex items-start gap-3">
-        {/* Status dot */}
-        <div className="mt-1 flex-shrink-0">
-          <StatusDot status={unit.status} />
+        {/* Equipment-type avatar */}
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 border mt-0.5 ${sc.bgCls} ${sc.borderCls}`}>
+          {isRooftop
+            ? <RtuIcon className={sc.textCls} style={{ width: "18px", height: "18px" }} />
+            : <span className={`w-2.5 h-2.5 rounded-full ${sc.dot}`} />
+          }
         </div>
 
         {/* Content */}
         <div className="flex-1 min-w-0">
           <div className="flex items-start justify-between gap-2">
-            <div className="min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm font-extrabold text-slate-900 leading-tight">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="text-sm font-extrabold text-slate-900 leading-tight truncate">
                   {unit.nickname ?? unit.modelNumber ?? "Unnamed Unit"}
                 </span>
                 {unit.isFavorite && <Star className="w-3.5 h-3.5 text-yellow-400 fill-yellow-400 flex-shrink-0" />}
               </div>
               {unit.siteCustomerName && (
-                <p className="text-xs text-slate-500 font-medium mt-0.5">{unit.siteCustomerName}</p>
+                <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">{unit.siteCustomerName}</p>
               )}
               {unit.location && (
-                <p className="text-xs text-slate-400 flex items-center gap-1 mt-0.5">
-                  <MapPin className="w-3 h-3" />{unit.location}
+                <p className="text-[10px] text-slate-400 flex items-center gap-0.5 mt-0.5">
+                  <MapPin className="w-2.5 h-2.5 flex-shrink-0" />{unit.location}
                 </p>
               )}
             </div>
             <ChevronRight className="w-4 h-4 text-slate-300 flex-shrink-0 mt-0.5" />
           </div>
 
-          {/* Tags */}
-          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${sc.bgCls} ${sc.textCls} ${sc.borderCls}`}>
-              {sc.label}
-            </span>
+          <div className="flex items-center gap-1.5 mt-2.5 flex-wrap">
             {unit.equipmentType && (
-              <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">
+              <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">
                 {unit.equipmentType}
               </span>
             )}
             {unit.manufacturer && (
-              <span className="text-[10px] text-slate-400 font-medium">{unit.manufacturer}</span>
+              <span className="text-[10px] text-slate-500 font-medium">{unit.manufacturer}</span>
+            )}
+            {showBadge && (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ml-auto ${sc.bgCls} ${sc.textCls} ${sc.borderCls}`}>
+                {sc.label}
+              </span>
             )}
           </div>
         </div>
@@ -267,7 +309,7 @@ function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
   const typeCfgs: Record<string, { bg: string; color: string; Icon: typeof Activity }> = {
     diagnostic: { bg: "bg-blue-50",    color: "text-blue-600",   Icon: Activity  },
     repair:     { bg: "bg-orange-50",  color: "text-orange-600", Icon: Wrench    },
-    maintenance:{ bg: "bg-emerald-50", color: "text-emerald-600",Icon: Settings  },
+    maintenance:{ bg: "bg-emerald-50", color: "text-emerald-600", Icon: Settings  },
   };
   const stCfg: Record<string, { label: string; className: string }> = {
     unresolved: { label: "Unresolved", className: "bg-amber-100 text-amber-800 border-amber-200" },
@@ -323,11 +365,10 @@ function TimelineCard({ event }: { event: typeof MOCK_TIMELINE[0] }) {
 // ─── Equipment Library Preview ────────────────────────────────────────────────
 
 const TYPE_CHIPS = [
-  { label: "RTU",         match: "rtu" },
-  { label: "Split",       match: "split" },
-  { label: "Chiller",     match: "chiller" },
-  { label: "AHU",         match: "ahu" },
-  { label: "Boiler",      match: "boiler" },
+  { label: "RTU",          match: "rtu"        },
+  { label: "Make-Up Air",  match: "make-up"    },
+  { label: "AHU",          match: "ahu"        },
+  { label: "Split System", match: "split"      },
 ];
 
 function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUnit) => void }) {
@@ -335,7 +376,8 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
   const [q, setQ] = useState("");
 
   const filtered = MOCK_UNITS.filter((u) => {
-    if (q && !`${u.nickname} ${u.siteCustomerName} ${u.manufacturer} ${u.modelNumber}`.toLowerCase().includes(q.toLowerCase())) return false;
+    if (q && !`${u.nickname} ${u.siteCustomerName} ${u.manufacturer} ${u.modelNumber} ${u.serialNumber} ${u.location}`
+      .toLowerCase().includes(q.toLowerCase())) return false;
     if (typeFilter && !(u.equipmentType ?? "").toLowerCase().includes(typeFilter)) return false;
     return true;
   });
@@ -347,7 +389,7 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
         <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-              <Layers className="w-4 h-4 text-white" />
+              <RtuIcon className="w-4 h-4 text-white" />
             </div>
             <span className="font-extrabold text-slate-900 text-sm">Equipment Library</span>
           </div>
@@ -364,11 +406,26 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400" />
           <input
             type="text"
-            placeholder="Search equipment…"
+            placeholder="Search units, customers, locations, models, or serials…"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            className="w-full h-9 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300"
+            className="w-full h-10 pl-9 pr-4 text-sm rounded-xl border border-slate-200 bg-white focus:outline-none focus:border-blue-300"
           />
+        </div>
+
+        {/* KPI row */}
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { label: "Equipment",  value: MOCK_UNITS.filter((u) => !u.isArchived).length },
+            { label: "Critical",   value: MOCK_UNITS.filter((u) => u.status === "critical").length },
+            { label: "Monitoring", value: MOCK_UNITS.filter((u) => u.status === "monitoring").length },
+            { label: "Follow-up",  value: MOCK_UNITS.filter((u) => u.status === "needs-follow-up").length },
+          ].map(({ label, value }) => (
+            <div key={label} className="bg-white rounded-2xl border border-slate-200 px-3 py-2.5 text-center">
+              <p className="text-lg font-extrabold text-slate-900">{value}</p>
+              <p className="text-[10px] text-slate-400 font-medium leading-tight mt-0.5">{label}</p>
+            </div>
+          ))}
         </div>
 
         {/* Type chips */}
@@ -377,7 +434,7 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
             onClick={() => setTypeFilter("")}
             className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
               typeFilter === ""
-                ? "bg-blue-600 text-white border-blue-600"
+                ? "bg-blue-600 text-white border-blue-600 shadow-sm"
                 : "bg-white text-slate-600 border-slate-200 hover:border-blue-300"
             }`}
           >
@@ -391,7 +448,7 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
               onClick={() => setTypeFilter(typeFilter === chip.match ? "" : chip.match)}
               className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
                 typeFilter === chip.match
-                  ? "bg-blue-600 text-white border-blue-600"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-sm"
                   : "bg-white text-slate-600 border-slate-200 hover:border-blue-300"
               }`}
             >
@@ -409,7 +466,7 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
         {/* Unit cards */}
         {filtered.length === 0 ? (
           <div className="bg-white rounded-2xl border border-slate-200 p-8 text-center">
-            <Layers className="w-8 h-8 text-slate-300 mx-auto mb-2" />
+            <RtuIcon className="w-8 h-8 text-slate-300 mx-auto mb-2" />
             <p className="text-sm text-slate-400">No units match your filter.</p>
           </div>
         ) : (
@@ -419,21 +476,6 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
             ))}
           </div>
         )}
-
-        {/* KPI row */}
-        <div className="grid grid-cols-4 gap-2">
-          {[
-            { label: "Equipment",  value: MOCK_UNITS.filter((u) => !u.isArchived).length },
-            { label: "Critical",   value: MOCK_UNITS.filter((u) => u.status === "critical").length },
-            { label: "Monitoring", value: MOCK_UNITS.filter((u) => u.status === "monitoring").length },
-            { label: "Follow-up",  value: MOCK_UNITS.filter((u) => u.status === "needs-follow-up").length },
-          ].map(({ label, value }) => (
-            <div key={label} className="bg-white rounded-2xl border border-slate-200 px-3 py-2.5 text-center">
-              <p className="text-lg font-extrabold text-slate-900">{value}</p>
-              <p className="text-[10px] text-slate-400 font-medium leading-tight mt-0.5">{label}</p>
-            </div>
-          ))}
-        </div>
       </div>
     </div>
   );
@@ -473,7 +515,7 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
             </button>
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-                <Layers className="w-4 h-4 text-white" />
+                <RtuIcon className="w-4 h-4 text-white" />
               </div>
               <span className="font-extrabold text-slate-900 text-sm truncate max-w-[160px]">
                 {unit.nickname ?? unit.modelNumber ?? "Unit"}
@@ -528,11 +570,29 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
               </div>
               {/* Nameplate thumbnail placeholder */}
               <div
-                className="w-16 h-16 flex-shrink-0 rounded-xl overflow-hidden border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-blue-300 transition-colors"
+                className="w-16 h-16 flex-shrink-0 rounded-xl overflow-hidden border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center gap-1 hover:border-blue-300 transition-colors"
                 title="Nameplate photo (mock)"
               >
                 <ZoomIn className="w-4 h-4 text-slate-300" />
                 <span className="text-[8px] text-slate-300 font-medium">Nameplate</span>
+              </div>
+            </div>
+
+            {/* Hero insight row — Last Visit · Open Issue · Next */}
+            <div className="grid grid-cols-3 gap-1.5 mt-3 mb-3">
+              <div className="bg-slate-50 rounded-xl px-2.5 py-2 border border-slate-100">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Last Visit</p>
+                <p className="text-xs font-bold text-slate-700 mt-0.5">{unit.lastVisit ?? "—"}</p>
+              </div>
+              <div className={`rounded-xl px-2.5 py-2 border ${unit.openIssue ? "bg-amber-50 border-amber-100" : "bg-slate-50 border-slate-100"}`}>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Open Issue</p>
+                <p className={`text-xs font-bold mt-0.5 line-clamp-1 ${unit.openIssue ? "text-amber-700" : "text-slate-400"}`}>
+                  {unit.openIssue ?? "None"}
+                </p>
+              </div>
+              <div className="bg-blue-50 rounded-xl px-2.5 py-2 border border-blue-100">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Next</p>
+                <p className="text-xs font-bold text-blue-700 mt-0.5 line-clamp-1">{unit.nextAction}</p>
               </div>
             </div>
 
@@ -549,7 +609,7 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
 
             <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-10 text-sm">
               <Activity className="w-4 h-4 mr-2" />
-              Run AI Diagnosis
+              Start Diagnosis
             </Button>
           </div>
         </div>
@@ -558,11 +618,11 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
         <div className="flex gap-1.5 overflow-x-auto pb-1" style={{ scrollbarWidth: "none" }}>
           {(
             [
-              { id: "timeline"  as const, label: "Timeline",  Icon: History   },
-              { id: "info"      as const, label: "Info",      Icon: Info      },
-              { id: "photos"    as const, label: "Photos",    Icon: Camera    },
-              { id: "resources" as const, label: "Resources", Icon: Search    },
-              { id: "notes"     as const, label: "Notes",     Icon: FileText  },
+              { id: "timeline"  as const, label: "Timeline",  Icon: History  },
+              { id: "info"      as const, label: "Info",      Icon: Info     },
+              { id: "photos"    as const, label: "Photos",    Icon: Camera   },
+              { id: "resources" as const, label: "Resources", Icon: Search   },
+              { id: "notes"     as const, label: "Notes",     Icon: FileText },
             ] as const
           ).map(({ id, label, Icon }) => (
             <button
@@ -601,9 +661,9 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
             <div className="flex gap-2 mb-3 flex-wrap">
               {[
                 { Icon: FileText, label: "Note" },
-                { Icon: Wrench, label: "Repair" },
+                { Icon: Wrench,   label: "Repair" },
                 { Icon: Settings, label: "PM" },
-                { Icon: Bell, label: "Reminder" },
+                { Icon: Bell,     label: "Reminder" },
               ].map(({ Icon, label }) => (
                 <button key={label} className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-xs text-slate-600 hover:border-blue-300 hover:text-blue-600 transition-colors">
                   <Icon className="w-3.5 h-3.5" />
@@ -615,7 +675,7 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
               {["All", "Diagnostics", "Repairs", "Maintenance", "Notes"].map((label, i) => (
                 <button key={label} className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold transition-colors ${i === 0 ? "bg-slate-800 text-white" : "bg-white border border-slate-200 text-slate-600"}`}>
                   {label}
-                  <span className="text-xs opacity-60">{i === 0 ? MOCK_TIMELINE.length : i === 1 ? 1 : i === 2 ? 1 : 1}</span>
+                  <span className="text-xs opacity-60">{i === 0 ? MOCK_TIMELINE.length : 1}</span>
                 </button>
               ))}
             </div>
@@ -632,7 +692,6 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
         {/* Info Tab */}
         {activeTab === "info" && (
           <div className="space-y-4">
-            {/* Nameplate placeholder */}
             <div>
               <p className="text-xs font-semibold text-slate-500 mb-2 uppercase tracking-wide">Nameplate Photo</p>
               <div className="w-full rounded-2xl border border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center gap-2 py-10">
@@ -644,24 +703,24 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
               <div className="bg-white rounded-2xl border border-slate-200 p-4">
                 <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2">Equipment</p>
                 <InfoRow label="Manufacturer" value={unit.manufacturer} />
-                <InfoRow label="Model" value={unit.modelNumber} />
-                <InfoRow label="Serial" value={unit.serialNumber} />
-                <InfoRow label="Type" value={unit.equipmentType} />
-                <InfoRow label="System" value={unit.systemType} />
-                <InfoRow label="Refrigerant" value={unit.refrigerantType} />
-                <InfoRow label="Capacity" value={unit.capacityTons ? `${unit.capacityTons} tons` : null} />
-                <InfoRow label="Mfg. Date" value={unit.manufactureDate} />
+                <InfoRow label="Model"        value={unit.modelNumber} />
+                <InfoRow label="Serial"       value={unit.serialNumber} />
+                <InfoRow label="Type"         value={unit.equipmentType} />
+                <InfoRow label="System"       value={unit.systemType} />
+                <InfoRow label="Refrigerant"  value={unit.refrigerantType} />
+                <InfoRow label="Capacity"     value={unit.capacityTons ? `${unit.capacityTons} tons` : null} />
+                <InfoRow label="Mfg. Date"    value={unit.manufactureDate} />
               </div>
             )}
             {hasElectrical && (
               <div className="bg-white rounded-2xl border border-slate-200 p-4">
                 <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest mb-2">Electrical</p>
-                <InfoRow label="Voltage" value={unit.voltage} />
-                <InfoRow label="Phase" value={unit.phase} />
-                <InfoRow label="MCA" value={unit.mca} />
-                <InfoRow label="MOCP" value={unit.mocp} />
+                <InfoRow label="Voltage"   value={unit.voltage} />
+                <InfoRow label="Phase"     value={unit.phase} />
+                <InfoRow label="MCA"       value={unit.mca} />
+                <InfoRow label="MOCP"      value={unit.mocp} />
                 <InfoRow label="RLA / FLA" value={unit.rla} />
-                <InfoRow label="LRA" value={unit.lra} />
+                <InfoRow label="LRA"       value={unit.lra} />
               </div>
             )}
             <button className="w-full flex items-center justify-center gap-2 text-xs font-bold text-slate-500 border border-dashed border-slate-300 rounded-2xl py-3 hover:border-blue-300 hover:text-blue-600 transition-colors">
@@ -687,7 +746,7 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
             {[
               { label: `${unit.manufacturer} ${unit.modelNumber} Install Manual`, type: "PDF" },
               { label: `${unit.manufacturer} ${unit.modelNumber} Service Manual`, type: "PDF" },
-              { label: `${unit.manufacturer} ${unit.modelNumber} Parts List`, type: "PDF" },
+              { label: `${unit.manufacturer} ${unit.modelNumber} Parts List`,     type: "PDF" },
             ].map(({ label, type }) => (
               <div key={label} className="flex items-center justify-between gap-2 py-2 border-b border-slate-100 last:border-0">
                 <p className="text-xs text-slate-700 font-medium">{label}</p>
@@ -714,14 +773,15 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
                 <p className="text-sm font-semibold text-slate-500">No notes yet</p>
               </div>
             )}
-            {/* Repair Progress */}
+
+            {/* Service Checklist */}
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
               <button onClick={() => setProgressOpen((v) => !v)} className="w-full flex items-center justify-between px-4 py-3 active:bg-slate-50 transition-colors">
                 <div className="flex items-center gap-2.5">
                   <div className="w-6 h-6 bg-blue-50 rounded-lg flex items-center justify-center">
                     <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
                   </div>
-                  <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wide">Repair Progress</span>
+                  <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wide">Service Checklist</span>
                   <span className="text-xs text-slate-400">{progressSteps.filter((s) => s.done).length}/{progressSteps.length}</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -733,7 +793,10 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
               </button>
               <div className="px-4 pb-2">
                 <div className="w-full bg-slate-100 rounded-full h-1.5">
-                  <div className="bg-blue-600 h-1.5 rounded-full transition-all duration-500" style={{ width: `${Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100)}%` }} />
+                  <div
+                    className="bg-blue-600 h-1.5 rounded-full transition-all duration-500"
+                    style={{ width: `${Math.round((progressSteps.filter((s) => s.done).length / progressSteps.length) * 100)}%` }}
+                  />
                 </div>
               </div>
               {progressOpen && (
@@ -760,7 +823,6 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
 // ─── Root preview page ────────────────────────────────────────────────────────
 
 export default function DevEquipmentPreview() {
-  // Block in production
   if (!import.meta.env.DEV) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
@@ -780,7 +842,7 @@ export default function DevEquipmentPreview() {
 
       {/* Quick-jump unit selector */}
       <div className="bg-slate-900 px-4 py-2 flex items-center gap-2 flex-wrap">
-        <span className="text-slate-400 text-xs font-bold uppercase tracking-wide mr-1">Jump to:</span>
+        <span className="text-slate-400 text-xs font-bold uppercase tracking-wide mr-1">Jump:</span>
         <button
           onClick={() => setSelectedUnit(null)}
           className={`text-xs px-2.5 py-1 rounded-full font-bold transition-all ${!selectedUnit ? "bg-blue-500 text-white" : "text-slate-400 hover:text-white"}`}

@@ -11,6 +11,7 @@ import {
   MapPin, Users, LayoutList, CalendarDays, ListOrdered,
   Layers,
 } from "lucide-react";
+import RtuIcon from "@/components/RtuIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -503,28 +504,39 @@ function UnitCard({
   const sc = unitStatusConfig(status);
   const showBadge = status !== "operational" && status !== "archived";
 
+  const eqType = (unit.equipmentType ?? "").toLowerCase();
+  const isRooftop = eqType.includes("rtu") || eqType.includes("rooftop") || eqType.includes("package") || eqType.includes("make-up") || eqType.includes("makeup");
+
   return (
     <button
       onClick={onClick}
-      className="w-full text-left bg-white border border-slate-200 rounded-2xl p-4 shadow-sm
+      className="w-full text-left bg-white border border-slate-200 rounded-2xl px-4 py-4 shadow-sm
         hover:border-blue-300 hover:shadow-md hover:scale-[1.01]
         transition-all duration-150 ease-out active:scale-[0.98]"
     >
       <div className="flex items-start gap-3">
-        {/* Status dot column */}
-        <div className="flex flex-col items-center pt-1 flex-shrink-0">
-          <span className={`w-2.5 h-2.5 rounded-full flex-shrink-0 ${sc.dot}`} />
+        {/* Equipment-type avatar — RTU icon or generic dot */}
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 border mt-0.5 ${sc.bgCls} ${sc.borderCls}`}>
+          {isRooftop
+            ? <RtuIcon className={`w-4.5 h-4.5 ${sc.textCls}`} style={{ width: "18px", height: "18px" }} />
+            : <span className={`w-2.5 h-2.5 rounded-full ${sc.dot}`} />
+          }
         </div>
 
         {/* Main content */}
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0 flex-1">
-              <span className="font-bold text-slate-900 text-sm leading-snug truncate block">
+              <span className="font-extrabold text-slate-900 text-sm leading-snug truncate block">
                 {unit.nickname ?? unit.modelNumber ?? "Unnamed Unit"}
               </span>
               {unit.siteCustomerName && (
                 <p className="text-xs text-slate-500 font-medium mt-0.5 truncate">{unit.siteCustomerName}</p>
+              )}
+              {unit.location && (
+                <p className="text-[10px] text-slate-400 flex items-center gap-0.5 mt-0.5">
+                  <MapPin className="w-2.5 h-2.5 flex-shrink-0" />{unit.location}
+                </p>
               )}
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
@@ -536,32 +548,29 @@ function UnitCard({
                   <Star className={`w-3.5 h-3.5 ${unit.isFavorite ? "fill-yellow-400" : ""}`} />
                 </button>
               )}
-              <ChevronRight className="w-4 h-4 text-slate-400" />
+              <ChevronRight className="w-4 h-4 text-slate-300" />
             </div>
           </div>
 
-          <div className="flex flex-wrap items-center gap-1.5 mt-2">
-            {showBadge && (
-              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${sc.bgCls} ${sc.textCls} ${sc.borderCls}`}>
-                {sc.label}
-              </span>
-            )}
+          <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
             {unit.equipmentType && (
-              <span className="text-[10px] bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-semibold">
+              <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full font-bold">
                 {unit.equipmentType}
               </span>
             )}
             {unit.manufacturer && (
-              <span className="text-[10px] bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full">
+              <span className="text-[10px] text-slate-500 font-medium">
                 {unit.manufacturer}
               </span>
             )}
-            {unit.location && (
-              <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
-                <MapPin className="w-2.5 h-2.5" />{unit.location}
+            {showBadge && (
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ml-auto ${sc.bgCls} ${sc.textCls} ${sc.borderCls}`}>
+                {sc.label}
               </span>
             )}
-            <span className="text-[10px] text-slate-300 ml-auto">{formatDate(unit.updatedAt)}</span>
+            {!showBadge && (
+              <span className="text-[10px] text-slate-300 ml-auto">{formatDate(unit.updatedAt)}</span>
+            )}
           </div>
         </div>
       </div>
@@ -1646,7 +1655,7 @@ export default function RecordsPage() {
                 <Input
                   value={q}
                   onChange={(e) => setQ(e.target.value)}
-                  placeholder="Search equipment, customers, models…"
+                  placeholder="Search units, customers, locations, models, or serials…"
                   className="pl-9 pr-8 rounded-xl border-slate-200 text-sm h-10"
                 />
                 {q && (

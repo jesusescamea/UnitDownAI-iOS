@@ -5,7 +5,7 @@ import {
   ChevronRight, Wrench, Edit2, Trash2, Pencil,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
   MapPin, Activity, Loader2, FileText, Settings, Camera, Search,
-  ZoomIn, X, Star, Bell, Layers, Info,
+  ZoomIn, X, Star, Bell, Info,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import TimelineAddModal from "@/components/TimelineAddModal";
 import EquipmentResources from "@/components/EquipmentResources";
 import PhotoAlbum from "@/components/PhotoAlbum";
 import ScheduledEventModal, { type ScheduledEvent } from "@/components/ScheduledEventModal";
+import RtuIcon from "@/components/RtuIcon";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -530,6 +531,27 @@ export default function UnitDetailPage() {
     ];
   }, [unit, events, unitLogs]);
 
+  // Last visit / open issue / next action — for identity card hero row
+  const lastVisit = useMemo(() => {
+    if (events.length === 0) return null;
+    return [...events].sort((a, b) => b.eventDate - a.eventDate)[0].eventDate;
+  }, [events]);
+
+  const openIssue = useMemo(() => {
+    const log = unitLogs.find((l) => l.status === "unresolved" && l.diagnosisTitle);
+    return log?.diagnosisTitle ?? null;
+  }, [unitLogs]);
+
+  const nextAction = useMemo((): string => {
+    switch (unitStatus) {
+      case "critical":        return "Schedule service call";
+      case "needs-follow-up": return "Follow up this week";
+      case "monitoring":      return "Check back in 30 days";
+      case "archived":        return "Restore to reactivate";
+      default:                return "Schedule next PM";
+    }
+  }, [unitStatus]);
+
   // Handlers
   const handleArchive = useCallback(async () => {
     if (!unit || !window.confirm("Archive this unit? It will be hidden from your unit list.")) return;
@@ -649,7 +671,7 @@ export default function UnitDetailPage() {
             </button>
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-                <Layers className="w-4 h-4 text-white" />
+                <RtuIcon className="w-4 h-4 text-white" />
               </div>
               <span className="font-extrabold text-slate-900 text-sm truncate max-w-[160px]">
                 {unit.nickname ?? unit.modelNumber ?? "Unit"}
@@ -741,8 +763,28 @@ export default function UnitDetailPage() {
               )}
             </div>
 
+            {/* Hero insight row — answers: Last Visit · Open Issue · Next Action */}
+            <div className="grid grid-cols-3 gap-1.5 mt-3 mb-3">
+              <div className="bg-slate-50 rounded-xl px-2.5 py-2 border border-slate-100">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Last Visit</p>
+                <p className="text-xs font-bold text-slate-700 mt-0.5 truncate">
+                  {lastVisit ? formatDate(lastVisit) : "—"}
+                </p>
+              </div>
+              <div className={`rounded-xl px-2.5 py-2 border ${openIssue ? "bg-amber-50 border-amber-100" : "bg-slate-50 border-slate-100"}`}>
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Open Issue</p>
+                <p className={`text-xs font-bold mt-0.5 line-clamp-1 ${openIssue ? "text-amber-700" : "text-slate-400"}`}>
+                  {openIssue ?? "None"}
+                </p>
+              </div>
+              <div className="bg-blue-50 rounded-xl px-2.5 py-2 border border-blue-100">
+                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wide">Next</p>
+                <p className="text-xs font-bold text-blue-700 mt-0.5 line-clamp-1">{nextAction}</p>
+              </div>
+            </div>
+
             {/* Quick spec chips */}
-            {(unit.manufacturer || unit.modelNumber || unit.serialNumber || unit.refrigerantType || unit.voltage || unit.capacityTons) && (
+            {(unit.manufacturer || unit.modelNumber || unit.refrigerantType || unit.voltage || unit.capacityTons) && (
               <div className="flex flex-wrap gap-1.5 mb-3">
                 {unit.manufacturer && (
                   <span className="text-[10px] bg-slate-100 text-slate-700 px-2 py-1 rounded-full font-semibold">{unit.manufacturer}</span>
@@ -768,7 +810,7 @@ export default function UnitDetailPage() {
               className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-10 text-sm"
             >
               <Activity className="w-4 h-4 mr-2" />
-              Run AI Diagnosis
+              Start Diagnosis
             </Button>
           </div>
         </div>
@@ -1025,7 +1067,7 @@ export default function UnitDetailPage() {
               </div>
             )}
 
-            {/* Repair Progress */}
+            {/* Service Checklist */}
             {progressSteps.length > 0 && (
               <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
                 <button
@@ -1037,7 +1079,7 @@ export default function UnitDetailPage() {
                       <CheckCircle2 className="w-3.5 h-3.5 text-blue-600" />
                     </div>
                     <div className="min-w-0">
-                      <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wide">Repair Progress</span>
+                      <span className="text-xs font-extrabold text-slate-700 uppercase tracking-wide">Service Checklist</span>
                       <span className="text-xs text-slate-400 ml-2">
                         {progressSteps.filter((s) => s.done).length}/{progressSteps.length}
                       </span>
