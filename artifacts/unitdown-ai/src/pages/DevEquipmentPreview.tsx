@@ -652,7 +652,7 @@ function CustomerGroupCard({
   const iconColor = criticalCount > 0 ? "text-red-600"  : followUpCount > 0 ? "text-amber-600" : monitoringCount > 0 ? "text-blue-600" : "text-slate-500";
 
   return (
-    <div className={`bg-white border rounded-2xl shadow-lg shadow-blue-900/15 overflow-hidden transition-all ${expanded ? "border-blue-300 shadow-xl shadow-blue-900/20" : accentBorder}`}>
+    <div className={`bg-white border rounded-2xl shadow-md shadow-slate-200/80 overflow-hidden transition-all ${expanded ? "border-blue-300 shadow-lg shadow-slate-300/60" : accentBorder}`}>
       {/* ── Entire header is the tap target ──────────────────────────────────── */}
       <div
         onClick={onToggle}
@@ -879,19 +879,19 @@ function EquipmentLibraryPreview({
   return (
     <div className="min-h-screen bg-transparent pb-16">
       {/* Header */}
-      <header className="bg-blue-900/80 backdrop-blur-sm border-b border-blue-700/50 sticky top-7 z-50">
+      <header className="bg-white border-b border-[#E6EDF8] sticky top-7 z-50">
         <div className="max-w-2xl mx-auto px-4 h-12 flex items-center justify-between">
           <button
             onClick={onOpenDrawer}
             className="flex items-center gap-2 active:opacity-60 transition-opacity"
           >
-            <div className="w-6 h-6 bg-white/20 rounded-lg flex items-center justify-center">
-              <Building2 className="w-3.5 h-3.5 text-white" />
+            <div className="w-6 h-6 bg-blue-50 rounded-lg flex items-center justify-center">
+              <Building2 className="w-3.5 h-3.5 text-blue-600" />
             </div>
-            <span className="font-extrabold text-white text-sm">Customers & Sites</span>
-            <ChevronDown className="w-3.5 h-3.5 text-white/50" />
+            <span className="font-extrabold text-slate-800 text-sm">Customers & Sites</span>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
           </button>
-          <Button size="sm" className="bg-white hover:bg-blue-50 text-blue-700 font-bold rounded-xl h-8 px-3 text-xs">
+          <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-8 px-3 text-xs">
             <Plus className="w-3.5 h-3.5 mr-1" />
             Add Unit
           </Button>
@@ -900,7 +900,7 @@ function EquipmentLibraryPreview({
 
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-5">
         {/* Search with ghost-text autocomplete */}
-        <div className="relative bg-white rounded-xl shadow-md shadow-blue-900/15">
+        <div className="relative bg-white rounded-xl shadow-sm border border-[#E6EDF8]">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 z-10 pointer-events-none" />
           {suggestion && suggestion !== q && (
             <div
@@ -994,7 +994,7 @@ function EquipmentLibraryPreview({
                 }}
                 className={`flex flex-col justify-between p-2.5 rounded-2xl border text-left
                   transition-all duration-150 active:scale-[0.96]
-                  ${isSelected ? "ring-2 ring-blue-300 ring-offset-2 ring-offset-blue-600 shadow-xl scale-[1.01]" : "shadow-lg hover:shadow-xl"}
+                  ${isSelected ? "ring-2 ring-blue-300 ring-offset-2 ring-offset-[#EEF4FF] shadow-xl scale-[1.01]" : "shadow-md hover:shadow-lg"}
                   ${hasItems ? colorOn : colorOff}`}
               >
                 <div className={`w-5 h-5 rounded-md flex items-center justify-center mb-1.5 ${hasItems ? accentOn : accentOff}`}>
@@ -1023,35 +1023,35 @@ function EquipmentLibraryPreview({
         {/* Active filter pill */}
         {kpiFilter && (
           <div className="flex items-center gap-1.5">
-            <span className="text-[11px] font-semibold text-white bg-white/20 border border-white/30 rounded-full px-2.5 py-0.5 flex items-center gap-1">
+            <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-[#D7E3F7] rounded-full px-2.5 py-0.5 flex items-center gap-1">
               Filtered
               <button onClick={() => setKpiFilter(null)} className="ml-0.5 opacity-60 hover:opacity-100" aria-label="Clear filter">
                 <X className="w-2.5 h-2.5" />
               </button>
             </span>
-            <span className="text-[11px] text-white/60">Tap card again to clear</span>
+            <span className="text-[11px] text-slate-400">Tap card again to clear</span>
           </div>
         )}
 
         {/* Section header + view toggle */}
         <div ref={customerSectionRef} className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-white/20 rounded-xl flex items-center justify-center">
-              <Building2 className="w-3.5 h-3.5 text-white" />
+            <div className="w-7 h-7 bg-blue-100 rounded-xl flex items-center justify-center">
+              <Building2 className="w-3.5 h-3.5 text-blue-600" />
             </div>
-            <h2 className="font-extrabold text-white text-sm">Customers & Sites</h2>
-            <span className="text-xs font-bold text-white/70 bg-white/20 px-2 py-0.5 rounded-full">{MOCK_UNITS.length}</span>
+            <h2 className="font-extrabold text-slate-800 text-sm">Customers & Sites</h2>
+            <span className="text-xs font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{MOCK_UNITS.length}</span>
           </div>
-          <div className="flex bg-blue-900/40 rounded-full p-0.5">
+          <div className="flex bg-slate-100 rounded-full p-0.5">
             <button
               onClick={() => setViewMode("customers")}
-              className={`text-xs font-bold px-2.5 py-0.5 rounded-full transition-all ${viewMode === "customers" ? "bg-white text-blue-700 shadow-sm" : "text-white/70"}`}
+              className={`text-xs font-bold px-2.5 py-0.5 rounded-full transition-all ${viewMode === "customers" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}
             >
               By Customer
             </button>
             <button
               onClick={() => setViewMode("all")}
-              className={`text-xs font-bold px-2.5 py-0.5 rounded-full transition-all ${viewMode === "all" ? "bg-white text-blue-700 shadow-sm" : "text-white/70"}`}
+              className={`text-xs font-bold px-2.5 py-0.5 rounded-full transition-all ${viewMode === "all" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500"}`}
             >
               All Units
             </button>
@@ -1064,8 +1064,8 @@ function EquipmentLibraryPreview({
             onClick={() => setTypeFilter("")}
             className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
               typeFilter === ""
-                ? "bg-white text-blue-700 border-white shadow-md"
-                : "bg-white/15 text-white border-white/25 hover:bg-white/25"
+                ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                : "bg-[#F4F7FC] text-slate-600 border-[#D7E3F7] hover:bg-blue-50 hover:border-blue-200"
             }`}
           >
             All
@@ -1078,8 +1078,8 @@ function EquipmentLibraryPreview({
               onClick={() => setTypeFilter(typeFilter === chip.match ? "" : chip.match)}
               className={`flex-shrink-0 text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
                 typeFilter === chip.match
-                  ? "bg-white text-blue-700 border-white shadow-md"
-                  : "bg-white/15 text-white border-white/25 hover:bg-white/25"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-sm"
+                  : "bg-[#F4F7FC] text-slate-600 border-[#D7E3F7] hover:bg-blue-50 hover:border-blue-200"
               }`}
             >
               {chip.label}
@@ -1215,31 +1215,31 @@ function EquipmentDetailPreview({
   return (
     <div className="min-h-screen bg-transparent pb-16">
       {/* Header */}
-      <header className="bg-blue-900/80 backdrop-blur-sm border-b border-blue-700/50 sticky top-7 z-50">
+      <header className="bg-white border-b border-[#E6EDF8] sticky top-7 z-50">
         <div className="max-w-2xl mx-auto px-4 h-12 flex items-center justify-between">
           <div className="flex items-center gap-1 min-w-0">
-            <button onClick={onBack} className="text-white/60 active:text-white p-1 flex-shrink-0">
+            <button onClick={onBack} className="text-slate-400 active:text-slate-700 p-1 flex-shrink-0">
               <ChevronRight className="w-5 h-5 rotate-180" />
             </button>
             <button
               onClick={onOpenDrawer}
-              className="text-sm font-semibold text-blue-200 truncate max-w-[110px] active:opacity-60 transition-opacity"
+              className="text-sm font-semibold text-blue-600 truncate max-w-[110px] active:opacity-60 transition-opacity"
             >
               {unit.siteCustomerName ?? "Customers"}
             </button>
-            <ChevronRight className="w-3.5 h-3.5 text-white/40 flex-shrink-0" />
-            <span className="text-sm font-extrabold text-white truncate max-w-[110px]">
+            <ChevronRight className="w-3.5 h-3.5 text-slate-300 flex-shrink-0" />
+            <span className="text-sm font-extrabold text-slate-800 truncate max-w-[110px]">
               {unit.nickname ?? unit.modelNumber ?? "Unit"}
             </span>
           </div>
           <div className="flex items-center gap-1">
-            <button className={`p-1.5 rounded-xl ${unit.isFavorite ? "text-yellow-400" : "text-white/40"}`}>
+            <button className={`p-1.5 rounded-xl ${unit.isFavorite ? "text-yellow-400" : "text-slate-300"}`}>
               <Star className={`w-4 h-4 ${unit.isFavorite ? "fill-yellow-400" : ""}`} />
             </button>
-            <button className="text-white/60 p-1.5 rounded-xl hover:bg-white/10">
+            <button className="text-slate-400 p-1.5 rounded-xl hover:bg-slate-100">
               <Edit2 className="w-4 h-4" />
             </button>
-            <button className="text-white/50 p-1.5 rounded-xl hover:bg-red-900/30">
+            <button className="text-slate-300 p-1.5 rounded-xl hover:bg-red-50">
               <Trash2 className="w-4 h-4" />
             </button>
           </div>
@@ -1249,7 +1249,7 @@ function EquipmentDetailPreview({
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-4">
 
         {/* Equipment Identity Card */}
-        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-lg shadow-blue-900/15">
+        <div className="bg-white rounded-2xl border border-[#E6EDF8] overflow-hidden shadow-md shadow-slate-200/80">
           <div className={`h-1.5 w-full ${sc.strip}`} />
           <div className="p-4">
             {/* Name row + status badge */}
@@ -1338,7 +1338,7 @@ function EquipmentDetailPreview({
         </div>
 
         {/* Equipment Memory */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-blue-900/15 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-[#E6EDF8] shadow-md shadow-slate-200/80 overflow-hidden">
           <div className="p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-7 h-7 bg-violet-50 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -1365,7 +1365,7 @@ function EquipmentDetailPreview({
         </div>
 
         {/* Quick Insights */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-lg shadow-blue-900/15 overflow-hidden">
+        <div className="bg-white rounded-2xl border border-[#E6EDF8] shadow-md shadow-slate-200/80 overflow-hidden">
           <div className="p-4">
             <div className="flex items-center gap-2 mb-3">
               <div className="w-7 h-7 bg-amber-50 rounded-xl flex items-center justify-center flex-shrink-0">
@@ -1409,7 +1409,7 @@ function EquipmentDetailPreview({
               className={`flex-shrink-0 flex items-center gap-1.5 rounded-full px-3 py-2 text-xs font-bold transition-all duration-150 ${
                 activeTab === id
                   ? "bg-blue-600 text-white shadow-sm"
-                  : "bg-white border border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-600"
+                  : "bg-[#F4F7FC] border border-[#D7E3F7] text-slate-600 hover:border-blue-300 hover:text-blue-600"
               }`}
             >
               <Icon className="w-3.5 h-3.5" />
@@ -2012,7 +2012,7 @@ export default function DevEquipmentPreview() {
   const closeDrawer = () => { setDrawerOpen(false); };
 
   return (
-    <div className="bg-gradient-to-b from-blue-800 to-blue-600 min-h-screen">
+    <div className="bg-[#EEF4FF] min-h-screen">
       {/* Dev banner — always on top */}
       <div className="bg-amber-400 text-amber-900 text-center py-1.5 text-xs font-bold tracking-wide sticky top-0 z-[100]">
         DEV PREVIEW · Mock data only · Not visible in production
