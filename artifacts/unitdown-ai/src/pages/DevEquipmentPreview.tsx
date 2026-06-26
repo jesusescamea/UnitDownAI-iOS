@@ -706,7 +706,13 @@ function CustomerGroupCard({
 
 type KpiFilterType = "attention" | "monitoring" | "return-visits" | null;
 
-function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUnit) => void }) {
+function EquipmentLibraryPreview({
+  onSelectUnit,
+  onOpenDrawer,
+}: {
+  onSelectUnit: (unit: MockUnit) => void;
+  onOpenDrawer: () => void;
+}) {
   const [typeFilter, setTypeFilter] = useState("");
   const [q, setQ] = useState("");
   const [viewMode, setViewMode] = useState<"customers" | "all">("customers");
@@ -782,14 +788,18 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-              <Building2 className="w-4 h-4 text-white" />
+      <header className="bg-white border-b border-slate-200 sticky top-7 z-50">
+        <div className="max-w-2xl mx-auto px-4 h-12 flex items-center justify-between">
+          <button
+            onClick={onOpenDrawer}
+            className="flex items-center gap-2 active:opacity-60 transition-opacity"
+          >
+            <div className="w-6 h-6 bg-blue-600 rounded-lg flex items-center justify-center">
+              <Building2 className="w-3.5 h-3.5 text-white" />
             </div>
             <span className="font-extrabold text-slate-900 text-sm">Customers & Sites</span>
-          </div>
+            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+          </button>
           <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-8 px-3 text-xs">
             <Plus className="w-3.5 h-3.5 mr-1" />
             Add Unit
@@ -1016,7 +1026,15 @@ function EquipmentLibraryPreview({ onSelectUnit }: { onSelectUnit: (unit: MockUn
 
 // ─── Equipment Detail Preview ─────────────────────────────────────────────────
 
-function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () => void }) {
+function EquipmentDetailPreview({
+  unit,
+  onBack,
+  onOpenDrawer,
+}: {
+  unit: MockUnit;
+  onBack: () => void;
+  onOpenDrawer: () => void;
+}) {
   const [activeTab, setActiveTab] = useState<ActiveTab>("timeline");
   const [progressOpen, setProgressOpen] = useState(true);
   const sc = unitStatusConfig(unit.status);
@@ -1040,20 +1058,22 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
   return (
     <div className="min-h-screen bg-slate-50 pb-16">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-2xl mx-auto px-4 h-14 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button onClick={onBack} className="text-slate-400 hover:text-slate-700 p-1">
+      <header className="bg-white border-b border-slate-200 sticky top-7 z-50">
+        <div className="max-w-2xl mx-auto px-4 h-12 flex items-center justify-between">
+          <div className="flex items-center gap-1 min-w-0">
+            <button onClick={onBack} className="text-slate-400 active:text-slate-700 p-1 flex-shrink-0">
               <ChevronRight className="w-5 h-5 rotate-180" />
             </button>
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-                <RtuIcon className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-extrabold text-slate-900 text-sm truncate max-w-[160px]">
-                {unit.nickname ?? unit.modelNumber ?? "Unit"}
-              </span>
-            </div>
+            <button
+              onClick={onOpenDrawer}
+              className="text-sm font-semibold text-blue-600 truncate max-w-[110px] active:opacity-60 transition-opacity"
+            >
+              {unit.siteCustomerName ?? "Customers"}
+            </button>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400 flex-shrink-0" />
+            <span className="text-sm font-extrabold text-slate-900 truncate max-w-[110px]">
+              {unit.nickname ?? unit.modelNumber ?? "Unit"}
+            </span>
           </div>
           <div className="flex items-center gap-1">
             <button className={`p-1.5 rounded-xl ${unit.isFavorite ? "text-yellow-500" : "text-slate-400"}`}>
@@ -1421,6 +1441,159 @@ function EquipmentDetailPreview({ unit, onBack }: { unit: MockUnit; onBack: () =
   );
 }
 
+// ─── Site Navigator Drawer ────────────────────────────────────────────────────
+
+function SiteNavigatorDrawer({
+  open,
+  onClose,
+  q,
+  onQChange,
+  selectedUnit,
+  onSelectCustomer,
+  onSelectUnit,
+}: {
+  open: boolean;
+  onClose: () => void;
+  q: string;
+  onQChange: (v: string) => void;
+  selectedUnit: MockUnit | null;
+  onSelectCustomer: (customer: string) => void;
+  onSelectUnit: (unit: MockUnit) => void;
+}) {
+  const lower = q.toLowerCase();
+
+  const matchedUnits = q.trim()
+    ? MOCK_UNITS.filter((u) =>
+        [u.siteCustomerName, u.location, u.nickname, u.manufacturer, u.modelNumber, u.serialNumber]
+          .some((v) => v?.toLowerCase().includes(lower))
+      )
+    : MOCK_UNITS;
+
+  const customerNames = Array.from(
+    new Set(matchedUnits.map((u) => u.siteCustomerName ?? "Uncategorized"))
+  ).sort();
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className={`fixed inset-0 bg-black/40 z-[200] transition-opacity duration-300 ${
+          open ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+        }`}
+        onClick={onClose}
+      />
+
+      {/* Bottom sheet */}
+      <div
+        className={`fixed bottom-0 left-0 right-0 z-[201] bg-white rounded-t-3xl shadow-2xl
+          flex flex-col transition-transform duration-300 ease-out
+          max-h-[80vh]
+          ${open ? "translate-y-0" : "translate-y-full"}`}
+      >
+        {/* Drag handle */}
+        <div className="flex justify-center pt-3 pb-1 flex-shrink-0">
+          <div className="w-10 h-1 bg-slate-200 rounded-full" />
+        </div>
+
+        {/* Header + search */}
+        <div className="px-4 pt-1 pb-3 flex-shrink-0">
+          <p className="text-sm font-extrabold text-slate-900 mb-3">Jump to Site or Equipment</p>
+          <div className="relative bg-slate-50 rounded-xl">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-400 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Customer, site, unit, manufacturer…"
+              value={q}
+              onChange={(e) => onQChange(e.target.value)}
+              className="w-full h-10 pl-9 pr-8 text-sm rounded-xl border border-slate-200 bg-transparent focus:outline-none focus:border-blue-300"
+            />
+            {q && (
+              <button
+                onClick={() => onQChange("")}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Scrollable results */}
+        <div className="overflow-y-auto flex-1 px-4 pb-10 space-y-5">
+
+          {/* Customers */}
+          {customerNames.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                Customers
+              </p>
+              <div className="space-y-1">
+                {customerNames.map((customer) => (
+                  <button
+                    key={customer}
+                    onClick={() => { onSelectCustomer(customer); onClose(); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-slate-50 active:bg-blue-50 transition-colors text-left"
+                  >
+                    <div className="w-7 h-7 bg-blue-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                      <Building2 className="w-3.5 h-3.5 text-blue-600" />
+                    </div>
+                    <span className="text-sm font-semibold text-slate-800">{customer}</span>
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-300 ml-auto flex-shrink-0" />
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Equipment */}
+          {matchedUnits.length > 0 && (
+            <div>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-2">
+                Equipment
+              </p>
+              <div className="space-y-1">
+                {matchedUnits.map((u) => {
+                  const sc = unitStatusConfig(u.status);
+                  const isActive = selectedUnit?.id === u.id;
+                  return (
+                    <button
+                      key={u.id}
+                      onClick={() => { onSelectUnit(u); onClose(); }}
+                      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-colors text-left ${
+                        isActive ? "bg-blue-50" : "bg-slate-50 active:bg-slate-100"
+                      }`}
+                    >
+                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0 ${sc.bgCls}`}>
+                        <span className={`w-2 h-2 rounded-full ${sc.dot}`} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-slate-800 leading-tight">
+                          {u.nickname ?? u.modelNumber}
+                        </p>
+                        <p className="text-xs text-slate-400 truncate">{u.siteCustomerName}</p>
+                      </div>
+                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${sc.bgCls} ${sc.textCls}`}>
+                        {sc.label}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {customerNames.length === 0 && matchedUnits.length === 0 && (
+            <div className="py-10 text-center">
+              <Search className="w-8 h-8 text-slate-200 mx-auto mb-2" />
+              <p className="text-sm text-slate-400">No results for "{q}"</p>
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+}
+
 // ─── Root preview page ────────────────────────────────────────────────────────
 
 export default function DevEquipmentPreview() {
@@ -1433,71 +1606,41 @@ export default function DevEquipmentPreview() {
   }
 
   const [selectedUnit, setSelectedUnit] = useState<MockUnit | null>(null);
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerQ, setDrawerQ] = useState("");
+
+  const openDrawer = () => { setDrawerQ(""); setDrawerOpen(true); };
+  const closeDrawer = () => { setDrawerOpen(false); };
 
   return (
     <div>
-      {/* Dev banner */}
+      {/* Dev banner — always on top */}
       <div className="bg-amber-400 text-amber-900 text-center py-1.5 text-xs font-bold tracking-wide sticky top-0 z-[100]">
         DEV PREVIEW · Mock data only · Not visible in production
       </div>
 
-      {/* Quick-jump unit selector — customer-grouped "walking the roof" nav */}
-      <div className="bg-slate-900 px-3 py-2 flex items-center gap-1.5 flex-wrap">
-        <button
-          onClick={() => setSelectedUnit(null)}
-          className={`text-xs px-2.5 py-1.5 rounded-full font-bold transition-all flex-shrink-0 ${
-            !selectedUnit ? "bg-blue-500 text-white" : "text-slate-400 hover:text-white border border-slate-700"
-          }`}
-        >
-          ← Customers
-        </button>
-
-        {/* Group units by customer */}
-        {Array.from(
-          MOCK_UNITS.reduce((map, u) => {
-            const cust = u.siteCustomerName ?? "Uncategorized";
-            if (!map.has(cust)) map.set(cust, []);
-            map.get(cust)!.push(u);
-            return map;
-          }, new Map<string, typeof MOCK_UNITS>())
-        ).map(([customer, custUnits], idx) => {
-          const isActiveCustomer = selectedUnit ? custUnits.some((u) => u.id === selectedUnit.id) : false;
-          return (
-            <div key={customer} className="flex items-center gap-1 flex-shrink-0">
-              {idx > 0 && <span className="text-slate-700 text-xs">·</span>}
-              <span className={`text-[10px] font-bold uppercase tracking-widest px-1 ${
-                isActiveCustomer ? "text-blue-400" : "text-slate-600"
-              }`}>
-                {customer.split(" ").slice(0, 2).join(" ")}
-              </span>
-              {custUnits.map((u) => {
-                const sc = unitStatusConfig(u.status);
-                return (
-                  <button
-                    key={u.id}
-                    onClick={() => setSelectedUnit(u)}
-                    className={`text-xs px-2 py-1 rounded-full font-bold transition-all flex items-center gap-1 ${
-                      selectedUnit?.id === u.id
-                        ? "bg-blue-500 text-white"
-                        : isActiveCustomer
-                        ? "text-slate-300 hover:text-white bg-slate-800"
-                        : "text-slate-500 hover:text-slate-300"
-                    }`}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${sc.dot}`} />
-                    {u.nickname ?? u.modelNumber}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })}
-      </div>
+      {/* Searchable site navigator drawer */}
+      <SiteNavigatorDrawer
+        open={drawerOpen}
+        onClose={closeDrawer}
+        q={drawerQ}
+        onQChange={setDrawerQ}
+        selectedUnit={selectedUnit}
+        onSelectCustomer={() => setSelectedUnit(null)}
+        onSelectUnit={(unit) => setSelectedUnit(unit)}
+      />
 
       {selectedUnit ? (
-        <EquipmentDetailPreview unit={selectedUnit} onBack={() => setSelectedUnit(null)} />
+        <EquipmentDetailPreview
+          unit={selectedUnit}
+          onBack={() => setSelectedUnit(null)}
+          onOpenDrawer={openDrawer}
+        />
       ) : (
-        <EquipmentLibraryPreview onSelectUnit={setSelectedUnit} />
+        <EquipmentLibraryPreview
+          onSelectUnit={setSelectedUnit}
+          onOpenDrawer={openDrawer}
+        />
       )}
     </div>
   );
