@@ -1,43 +1,49 @@
 /**
- * VoiceNoteRecorder — segment-based transcript engine with AI Polish
+ * VoiceNoteRecorder — manual-control recording with auto-restart
+ *
+ * === Manual control model ===
+ *
+ * Recording only ends when the USER taps Stop (or Done). The browser's
+ * SpeechRecognition fires `onend` on any silence/timeout, so we auto-restart
+ * the recognition session whenever that happens mid-recording. The transcript
+ * accumulates across all sessions into finalSegmentsRef.
+ *
+ *   Recording state machine:
+ *     idle → recording (tap mic)
+ *       recording / listening — mic active, SR running
+ *       recording / paused   — user tapped Pause; SR stopped; no auto-restart
+ *       recording / processing — SR heard speech end, restarting
+ *     recording → reviewing  (tap Stop only)
+ *     recording → idle       (tap Cancel)
+ *     paused → recording/listening  (tap Resume)
+ *     reviewing → idle       (save or discard)
  *
  * === Transcript architecture ===
  *
- * Two separate accumulation structures (both refs — never React state):
+ * Two refs — never React state — are the single source of truth:
  *
  *   finalSegmentsRef: string[]
- *     Each confirmed isFinal result is merged into this list via buildNextSegments(),
- *     which detects and removes suffix/prefix overlaps before appending.
- *     This is the ONLY place final text is written.
+ *     Accumulated isFinal results merged via buildNextSegments() which detects
+ *     suffix/prefix overlaps before appending. Survives SR session restarts.
  *
  *   interimRef: string
- *     The current in-progress phrase. Replaced entirely each onresult event.
- *     Never appended to finalSegmentsRef during live recording.
- *
- * Display formula: displayFinal + (displayInterim ? " " + displayInterim : "")
- *
- * On stop: interimRef is promoted → finalSegments exactly once (if not already captured).
- * On review: cleanupTranscript() removes adjacent n-gram repeats (n=1,2,3) before
- *   seeding the review text.
+ *     Current in-progress phrase; replaced each onresult event; promoted to
+ *     final on session end before the next session starts.
  *
  * === Reviewing flow ===
- * After stopping, the tech sees a choice screen with three options:
- *   📝 Original       — save exactly what was said
- *   ✨ Professional   — AI rewrites for service records
- *   👤 Customer       — AI rewrites for customer communication
  *
- * Tapping Save calls AI Polish (if needed) and saves the result.
- * Re-record is available at the top. Discard is a link at the bottom.
+ * After Stop: 3-card choice screen (Original / Professional / Customer).
+ * Tapping Save calls AI Polish if needed, then saves the entry.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Loader2, Mic, MicOff, RotateCcw } from "lucide-react";
+import { Loader2, Mic, MicOff, Pause, Play, RotateCcw, Square } from "lucide-react";
 import { aiPolish } from "@workspace/api-client-react";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type Stage = "idle" | "recording" | "reviewing";
-type MicStatus = "listening" | "processing";
+type Stage        = "idle" | "recording" | "reviewing";
+type RecordMode   = "listening" | "paused" | "processing";
 type ReviewOption = "original" | "professional" | "customer";
 
 export interface VoiceNoteEntry {
@@ -47,7 +53,7 @@ export interface VoiceNoteEntry {
 }
 
 interface VoiceNoteRecorderProps {
-  onSave: (entry: VoiceNoteEntry) => void;
+  onSave:     (entry: VoiceNoteEntry) => void;
   onDiscard?: () => void;
   placeholder?: string;
   isPro?: boolean;
@@ -56,15 +62,15 @@ interface VoiceNoteRecorderProps {
 // ─── Review option config ─────────────────────────────────────────────────────
 
 const REVIEW_OPTIONS: Array<{
-  value: ReviewOption;
-  emoji: string;
-  label: string;
-  sub: string;
+  value:   ReviewOption;
+  emoji:   string;
+  label:   string;
+  sub:     string;
   proOnly: boolean;
 }> = [
-  { value: "original",     emoji: "📝", label: "Original",     sub: "Exactly what I said",              proOnly: false },
-  { value: "professional", emoji: "✨", label: "Professional", sub: "Perfect for service records",       proOnly: true  },
-  { value: "customer",     emoji: "👤", label: "Customer",     sub: "Easy for customers to understand",  proOnly: true  },
+  { value: "original",     emoji: "📝", label: "Original",     sub: "Exactly what I said",             proOnly: false },
+  { value: "professional", emoji: "✨", label: "Professional", sub: "Perfect for service records",      proOnly: true  },
+  { value: "customer",     emoji: "👤", label: "Customer",     sub: "Easy for customers to understand", proOnly: true  },
 ];
 
 // ─── Browser support ──────────────────────────────────────────────────────────
@@ -80,17 +86,6 @@ function getSpeechRecognitionClass(): AnySpeechRecognition | null {
 
 // ─── Overlap-aware segment merger ────────────────────────────────────────────
 
-/**
- * Merges `newPhrase` into `segments` by detecting suffix/prefix overlaps.
- *
- * Finds the longest suffix of the joined segments that is also a prefix of
- * the new phrase (case-insensitive). Replaces those overlapping words with
- * the full new phrase, flattening into a single coherent segment.
- *
- * Example:
- *   prev: "High head"  +  new: "High head pressure"
- *   → overlap=2 → "High head pressure"   (NOT "High head High head pressure")
- */
 function buildNextSegments(segments: string[], newRaw: string): string[] {
   const newPhrase = newRaw.trim();
   if (!newPhrase) return segments;
@@ -98,12 +93,9 @@ function buildNextSegments(segments: string[], newRaw: string): string[] {
   const prevJoined = segments.join(" ").trim();
 
   if (prevJoined && prevJoined.toLowerCase().includes(newPhrase.toLowerCase())) {
-    return segments; // exact duplicate — skip
+    return segments;
   }
-
-  if (!prevJoined) {
-    return [newPhrase];
-  }
+  if (!prevJoined) return [newPhrase];
 
   const prevWords = prevJoined.split(/\s+/).filter(Boolean);
   const newWords  = newPhrase.split(/\s+/).filter(Boolean);
@@ -113,20 +105,12 @@ function buildNextSegments(segments: string[], newRaw: string): string[] {
   for (let len = maxCheck; len >= 1; len--) {
     const prevSuffix = prevWords.slice(-len).map((w) => w.toLowerCase()).join(" ");
     const newPrefix  = newWords.slice(0, len).map((w) => w.toLowerCase()).join(" ");
-    if (prevSuffix === newPrefix) {
-      overlapLen = len;
-      break;
-    }
+    if (prevSuffix === newPrefix) { overlapLen = len; break; }
   }
 
   if (overlapLen > 0) {
-    const merged = [
-      ...prevWords.slice(0, prevWords.length - overlapLen),
-      ...newWords,
-    ].join(" ");
-    return [merged];
+    return [[...prevWords.slice(0, prevWords.length - overlapLen), ...newWords].join(" ")];
   }
-
   return [...segments, newPhrase];
 }
 
@@ -138,20 +122,14 @@ function removeAdjacentNgramRepeats(words: string[], n: number): string[] {
   while (i <= result.length - n) {
     const prev = result.slice(i - n, i).map((w) => w.toLowerCase()).join(" ");
     const curr = result.slice(i, i + n).map((w) => w.toLowerCase()).join(" ");
-    if (prev === curr) {
-      result.splice(i, n);
-    } else {
-      i++;
-    }
+    if (prev === curr) { result.splice(i, n); } else { i++; }
   }
   return result;
 }
 
 function cleanupTranscript(text: string): string {
   let words = text.trim().split(/\s+/).filter(Boolean);
-  for (const n of [3, 2, 1]) {
-    words = removeAdjacentNgramRepeats(words, n);
-  }
+  for (const n of [3, 2, 1]) words = removeAdjacentNgramRepeats(words, n);
   return words.join(" ");
 }
 
@@ -163,45 +141,52 @@ export function VoiceNoteRecorder({
   isPro = false,
 }: VoiceNoteRecorderProps) {
   const [stage,          setStage]          = useState<Stage>("idle");
-  const [micStatus,      setMicStatus]      = useState<MicStatus>("listening");
-  const [reviewText,     setReviewText]     = useState("");   // cleaned final transcript
+  const [recordMode,     setRecordMode]     = useState<RecordMode>("listening");
+  const [reviewText,     setReviewText]     = useState("");
   const [selectedOption, setSelectedOption] = useState<ReviewOption>("original");
   const [isSaving,       setIsSaving]       = useState(false);
   const [error,          setError]          = useState<string | null>(null);
 
-  // Display mirrors — React state derived from refs
+  // Display mirrors — derived from refs, updated imperatively
   const [displayFinal,   setDisplayFinal]   = useState("");
   const [displayInterim, setDisplayInterim] = useState("");
 
-  // Refs — single source of truth; never stale inside callbacks
+  // Refs — never stale inside callbacks
   const finalSegmentsRef = useRef<string[]>([]);
   const interimRef       = useRef<string>("");
   const recognitionRef   = useRef<AnySpeechRecognition>(null);
+
+  // Manual-control gate refs
+  const userStoppedRef   = useRef(false); // true after user taps Stop
+  const isPausedRef      = useRef(false); // true while paused (no auto-restart)
+  const isRestartingRef  = useRef(false); // debounce guard for onend auto-restart
 
   const isSupported = !!getSpeechRecognitionClass();
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  function resetRefs() {
+  function resetAccumulators() {
     finalSegmentsRef.current = [];
     interimRef.current       = "";
   }
 
-  function syncDisplay() {
+  function promotePendingInterim() {
+    const pending = interimRef.current.trim();
+    if (!pending) return;
+    const joined = finalSegmentsRef.current.join(" ").toLowerCase();
+    if (!joined.includes(pending.toLowerCase())) {
+      finalSegmentsRef.current = buildNextSegments(finalSegmentsRef.current, pending);
+    }
+    interimRef.current = "";
     setDisplayFinal(finalSegmentsRef.current.join(" "));
-    setDisplayInterim(interimRef.current);
+    setDisplayInterim("");
   }
 
-  // ── start ──────────────────────────────────────────────────────────────────
-  const startRecording = useCallback(() => {
+  // ── Core session starter (safe to call multiple times) ─────────────────────
+
+  const startRecognitionSession = useCallback(() => {
     const SR = getSpeechRecognitionClass();
     if (!SR) return;
-
-    resetRefs();
-    setDisplayFinal("");
-    setDisplayInterim("");
-    setError(null);
-    setSelectedOption("original");
 
     const r = new SR();
     recognitionRef.current = r;
@@ -211,79 +196,140 @@ export function VoiceNoteRecorder({
     r.lang            = "en-US";
     r.maxAlternatives = 1;
 
-    r.onstart = () => setMicStatus("listening");
+    r.onstart = () => {
+      isRestartingRef.current = false;
+      setRecordMode("listening");
+    };
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     r.onresult = (event: any) => {
-      interimRef.current = ""; // replace, never append
-
+      interimRef.current = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const result = event.results[i];
-        const transcript: string = result[0].transcript;
-
+        const result     = event.results[i];
+        const transcript = result[0].transcript as string;
         if (result.isFinal) {
           finalSegmentsRef.current = buildNextSegments(finalSegmentsRef.current, transcript);
         } else {
           interimRef.current = transcript;
         }
       }
-
-      syncDisplay();
-      setMicStatus("listening");
+      setDisplayFinal(finalSegmentsRef.current.join(" "));
+      setDisplayInterim(interimRef.current);
+      setRecordMode("listening");
     };
 
-    r.onspeechend = () => setMicStatus("processing");
+    r.onspeechend = () => setRecordMode("processing");
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     r.onerror = (event: any) => {
       if (event.error === "not-allowed" || event.error === "service-not-allowed") {
         setError("Microphone access denied. Allow microphone access and try again.");
-      } else if (event.error === "no-speech") {
-        setMicStatus("listening");
-        return;
-      } else if (event.error !== "aborted") {
-        setError("Could not reach speech recognition. Check your connection and try again.");
+        setStage("idle");
+      } else if (event.error === "aborted" || event.error === "no-speech") {
+        // Expected during pause/stop/restart — ignore
+      } else {
+        // Network or unknown error — log but don't crash; onend will auto-restart
+        setRecordMode("processing");
       }
-      setStage("idle");
     };
 
     r.onend = () => {
-      const pending = interimRef.current.trim();
-      if (pending) {
-        const joined = finalSegmentsRef.current.join(" ").toLowerCase();
-        if (!joined.includes(pending.toLowerCase())) {
-          finalSegmentsRef.current = buildNextSegments(finalSegmentsRef.current, pending);
-        }
-        interimRef.current = "";
+      // Promote any dangling interim before deciding what to do
+      promotePendingInterim();
+
+      if (userStoppedRef.current) {
+        // ── User tapped Stop ──────────────────────────────────────────────
+        setRecordMode("listening");
+        setStage("reviewing");
+        return;
       }
 
-      setDisplayFinal(finalSegmentsRef.current.join(" "));
-      setDisplayInterim("");
-      setMicStatus("listening");
-      setStage((prev) => (prev === "recording" ? "reviewing" : prev));
+      if (isPausedRef.current) {
+        // ── User tapped Pause ─────────────────────────────────────────────
+        setRecordMode("paused");
+        return;
+      }
+
+      // ── Browser ended recognition (silence / timeout / glitch) ───────────
+      // Auto-restart to keep recording — this is the core of manual control.
+      if (!isRestartingRef.current) {
+        isRestartingRef.current = true;
+        setRecordMode("processing");
+        // Small delay lets the browser release the mic before re-acquiring it
+        setTimeout(() => {
+          if (!userStoppedRef.current && !isPausedRef.current) {
+            startRecognitionSession();
+          } else {
+            isRestartingRef.current = false;
+          }
+        }, 250);
+      }
     };
 
-    r.start();
+    try {
+      r.start();
+    } catch {
+      // start() can throw if the browser denies immediately
+      setError("Could not start microphone. Check browser permissions.");
+      setStage("idle");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // ── Public actions ─────────────────────────────────────────────────────────
+
+  const startRecording = useCallback(() => {
+    resetAccumulators();
+    userStoppedRef.current  = false;
+    isPausedRef.current     = false;
+    isRestartingRef.current = false;
+
+    setDisplayFinal("");
+    setDisplayInterim("");
+    setError(null);
+    setSelectedOption("original");
+    setRecordMode("listening");
     setStage("recording");
-    setMicStatus("listening");
-  }, []);
 
-  // ── stop ───────────────────────────────────────────────────────────────────
+    startRecognitionSession();
+  }, [startRecognitionSession]);
+
   const stopRecording = useCallback(() => {
+    userStoppedRef.current  = true;
+    isPausedRef.current     = false;
+    isRestartingRef.current = false;
+    setRecordMode("processing");
     recognitionRef.current?.stop();
+    // onend will fire → userStoppedRef.current === true → go to reviewing
   }, []);
 
-  // ── cancel ─────────────────────────────────────────────────────────────────
+  const pauseRecording = useCallback(() => {
+    isPausedRef.current     = true;
+    isRestartingRef.current = false;
+    recognitionRef.current?.stop();
+    // onend fires → isPausedRef.current === true → setRecordMode("paused")
+  }, []);
+
+  const resumeRecording = useCallback(() => {
+    isPausedRef.current     = false;
+    isRestartingRef.current = false;
+    setRecordMode("listening");
+    startRecognitionSession();
+  }, [startRecognitionSession]);
+
   const cancelRecording = useCallback(() => {
+    userStoppedRef.current  = true; // prevent auto-restart in onend
+    isPausedRef.current     = false;
+    isRestartingRef.current = false;
     recognitionRef.current?.abort();
     recognitionRef.current = null;
-    resetRefs();
+    resetAccumulators();
     setStage("idle");
     setDisplayFinal("");
     setDisplayInterim("");
   }, []);
 
-  // Seed review text on entering review — run final cleanup
+  // Seed review text when entering review stage
   useEffect(() => {
     if (stage === "reviewing") {
       const raw = finalSegmentsRef.current.join(" ");
@@ -293,11 +339,12 @@ export function VoiceNoteRecorder({
     }
   }, [stage]);
 
-  // ── save ───────────────────────────────────────────────────────────────────
+  // ── Save ───────────────────────────────────────────────────────────────────
+
   const persistEntry = (text: string) => {
     if (!text.trim()) return;
     onSave({ id: `vn-${Date.now()}`, text: text.trim(), savedAt: Date.now() });
-    resetRefs();
+    resetAccumulators();
     setStage("idle");
     setReviewText("");
     setIsSaving(false);
@@ -305,35 +352,27 @@ export function VoiceNoteRecorder({
 
   const handleSave = async () => {
     if (isSaving) return;
-
-    if (selectedOption === "original") {
-      persistEntry(reviewText);
-      return;
-    }
+    if (selectedOption === "original") { persistEntry(reviewText); return; }
 
     const mode = selectedOption === "professional" ? "professional" : "email-customer";
     setIsSaving(true);
-
     try {
       const result = await aiPolish({ text: reviewText, mode });
       persistEntry(result.polished);
     } catch {
-      // Graceful fallback — save the original if AI is unavailable
-      persistEntry(reviewText);
+      persistEntry(reviewText); // graceful fallback — never lose the note
     }
   };
 
-  // ── re-record ──────────────────────────────────────────────────────────────
   const handleReRecord = () => {
-    resetRefs();
+    resetAccumulators();
     setStage("idle");
     setReviewText("");
     setTimeout(startRecording, 80);
   };
 
-  // ── discard ────────────────────────────────────────────────────────────────
   const handleDiscard = () => {
-    resetRefs();
+    resetAccumulators();
     setStage("idle");
     setReviewText("");
     onDiscard?.();
@@ -360,65 +399,100 @@ export function VoiceNoteRecorder({
     return (
       <div className="flex flex-col items-center gap-2.5 py-2">
         {error && (
-          <p className="text-xs text-red-500 text-center max-w-[240px] leading-snug">{error}</p>
+          <p className="text-xs text-red-500 text-center max-w-[260px] leading-snug">{error}</p>
         )}
         <button
           onClick={startRecording}
-          className="w-[72px] h-[72px] rounded-full flex items-center justify-center bg-blue-600 active:bg-blue-700 text-white shadow-lg shadow-blue-200 active:scale-95 transition-all duration-150"
+          className="w-[80px] h-[80px] rounded-full flex items-center justify-center bg-blue-600 active:bg-blue-700 text-white shadow-lg shadow-blue-200 active:scale-95 transition-all duration-150"
           aria-label="Start voice note"
         >
-          <Mic className="w-8 h-8" />
+          <Mic className="w-9 h-9" />
         </button>
-        <p className="text-[11px] text-slate-400 font-semibold tracking-wide">TAP TO DICTATE</p>
+        <p className="text-[11px] text-slate-400 font-semibold tracking-wide uppercase">Tap to record</p>
       </div>
     );
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // RECORDING
+  // RECORDING (listening | paused | processing)
   // ─────────────────────────────────────────────────────────────────────────
   if (stage === "recording") {
-    const isProcessing = micStatus === "processing";
-    const hasText = displayFinal.trim() || displayInterim.trim();
+    const isListening  = recordMode === "listening";
+    const isPaused     = recordMode === "paused";
+    const isProcessing = recordMode === "processing";
+    const hasText      = displayFinal.trim() || displayInterim.trim();
+
+    // Status indicator config
+    const statusConfig = isPaused
+      ? { dot: "bg-amber-400",              label: "Paused",      labelCls: "text-amber-600" }
+      : isProcessing
+      ? { dot: "bg-slate-400 animate-pulse", label: "Processing…", labelCls: "text-slate-500" }
+      : { dot: "bg-red-500 animate-pulse",   label: "Listening…",  labelCls: "text-red-500"   };
 
     return (
       <div className="space-y-3">
-        <div className="flex flex-col items-center gap-2">
-          <button
-            onClick={stopRecording}
-            className="relative w-[72px] h-[72px] rounded-full bg-red-500 active:bg-red-600 text-white flex items-center justify-center shadow-lg shadow-red-200 active:scale-95 transition-all duration-150"
-            aria-label="Stop recording"
-          >
-            {!isProcessing && (
-              <span className="absolute inset-0 rounded-full bg-red-400 animate-ping opacity-40 pointer-events-none" />
-            )}
-            <Mic className="w-8 h-8 relative" />
-          </button>
-
-          <div className="flex items-center gap-1.5">
-            <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isProcessing ? "bg-amber-400 animate-pulse" : "bg-red-500 animate-pulse"}`} />
-            <p className={`text-[11px] font-bold tracking-wide ${isProcessing ? "text-amber-500" : "text-red-500"}`}>
-              {isProcessing ? "Processing…" : "Listening…"}
-            </p>
-            <span className="text-[10px] text-slate-400">· tap to stop</span>
-          </div>
+        {/* Status bar */}
+        <div className="flex items-center gap-2 px-1">
+          <span className={`w-2 h-2 rounded-full flex-shrink-0 ${statusConfig.dot}`} />
+          <span className={`text-sm font-bold ${statusConfig.labelCls}`}>{statusConfig.label}</span>
+          {isListening && (
+            <span className="text-xs text-slate-400 ml-0.5">· tap Stop when done</span>
+          )}
         </div>
 
-        {hasText ? (
-          <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 min-h-[56px]">
+        {/* Live transcript */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 min-h-[72px]">
+          {hasText ? (
             <p className="text-sm text-slate-700 leading-relaxed">
               {displayFinal}
               {displayFinal && displayInterim ? " " : ""}
               <span className="text-slate-400 italic">{displayInterim}</span>
             </p>
-          </div>
-        ) : (
-          <div className="flex items-center justify-center h-12">
-            <p className="text-xs text-slate-400 italic">Speak now…</p>
-          </div>
-        )}
+          ) : (
+            <p className="text-sm text-slate-400 italic">
+              {isPaused ? "Recording paused — tap Resume to continue." : "Speak now…"}
+            </p>
+          )}
+        </div>
 
-        <button onClick={cancelRecording} className="w-full text-xs text-slate-400 font-medium py-1">
+        {/* Large glove-friendly controls */}
+        <div className="grid grid-cols-2 gap-2">
+          {/* Pause / Resume */}
+          {isPaused ? (
+            <button
+              onClick={resumeRecording}
+              className="flex items-center justify-center gap-2 h-[56px] rounded-xl border-2 border-blue-500 bg-blue-50 text-blue-700 font-bold text-base active:bg-blue-100 transition-colors"
+            >
+              <Play className="w-5 h-5" />
+              Resume
+            </button>
+          ) : (
+            <button
+              onClick={pauseRecording}
+              disabled={isProcessing}
+              className="flex items-center justify-center gap-2 h-[56px] rounded-xl border-2 border-slate-300 bg-white text-slate-700 font-bold text-base active:bg-slate-50 disabled:opacity-40 transition-colors"
+            >
+              <Pause className="w-5 h-5" />
+              Pause
+            </button>
+          )}
+
+          {/* Stop */}
+          <button
+            onClick={stopRecording}
+            disabled={isProcessing && !hasText}
+            className="flex items-center justify-center gap-2 h-[56px] rounded-xl bg-red-500 active:bg-red-600 text-white font-bold text-base disabled:opacity-40 transition-colors shadow-sm shadow-red-200"
+          >
+            <Square className="w-5 h-5 fill-white" />
+            Stop
+          </button>
+        </div>
+
+        {/* Cancel — full width, smaller */}
+        <button
+          onClick={cancelRecording}
+          className="w-full h-[48px] rounded-xl border border-slate-200 text-slate-500 font-semibold text-sm active:bg-slate-50 transition-colors"
+        >
           Cancel
         </button>
       </div>
@@ -426,7 +500,7 @@ export function VoiceNoteRecorder({
   }
 
   // ─────────────────────────────────────────────────────────────────────────
-  // REVIEWING — choice screen
+  // REVIEWING — 3-card choice screen
   // ─────────────────────────────────────────────────────────────────────────
   return (
     <div className="space-y-3">
@@ -452,9 +526,10 @@ export function VoiceNoteRecorder({
         <p className="text-sm text-slate-600 leading-relaxed line-clamp-5">{reviewText}</p>
       </div>
 
-      {/* What would you like to save? */}
+      {/* Choice label */}
       <p className="text-xs font-semibold text-slate-500">What would you like to save?</p>
 
+      {/* Option cards */}
       <div className="space-y-2">
         {REVIEW_OPTIONS.map((opt) => {
           const locked = opt.proOnly && !isPro;
@@ -494,7 +569,7 @@ export function VoiceNoteRecorder({
         })}
       </div>
 
-      {/* Save button */}
+      {/* Save */}
       <button
         onClick={handleSave}
         disabled={isSaving}
