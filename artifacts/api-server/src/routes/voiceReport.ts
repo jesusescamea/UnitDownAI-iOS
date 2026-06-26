@@ -119,7 +119,7 @@ function buildSystemPrompt(): string {
 
 ${buildHvacDictionaryPrompt()}
 
-PROCESSING PIPELINE (execute silently in this order):
+PROCESSING PIPELINE (execute in this exact order — structured extraction BEFORE section writing):
 
 ═══════════════════════════════════════════
 STAGE 1 — HVAC SPEECH CORRECTION
@@ -129,47 +129,41 @@ This is NOT rewriting — preserve the technician's words, structure, and all nu
 Only correct clear phonetic mishearings.
 
 Correction examples:
-• "Richard system" → "recharge system"
+• "Richard system" → "recharged the system"
 • "XV" or "TVX" → "TXV"
-• "scene pressure" → "suction pressure"
-• "head pressure pressure" → "head pressure"
-• "contact your" or "contactor" → "contactor"
+• "scene pressure" / "seen pressure" → "suction pressure"
+• "head pressure pressure" → "discharge pressure"
+• "contact your" / "contact her" → "contactor"
 • "filter dryer" → "filter drier"
-• "410A" → "R-410A"
-• "blower wheel assembly" stays as-is (already correct)
-• Filler words (um, uh) → omit
+• "410A" / "R410" → "R-410A"
+• "407" / "407C" → "R-407C"
+• "22 refrigerant" / bare "22" in refrigerant context → "R-22"
+• "EEM" / "EZM" → "ECM"
+• "equalizer" in HVAC context → "economizer"
+• "blower wheel assembly" → stays as-is (already correct)
+• Filler words (um, uh, like, you know) → omit
 
 SAFETY RULES — never break:
 • Preserve ALL numerical values exactly as spoken — pressures, voltages, temperatures, amperages, amounts.
 • Never fabricate any technical fact not explicitly present in the raw transcript.
 • Never invent model numbers, serial numbers, refrigerant amounts, or dates.
-• If a word could be an HVAC term but you are uncertain, preserve the original and flag it.
 
 The corrected transcript goes in "correctedTranscript".
 
 ═══════════════════════════════════════════
-STAGE 2 — REPORT SECTION GENERATION
+STAGE 2 — STRUCTURED DATA EXTRACTION  ← DO THIS BEFORE WRITING SECTIONS
 ═══════════════════════════════════════════
-From the corrected transcript, populate each section.
-Use professional HVAC service language. Complete sentences.
-Omit any section where no information exists in the transcript (set to null).
-NEVER invent content.
+Extract every discrete fact from the corrected transcript into the "structured" object.
+Always include engineering units in extracted values:
+• Pressures: "72 psi" (never bare "72")
+• Temperatures, superheat, subcooling, delta-T, split: "12°F" (never bare "12")
+• Voltage: "460 VAC" or "208 VAC" (never "460 volts")
+• Amperage: "24.3 A" (never "24.3 amps")
+• Refrigerant: full designation "R-410A" (never "410A" or "Freon")
+• Gas pressure: "3.5 in. W.C." or appropriate unit
 
-Sections:
-• problem        — Reason for the service call or customer complaint (1–2 sentences)
-• findings       — What the technician found: conditions observed, readings noted, components inspected
-• workPerformed  — All repairs, adjustments, cleaning, replacements, and service actions taken
-• partsReplaced  — Parts or components installed (one sentence listing them, or null)
-• measurements   — Instrument readings: pressures, voltages, amperages, temperatures, subcooling, superheat, delta T (null if none mentioned)
-• verification   — How the technician confirmed the repair was successful / unit back in operation
-• recommendation — Return visits, follow-up actions, monitoring advice, customer advisories (null if none)
-
-═══════════════════════════════════════════
-STAGE 3 — STRUCTURED DATA EXTRACTION
-═══════════════════════════════════════════
-Extract discrete facts from the corrected transcript.
-Use null for any field not present. Use false for boolean fields if not mentioned.
-For workCategories, use these tags (include all that apply):
+Use null for any field not mentioned. Use false for boolean fields if not mentioned.
+For workCategories, include all that apply:
 "PM", "Filter Change", "Belt Change", "Lubrication", "Drain Cleaning",
 "Condenser Cleaning", "Evaporator Cleaning", "Refrigerant Work",
 "Electrical Repair", "Mechanical Repair", "Control Repair",
@@ -178,10 +172,83 @@ For workCategories, use these tags (include all that apply):
 "Blower Work", "Heat Section Work", "Combustion Work",
 "Diagnostic", "Return Visit Scheduled"
 
-RESPOND with ONLY a valid JSON object. No markdown. No explanation. Just JSON:
+═══════════════════════════════════════════
+STAGE 3 — REPORT SECTION GENERATION
+═══════════════════════════════════════════
+Now write the report sections. Use the "structured" values you just extracted as the
+authoritative source of truth for all numbers, units, and facts.
+
+MANDATORY WRITING RULES:
+
+1. VOICE — Implied first-person service report. NEVER write "Technician" or "The technician".
+   Correct: "Arrived on site...", "Connected manifold gauges...", "Replaced the contactor.",
+            "Verified proper cooling.", "Responded to a no-cooling complaint."
+   Wrong:   "Technician arrived...", "The technician replaced..."
+
+2. TRUST EXTRACTION — You already extracted structured data. Use those values in narratives.
+   NEVER write "unclear", "possibly", or hedge a value you have already extracted.
+   If structured.suctionPressure = "72 psi" → write "72 psi suction pressure" in Findings.
+   If structured.superheat = "12°F" → write "12°F superheat" in Findings/Measurements.
+
+3. ENGINEERING UNITS — Always include units in section narratives. Same rules as Stage 2.
+   72 psi, 260 psi, 12°F, 9°F, 460 VAC, 24.3 A, R-410A — never bare numbers.
+
+4. FINDINGS FORMAT — When measurements were taken, lead with the instrument action and
+   list readings as bullet points:
+   "Connected manifold gauges and measured:\n• 72 psi suction pressure\n• 260 psi discharge pressure\n• 12°F superheat\n• 9°F subcooling"
+
+5. VERIFICATION — Must be specific to the actual work performed. Never generic.
+   • After refrigerant work with a delta-T/split-temp: "Verified proper cooling with a [X]°F temperature split."
+   • After refrigerant work without a split: "Verified proper system pressures and cooling operation."
+   • After compressor/electrical replacement: "Verified compressor start and run, confirmed proper amperage draw."
+   • After motor/fan replacement: "Verified fan and motor operation. Confirmed proper airflow."
+   • After heat section / ignitor / gas valve work: "Verified ignition sequence and proper heat output."
+   • After economizer work: "Verified economizer sequence and damper operation."
+   • After VFD work: "Verified VFD programming and blower operation across speed range."
+   • After PM / cleaning only: "Verified proper airflow and system operation."
+   • After drain cleaning: "Verified condensate drainage and float switch operation."
+
+6. BREVITY — Each section: 1–4 concise sentences or a short bulleted list. No padding.
+
+7. NEVER INVENT — Do not fabricate any value not present in the corrected transcript.
+
+Sections to populate (omit with null if no information exists):
+• problem        — Reason for the call. "Responded to a [complaint] on [unit]." (1–2 sentences)
+• findings       — What was found. Use bullet list if measurements present. (2–6 lines)
+• workPerformed  — All actions taken. Short declarative sentences. (2–6 lines)
+• partsReplaced  — Parts installed. One sentence listing them. null if none.
+• measurements   — Instrument readings formatted with units. null if already fully covered in findings.
+• verification   — Specific confirmation of successful repair per rule 5 above.
+• recommendation — Return visits, monitoring, customer advisories. null if none.
+
+RESPOND with ONLY a valid JSON object. No markdown. No explanation. Just JSON.
+Field order matters — "structured" comes before "sections" so you populate facts first:
 {
   "correctedTranscript": "<corrected transcript text>",
   "confidence": <integer 0–100>,
+  "structured": {
+    "refrigerantType":      "<full designation e.g. R-410A or null>",
+    "refrigerantCharge":    "<total charge with units or null>",
+    "refrigerantRecovered": "<amount recovered with units or null>",
+    "refrigerantAdded":     "<amount added with units or null>",
+    "modelNumber":          "<model or null>",
+    "serialNumber":         "<serial or null>",
+    "suctionPressure":      "<value with psi or null>",
+    "dischargePressure":    "<value with psi or null>",
+    "voltage":              "<value with VAC or null>",
+    "amperage":             "<value with A or null>",
+    "superheat":            "<value with °F or null>",
+    "subcooling":           "<value with °F or null>",
+    "deltaT":               "<value with °F or null>",
+    "splitTemp":            "<value with °F or null>",
+    "gasPressure":          "<value with units or null>",
+    "partsReplaced":        ["<exact part name>"],
+    "returnVisitRequired":  false,
+    "followUpDate":         "<date string or null>",
+    "safetyFlag":           "<safety concern or null>",
+    "warrantyMention":      "<warranty info or null>",
+    "workCategories":       ["<tag>"]
+  },
   "sections": {
     "problem":        "<text or null>",
     "findings":       "<text or null>",
@@ -190,29 +257,6 @@ RESPOND with ONLY a valid JSON object. No markdown. No explanation. Just JSON:
     "measurements":   "<text or null>",
     "verification":   "<text or null>",
     "recommendation": "<text or null>"
-  },
-  "structured": {
-    "refrigerantType":      "<e.g. R-410A or null>",
-    "refrigerantCharge":    "<total charge with units or null>",
-    "refrigerantRecovered": "<amount recovered or null>",
-    "refrigerantAdded":     "<amount added or null>",
-    "modelNumber":          "<model or null>",
-    "serialNumber":         "<serial or null>",
-    "suctionPressure":      "<value with units or null>",
-    "dischargePressure":    "<value with units or null>",
-    "voltage":              "<value or null>",
-    "amperage":             "<value or null>",
-    "superheat":            "<value or null>",
-    "subcooling":           "<value or null>",
-    "deltaT":               "<value or null>",
-    "splitTemp":            "<value or null>",
-    "gasPressure":          "<value or null>",
-    "partsReplaced":        ["<part name>"],
-    "returnVisitRequired":  false,
-    "followUpDate":         "<date string or null>",
-    "safetyFlag":           "<safety concern or null>",
-    "warrantyMention":      "<warranty info or null>",
-    "workCategories":       ["<tag>"]
   },
   "uncertainPhrases": [
     { "original": "<phrase as heard>", "suggested": "<HVAC interpretation>", "confidence": <0–100> }

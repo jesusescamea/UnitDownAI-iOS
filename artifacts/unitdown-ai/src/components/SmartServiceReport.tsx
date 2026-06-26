@@ -245,6 +245,79 @@ function MeasRow({ label, value }: { label: string; value: string | null | undef
   );
 }
 
+// ─── AI Review card ───────────────────────────────────────────────────────────
+
+function AiReviewCard({ report }: { report: SmartReport }) {
+  const s = report.sections;
+  const d = report.structured;
+
+  const cats        = d.workCategories.map((c) => c.toLowerCase());
+  const hasRefrig   = cats.some((c) => c.includes("refrigerant"));
+  const hasElec     = cats.some((c) => c.includes("electrical") || c.includes("vfd") || c.includes("control"));
+  const hasReplaced = d.partsReplaced.length > 0;
+
+  type Check = { label: string; ok: boolean };
+  const checks: Check[] = [
+    { label: "Problem identified",    ok: !!s.problem      },
+    { label: "Findings documented",   ok: !!s.findings     },
+    { label: "Work performed",        ok: !!s.workPerformed },
+    { label: "Verification complete", ok: !!s.verification },
+  ];
+
+  if (hasReplaced) {
+    checks.push({ label: "Parts identified", ok: true });
+  }
+
+  if (hasRefrig) {
+    checks.push({ label: "Suction pressure recorded",   ok: !!d.suctionPressure   });
+    checks.push({ label: "Discharge pressure recorded", ok: !!d.dischargePressure  });
+    checks.push({ label: "Superheat recorded",          ok: !!d.superheat          });
+    checks.push({ label: "Subcooling recorded",         ok: !!d.subcooling         });
+    checks.push({ label: "Refrigerant identified",      ok: !!d.refrigerantType    });
+  }
+
+  if (hasElec || d.voltage || d.amperage) {
+    checks.push({ label: "Voltage recorded",  ok: !!d.voltage  });
+    checks.push({ label: "Amperage recorded", ok: !!d.amperage });
+  }
+
+  const passCount    = checks.filter((c) => c.ok).length;
+  const completeness = Math.round((passCount / checks.length) * 100);
+  const isOfficeReady = report.confidence >= 80 && !!s.problem && !!s.workPerformed;
+
+  return (
+    <div className="mx-4 mb-3 rounded-xl border border-slate-200 overflow-hidden bg-white">
+      <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200">
+        <p className="text-[11px] font-extrabold text-slate-700">AI Review</p>
+        {isOfficeReady && (
+          <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+            ✓ Office Ready
+          </span>
+        )}
+      </div>
+      <div className="px-3 py-2 space-y-1">
+        {checks.map((c) => (
+          <div key={c.label} className="flex items-center gap-2">
+            <span className="text-[11px] w-4 flex-shrink-0">{c.ok ? "✅" : "⚠️"}</span>
+            <span className={`text-[11px] font-medium leading-tight ${c.ok ? "text-slate-600" : "text-amber-600"}`}>
+              {c.label}
+            </span>
+          </div>
+        ))}
+      </div>
+      <div className="flex items-center justify-between px-3 py-2 border-t border-slate-200 bg-slate-50">
+        <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide">Report Completeness</span>
+        <span className={`text-[13px] font-extrabold ${
+          completeness >= 90 ? "text-emerald-600" :
+          completeness >= 70 ? "text-amber-500"   : "text-red-500"
+        }`}>
+          {completeness}%
+        </span>
+      </div>
+    </div>
+  );
+}
+
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProps) {
@@ -775,13 +848,15 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
               })}
             </p>
           </div>
-          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full flex-shrink-0 ${
-            report.confidence >= 85 ? "bg-green-50 text-green-700" :
-            report.confidence >= 65 ? "bg-amber-50 text-amber-700" :
-                                      "bg-red-50 text-red-700"
-          }`}>
-            {report.confidence}% confidence
-          </span>
+          <div className="flex flex-col items-end flex-shrink-0">
+            <span className="text-[9px] font-semibold text-slate-400 uppercase tracking-wide">AI Confidence</span>
+            <span className={`text-[15px] font-extrabold leading-tight ${
+              report.confidence >= 85 ? "text-emerald-600" :
+              report.confidence >= 65 ? "text-amber-500"   : "text-red-500"
+            }`}>
+              {report.confidence}%
+            </span>
+          </div>
         </div>
 
         {/* ── Flags ─────────────────────────────────────────────────────────── */}
@@ -834,7 +909,7 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
                 </div>
                 <p className={`text-[11px] font-extrabold uppercase tracking-wider ${color}`}>{label}</p>
               </div>
-              <p className="text-xs text-slate-700 leading-relaxed px-3 py-2.5">
+              <p className="text-xs text-slate-700 leading-relaxed px-3 py-2.5 whitespace-pre-wrap">
                 {s[key]}
               </p>
             </div>
@@ -902,23 +977,27 @@ export function SmartServiceReport({ onSave, onDiscard }: SmartServiceReportProp
           </div>
         )}
 
-        {/* ── Corrected transcript (collapsible) ────────────────────────────── */}
+        {/* ── AI Corrected Transcript (collapsible) ─────────────────────────── */}
         <div className="px-4 pt-2">
           <button
             onClick={() => setTranscriptOpen((o) => !o)}
             className="w-full flex items-center gap-2 py-2 text-xs text-slate-400 font-semibold active:opacity-60"
           >
             {transcriptOpen ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-            {transcriptOpen ? "Hide" : "Show"} corrected transcript
+            {transcriptOpen ? "Hide" : "Show"} AI Corrected Transcript
           </button>
           {transcriptOpen && (
             <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 mb-2">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-wide mb-1.5">AI Corrected Transcript</p>
               <p className="text-[11px] text-slate-600 leading-relaxed whitespace-pre-wrap">
                 {report.correctedTranscript}
               </p>
             </div>
           )}
         </div>
+
+        {/* ── AI Review ─────────────────────────────────────────────────────── */}
+        <AiReviewCard report={report} />
 
         {/* ── Actions ───────────────────────────────────────────────────────── */}
         <div className="px-4 pb-5 pt-2 space-y-2 border-t border-slate-100 mt-1">
