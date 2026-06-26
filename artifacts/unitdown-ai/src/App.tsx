@@ -25,6 +25,7 @@ import RecordsPage from "./pages/RecordsPage";
 import UnitFormPage from "./pages/UnitFormPage";
 import UnitDetailPage from "./pages/UnitDetailPage";
 import DiagnosticLogDetailPage from "./pages/DiagnosticLogDetailPage";
+import DevEquipmentPreview from "./pages/DevEquipmentPreview";
 import InstallPromptBanner from "./components/InstallPromptBanner";
 import EmailWallModal from "./components/EmailWallModal";
 import { getFingerprint } from "./lib/fingerprint";
@@ -3468,6 +3469,7 @@ function App() {
             <Route path="/records/:id/edit" component={UnitFormPage} />
             <Route path="/records/:id" component={UnitDetailPage} />
             <Route path="/logs/:id" component={DiagnosticLogDetailPage} />
+            <Route path="/dev/equipment-preview" component={DevEquipmentPreview} />
             <Route path="*">
               <div className="p-10 font-bold text-xl">404 Not Found</div>
             </Route>
