@@ -5,5 +5,8 @@ export const modules: ModuleMap = {
   "./components/mockups/aso-screenshots/Screen2.tsx": () => import("../components/mockups/aso-screenshots/Screen2.tsx"),
   "./components/mockups/aso-screenshots/Screen3.tsx": () => import("../components/mockups/aso-screenshots/Screen3.tsx"),
   "./components/mockups/aso-screenshots/Screen4.tsx": () => import("../components/mockups/aso-screenshots/Screen4.tsx"),
-  "./components/mockups/aso-screenshots/Screen5.tsx": () => import("../components/mockups/aso-screenshots/Screen5.tsx")
+  "./components/mockups/aso-screenshots/Screen5.tsx": () => import("../components/mockups/aso-screenshots/Screen5.tsx"),
+  "./components/mockups/job-mode/Command.tsx": () => import("../components/mockups/job-mode/Command.tsx"),
+  "./components/mockups/job-mode/FieldLog.tsx": () => import("../components/mockups/job-mode/FieldLog.tsx"),
+  "./components/mockups/job-mode/Notebook.tsx": () => import("../components/mockups/job-mode/Notebook.tsx")
 };
