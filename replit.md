@@ -2,6 +2,64 @@
 
 A web application that provides self-guided HVAC troubleshooting and diagnostic assistance for technicians, facility teams, and business owners.
 
+---
+
+## UnitDown Service Standard (USS) — North Star Vision
+
+> "Does this improve the quality, trustworthiness, portability, or long-term value of the UnitDown Service Record? If yes, it belongs. If not, reconsider."
+
+The long-term objective is not just an HVAC app. It is the **industry's most trusted digital service record** — the UnitDown Service Standard (USS).
+
+### The problem UnitDown solves at scale
+Every contractor, OEM, CMMS, and technician documents service differently. Equipment history is fragmented. When service companies change, critical history is lost. UnitDown fixes this by making the equipment — not the service company — the owner of its own history.
+
+### The USS goal
+When a facility changes service providers, the conversation should be:
+> "Do you have the UnitDown Service History?"
+> "Yes."
+> (New contractor imports it. Immediately knows everything.)
+
+### Every completed job produces a UnitDown Service Record (USR)
+Each record carries a permanent identifier (e.g. `USR-2030-004921`). Future: QR codes attached to equipment surface the full history on scan.
+
+A complete USR includes:
+- Unique Service Record ID
+- Company + technician + date/time
+- Customer + equipment
+- Full chronological timeline
+- Photos (categorized: nameplate, alarm, measurement, failed part, repair, verification)
+- Every measurement ever recorded (voltage, amperage, superheat, subcooling, refrigerant, static pressure, etc.)
+- Voice transcript + AI-corrected transcript
+- AI Professional Report (readable by technicians, OEM, facility managers, future contractors)
+- Customer summary (plain English, no jargon)
+- Invoice summary
+- Parts replaced
+- Recommendations
+- Equipment Memory updates
+- Verification + completion status
+- AI Confidence / Office Ready / Completeness score
+
+### Ownership principle
+- The **equipment owner** owns the history, not the service company.
+- Service companies contribute records.
+- The building owner controls whether records can be shared with future contractors.
+- UnitDown is vendor-neutral by design.
+
+### Portability
+Equipment history must remain portable. Future contractors import previous UnitDown history with customer authorization. History is never locked inside a single company or CMMS.
+
+### Architecture alignment (current state)
+The existing Job Mode system is already the USS foundation:
+- `job_timeline_events` table = chronological, typed, portable record per service call
+- `event.metadata` jsonb = open hook for AI enrichment, smart photos, equipment memory updates
+- Client-generated permanent IDs = records exist before they hit the cloud
+- Offline-first sync queue = records are never lost even without connectivity
+- `event.measurements` jsonb = future searchable measurement history
+- `event.parts` jsonb = parts history hook
+
+### Future stakeholders
+Commercial contractors · Facility managers · Property owners · OEM technical support · Equipment manufacturers · Warranty administrators · Insurance providers · Building engineers · Energy consultants · Future service companies
+
 ## Run & Operate
 
 - `pnpm run typecheck`: Performs a full typecheck across all packages.
