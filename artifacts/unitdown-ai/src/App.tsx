@@ -27,6 +27,7 @@ import UnitDetailPage from "./pages/UnitDetailPage";
 import DiagnosticLogDetailPage from "./pages/DiagnosticLogDetailPage";
 import DevEquipmentPreview from "./pages/DevEquipmentPreview";
 import { JobModePage } from "./pages/JobModePage";
+import { ServiceRecordPage } from "./pages/ServiceRecordPage";
 import { JobModeProvider } from "./context/JobModeContext";
 import InstallPromptBanner from "./components/InstallPromptBanner";
 import EmailWallModal from "./components/EmailWallModal";
@@ -3487,6 +3488,9 @@ function App() {
               {/* ── Job Mode ── */}
               <Route path="/job">
                 <JobModePage />
+              </Route>
+              <Route path="/job/:id/record">
+                {(params) => <ServiceRecordPage jobId={params.id} />}
               </Route>
               <Route path="/job/:id">
                 {(params) => <JobModePage jobId={params.id} />}

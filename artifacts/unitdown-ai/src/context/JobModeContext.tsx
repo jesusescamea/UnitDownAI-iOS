@@ -74,6 +74,9 @@ export interface LocalJob {
   startedAt: number;
   updatedAt: number;
   completedAt: number | null;
+  // USS Service Record fields — populated server-side on job completion
+  usrId: string | null;
+  serviceRecordStatus: string | null;
   metadata: Record<string, unknown> | null;
   createdAt: string;
 }
@@ -496,6 +499,8 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
       startedAt: now,
       updatedAt: now,
       completedAt: null,
+      usrId: null,
+      serviceRecordStatus: null,
       metadata: null,
       createdAt: new Date().toISOString(),
     };
@@ -619,14 +624,45 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
   }, [state.job, scheduleFlush]);
 
   // ── completeJob ───────────────────────────────────────────────────────────
+  // Online path: calls POST /jobs/:jobId/complete directly — server atomically
+  // generates the permanent USR ID and returns it.
+  // Offline path: queues patch_job + create_event (same as before). The USR ID
+  // is generated the next time the queue flushes and the /complete endpoint is
+  // called. For now the offline path leaves usrId null until next online sync.
 
   const completeJob = useCallback(async (): Promise<void> => {
     if (!state.job) return;
     const now = Date.now();
     const jobId = state.job.id;
     const userId = state.job.userId;
-    const eventId = clientId("evt");
 
+    // Optimistic local update (instant feedback regardless of connectivity)
+    dispatch({ type: "PATCH_JOB", updates: { status: "completed", completedAt: now } });
+
+    if (navigator.onLine) {
+      try {
+        const result = await apiFetch<{ job: LocalJob; events: LocalEvent[] }>(
+          `/jobs/${jobId}/complete`,
+          { method: "POST" },
+        );
+        // Server assigned the permanent USR ID — update local state
+        dispatch({
+          type: "PATCH_JOB",
+          updates: {
+            usrId: result.job.usrId ?? null,
+            serviceRecordStatus: result.job.serviceRecordStatus ?? "completed",
+            completedAt: result.job.completedAt ?? now,
+          },
+        });
+        return;
+      } catch {
+        // Network failure mid-request — fall through to offline path so the
+        // job is still queued and can sync when connectivity returns.
+      }
+    }
+
+    // Offline path: queue patch + completion event for later sync
+    const eventId = clientId("evt");
     const completionEvent: LocalEvent = {
       id: eventId,
       _synced: false,
@@ -648,9 +684,7 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     };
 
     dispatch({ type: "ADD_EVENT", event: completionEvent });
-    dispatch({ type: "PATCH_JOB", updates: { status: "completed", completedAt: now } });
 
-    // Queue both ops — these work offline
     const enqueueTime = now;
     await enqueueOp({
       id: `patch_job_${jobId}_complete`,
@@ -678,13 +712,7 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
 
     const count = await getQueueSize();
     setPendingCount(count);
-
-    if (navigator.onLine) {
-      // Flush immediately — job completion is high priority
-      void flushQueue();
-    } else {
-      setSyncStatus("offline");
-    }
+    setSyncStatus("offline");
   }, [state.job, state.events.length, flushQueue]);
 
   // ── clearJob ──────────────────────────────────────────────────────────────

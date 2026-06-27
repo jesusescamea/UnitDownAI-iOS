@@ -468,6 +468,18 @@ export const ListJobsResponseItem = zod.object({
   startedAt: zod.number(),
   updatedAt: zod.number(),
   completedAt: zod.number().nullish(),
+  usrId: zod
+    .string()
+    .nullish()
+    .describe(
+      "Permanent UnitDown Service Record ID (USR-YYYY-XXXXXX). Null until the job is completed online.",
+    ),
+  serviceRecordStatus: zod
+    .string()
+    .nullish()
+    .describe(
+      "Service record lifecycle: draft | completed | verified | archived",
+    ),
   metadata: zod.object({}).passthrough().nullish(),
   createdAt: zod.string(),
 });
@@ -504,6 +516,18 @@ export const GetJobResponse = zod.object({
     startedAt: zod.number(),
     updatedAt: zod.number(),
     completedAt: zod.number().nullish(),
+    usrId: zod
+      .string()
+      .nullish()
+      .describe(
+        "Permanent UnitDown Service Record ID (USR-YYYY-XXXXXX). Null until the job is completed online.",
+      ),
+    serviceRecordStatus: zod
+      .string()
+      .nullish()
+      .describe(
+        "Service record lifecycle: draft | completed | verified | archived",
+      ),
     metadata: zod.object({}).passthrough().nullish(),
     createdAt: zod.string(),
   }),
@@ -559,6 +583,18 @@ export const UpdateJobResponse = zod.object({
   startedAt: zod.number(),
   updatedAt: zod.number(),
   completedAt: zod.number().nullish(),
+  usrId: zod
+    .string()
+    .nullish()
+    .describe(
+      "Permanent UnitDown Service Record ID (USR-YYYY-XXXXXX). Null until the job is completed online.",
+    ),
+  serviceRecordStatus: zod
+    .string()
+    .nullish()
+    .describe(
+      "Service record lifecycle: draft | completed | verified | archived",
+    ),
   metadata: zod.object({}).passthrough().nullish(),
   createdAt: zod.string(),
 });
@@ -636,3 +672,197 @@ export const DeleteJobEventParams = zod.object({
   jobId: zod.coerce.string(),
   eventId: zod.coerce.string(),
 });
+
+/**
+ * Marks the job as completed and atomically generates the permanent UnitDown Service Record identifier (USR-YYYY-XXXXXX). Idempotent — calling again on an already-completed job returns the existing USR ID.
+
+ * @summary Complete a job and generate the permanent USR ID
+ */
+export const CompleteJobParams = zod.object({
+  jobId: zod.coerce.string(),
+});
+
+export const CompleteJobResponse = zod.object({
+  job: zod.object({
+    id: zod.string(),
+    userId: zod.string(),
+    unitId: zod.string().nullish(),
+    customer: zod.string().nullish(),
+    site: zod.string().nullish(),
+    unitLabel: zod.string().nullish(),
+    title: zod.string().nullish(),
+    status: zod.string(),
+    startedAt: zod.number(),
+    updatedAt: zod.number(),
+    completedAt: zod.number().nullish(),
+    usrId: zod
+      .string()
+      .nullish()
+      .describe(
+        "Permanent UnitDown Service Record ID (USR-YYYY-XXXXXX). Null until the job is completed online.",
+      ),
+    serviceRecordStatus: zod
+      .string()
+      .nullish()
+      .describe(
+        "Service record lifecycle: draft | completed | verified | archived",
+      ),
+    metadata: zod.object({}).passthrough().nullish(),
+    createdAt: zod.string(),
+  }),
+  events: zod.array(
+    zod.object({
+      id: zod.string(),
+      jobId: zod.string(),
+      userId: zod.string(),
+      eventType: zod.string(),
+      title: zod.string(),
+      timestamp: zod.number(),
+      notes: zod.string().nullish(),
+      voiceTranscript: zod.string().nullish(),
+      voiceCorrected: zod.string().nullish(),
+      photoUrls: zod.array(zod.string()).nullish(),
+      measurements: zod.object({}).passthrough().nullish(),
+      parts: zod.object({}).passthrough().nullish(),
+      metadata: zod.object({}).passthrough().nullish(),
+      sequenceNum: zod.number(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * Returns the full UnitDown Service Standard record assembled from the job's timeline events. All sections are always present — missing data uses null or empty arrays, never omitted.
+
+ * @summary Assemble the USS service record for a completed job
+ */
+export const GetJobServiceRecordParams = zod.object({
+  jobId: zod.coerce.string(),
+});
+
+export const getJobServiceRecordResponseAiReportConfidenceMin = 0;
+export const getJobServiceRecordResponseAiReportConfidenceMax = 100;
+
+export const getJobServiceRecordResponseAiReportCompletenessScoreMin = 0;
+export const getJobServiceRecordResponseAiReportCompletenessScoreMax = 100;
+
+export const GetJobServiceRecordResponse = zod
+  .object({
+    job: zod.object({
+      id: zod.string(),
+      userId: zod.string(),
+      unitId: zod.string().nullish(),
+      customer: zod.string().nullish(),
+      site: zod.string().nullish(),
+      unitLabel: zod.string().nullish(),
+      title: zod.string().nullish(),
+      status: zod.string(),
+      startedAt: zod.number(),
+      updatedAt: zod.number(),
+      completedAt: zod.number().nullish(),
+      usrId: zod
+        .string()
+        .nullish()
+        .describe(
+          "Permanent UnitDown Service Record ID (USR-YYYY-XXXXXX). Null until the job is completed online.",
+        ),
+      serviceRecordStatus: zod
+        .string()
+        .nullish()
+        .describe(
+          "Service record lifecycle: draft | completed | verified | archived",
+        ),
+      metadata: zod.object({}).passthrough().nullish(),
+      createdAt: zod.string(),
+    }),
+    usrId: zod
+      .string()
+      .nullish()
+      .describe(
+        "Permanent USR identifier (USR-YYYY-XXXXXX). Null if job completed offline and not yet synced.",
+      ),
+    serviceRecordStatus: zod
+      .string()
+      .describe("draft | completed | verified | archived"),
+    generatedAt: zod
+      .number()
+      .describe("Unix timestamp (ms) when this record was assembled"),
+    timeline: zod.array(
+      zod.object({
+        id: zod.string(),
+        jobId: zod.string(),
+        userId: zod.string(),
+        eventType: zod.string(),
+        title: zod.string(),
+        timestamp: zod.number(),
+        notes: zod.string().nullish(),
+        voiceTranscript: zod.string().nullish(),
+        voiceCorrected: zod.string().nullish(),
+        photoUrls: zod.array(zod.string()).nullish(),
+        measurements: zod.object({}).passthrough().nullish(),
+        parts: zod.object({}).passthrough().nullish(),
+        metadata: zod.object({}).passthrough().nullish(),
+        sequenceNum: zod.number(),
+        createdAt: zod.string(),
+        updatedAt: zod.string(),
+      }),
+    ),
+    measurements: zod
+      .object({})
+      .passthrough()
+      .nullish()
+      .describe(
+        "Aggregated measurements map — keys are measurement names, values are arrays of recorded readings",
+      ),
+    parts: zod.object({
+      replaced: zod.array(zod.object({}).passthrough()),
+      recommended: zod.array(zod.object({}).passthrough()),
+      pending: zod.array(zod.object({}).passthrough()),
+      unknown: zod.array(zod.object({}).passthrough()),
+    }),
+    photos: zod.object({
+      overview: zod.array(zod.string()),
+      nameplate: zod.array(zod.string()),
+      alarmScreen: zod.array(zod.string()),
+      measurements: zod.array(zod.string()),
+      failedParts: zod.array(zod.string()),
+      installedParts: zod.array(zod.string()),
+      verification: zod.array(zod.string()),
+      general: zod.array(zod.string()),
+    }),
+    aiReport: zod.object({
+      professional: zod.string().nullable(),
+      customerSummary: zod.string().nullable(),
+      invoiceSummary: zod.string().nullable(),
+      confidence: zod
+        .number()
+        .min(getJobServiceRecordResponseAiReportConfidenceMin)
+        .max(getJobServiceRecordResponseAiReportConfidenceMax)
+        .nullish(),
+      officeReady: zod.boolean().nullish(),
+      completenessScore: zod
+        .number()
+        .min(getJobServiceRecordResponseAiReportCompletenessScoreMin)
+        .max(getJobServiceRecordResponseAiReportCompletenessScoreMax)
+        .nullish(),
+    }),
+    equipmentMemory: zod.object({
+      updates: zod.array(zod.string()),
+    }),
+    verification: zod.object({
+      operationalStatus: zod.string().nullish(),
+      verifiedBy: zod.string().nullish(),
+      notes: zod.string().nullish(),
+      followUpRequired: zod.boolean(),
+      returnVisit: zod.boolean(),
+      safetyConcerns: zod.boolean(),
+      warrantyMention: zod.boolean(),
+    }),
+    exportFormats: zod
+      .array(zod.string())
+      .describe("Available export format identifiers"),
+  })
+  .describe(
+    "Full UnitDown Service Standard record assembled from a completed job. All sections always present — missing data uses null or empty arrays.\n",
+  );

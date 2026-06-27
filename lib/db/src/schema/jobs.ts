@@ -28,11 +28,33 @@ export const jobs = pgTable("jobs", {
   updatedAt:   bigint("updated_at",   { mode: "number" }).notNull(),
   completedAt: bigint("completed_at", { mode: "number" }),
 
+  // ── USS Service Record fields ──────────────────────────────────────────────
+  // Permanent UnitDown Service Record identifier. Format: USR-YYYY-XXXXXX.
+  // Generated atomically on job completion via the usr_sequences counter table.
+  // Never reused, never reassigned. Null until the job is completed online.
+  usrId:                text("usr_id").unique(),
+
+  // Service record lifecycle: "draft" | "completed" | "verified" | "archived"
+  // Separate from job status — a job is "completed" operationally, but its
+  // service record may still be in "draft" until reviewed/verified.
+  serviceRecordStatus:  text("service_record_status").default("draft"),
+
   // Extension hook — future systems write keyed sub-objects here.
   // e.g. { equipmentMemory: {...}, aiReport: {...}, invoiceSummary: {...} }
   metadata:    jsonb("metadata"),
 
   createdAt:   timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+// ─── usr_sequences ─────────────────────────────────────────────────────────────
+// Atomic counter for USR ID generation. One row per calendar year.
+// The backend uses INSERT ... ON CONFLICT DO UPDATE with RETURNING to
+// guarantee monotonically increasing, gap-free, never-reused counters.
+// Format produced: USR-{year}-{lastCounter zero-padded to 6 digits}
+
+export const usrSequences = pgTable("usr_sequences", {
+  year:        integer("year").primaryKey(),
+  lastCounter: integer("last_counter").notNull().default(0),
 });
 
 // ─── job_timeline_events ───────────────────────────────────────────────────────
@@ -89,3 +111,4 @@ export type Job                = typeof jobs.$inferSelect;
 export type InsertJob          = typeof jobs.$inferInsert;
 export type JobTimelineEvent   = typeof jobTimelineEvents.$inferSelect;
 export type InsertJobTimelineEvent = typeof jobTimelineEvents.$inferInsert;
+export type UsrSequence        = typeof usrSequences.$inferSelect;

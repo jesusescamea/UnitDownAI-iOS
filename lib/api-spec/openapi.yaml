@@ -310,6 +310,58 @@ paths:
           description: Unauthorized
         "404":
           description: Not found
+  /jobs/{jobId}/complete:
+    post:
+      operationId: completeJob
+      tags: [jobs]
+      summary: Complete a job and generate the permanent USR ID
+      description: >
+        Marks the job as completed and atomically generates the permanent
+        UnitDown Service Record identifier (USR-YYYY-XXXXXX). Idempotent —
+        calling again on an already-completed job returns the existing USR ID.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Completed job with USR ID and full event list
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobWithEvents"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
+  /jobs/{jobId}/service-record:
+    get:
+      operationId: getJobServiceRecord
+      tags: [jobs]
+      summary: Assemble the USS service record for a completed job
+      description: >
+        Returns the full UnitDown Service Standard record assembled from the
+        job's timeline events. All sections are always present — missing data
+        uses null or empty arrays, never omitted.
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Full assembled service record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ServiceRecord"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
 components:
   schemas:
     AiPolishMode:
@@ -710,19 +762,21 @@ components:
     Job:
       type: object
       properties:
-        id:          { type: string }
-        userId:      { type: string }
-        unitId:      { type: string, nullable: true }
-        customer:    { type: string, nullable: true }
-        site:        { type: string, nullable: true }
-        unitLabel:   { type: string, nullable: true }
-        title:       { type: string, nullable: true }
-        status:      { type: string }
-        startedAt:   { type: number }
-        updatedAt:   { type: number }
-        completedAt: { type: number, nullable: true }
-        metadata:    { type: object, nullable: true }
-        createdAt:   { type: string }
+        id:                   { type: string }
+        userId:               { type: string }
+        unitId:               { type: string, nullable: true }
+        customer:             { type: string, nullable: true }
+        site:                 { type: string, nullable: true }
+        unitLabel:            { type: string, nullable: true }
+        title:                { type: string, nullable: true }
+        status:               { type: string }
+        startedAt:            { type: number }
+        updatedAt:            { type: number }
+        completedAt:          { type: number, nullable: true }
+        usrId:                { type: string, nullable: true, description: "Permanent UnitDown Service Record ID (USR-YYYY-XXXXXX). Null until the job is completed online." }
+        serviceRecordStatus:  { type: string, nullable: true, description: "Service record lifecycle: draft | completed | verified | archived" }
+        metadata:             { type: object, nullable: true }
+        createdAt:            { type: string }
       required: [id, userId, status, startedAt, updatedAt, createdAt]
     CreateJobBody:
       type: object
@@ -806,3 +860,102 @@ components:
           items:
             $ref: "#/components/schemas/JobTimelineEvent"
       required: [job, events]
+    ServiceRecordParts:
+      type: object
+      properties:
+        replaced:    { type: array, items: { type: object } }
+        recommended: { type: array, items: { type: object } }
+        pending:     { type: array, items: { type: object } }
+        unknown:     { type: array, items: { type: object } }
+      required: [replaced, recommended, pending, unknown]
+    ServiceRecordPhotos:
+      type: object
+      properties:
+        overview:       { type: array, items: { type: string } }
+        nameplate:      { type: array, items: { type: string } }
+        alarmScreen:    { type: array, items: { type: string } }
+        measurements:   { type: array, items: { type: string } }
+        failedParts:    { type: array, items: { type: string } }
+        installedParts: { type: array, items: { type: string } }
+        verification:   { type: array, items: { type: string } }
+        general:        { type: array, items: { type: string } }
+      required: [overview, nameplate, alarmScreen, measurements, failedParts, installedParts, verification, general]
+    ServiceRecordAiReport:
+      type: object
+      properties:
+        professional:     { type: string, nullable: true }
+        customerSummary:  { type: string, nullable: true }
+        invoiceSummary:   { type: string, nullable: true }
+        confidence:       { type: integer, nullable: true, minimum: 0, maximum: 100 }
+        officeReady:      { type: boolean, nullable: true }
+        completenessScore: { type: integer, nullable: true, minimum: 0, maximum: 100 }
+      required: [professional, customerSummary, invoiceSummary]
+    ServiceRecordEquipmentMemory:
+      type: object
+      properties:
+        updates:
+          type: array
+          items: { type: string }
+      required: [updates]
+    ServiceRecordVerification:
+      type: object
+      properties:
+        operationalStatus: { type: string, nullable: true }
+        verifiedBy:        { type: string, nullable: true }
+        notes:             { type: string, nullable: true }
+        followUpRequired:  { type: boolean }
+        returnVisit:       { type: boolean }
+        safetyConcerns:    { type: boolean }
+        warrantyMention:   { type: boolean }
+      required: [followUpRequired, returnVisit, safetyConcerns, warrantyMention]
+    ServiceRecord:
+      type: object
+      description: >
+        Full UnitDown Service Standard record assembled from a completed job.
+        All sections always present — missing data uses null or empty arrays.
+      properties:
+        job:
+          $ref: "#/components/schemas/Job"
+        usrId:
+          type: string
+          nullable: true
+          description: Permanent USR identifier (USR-YYYY-XXXXXX). Null if job completed offline and not yet synced.
+        serviceRecordStatus:
+          type: string
+          description: "draft | completed | verified | archived"
+        generatedAt:
+          type: number
+          description: Unix timestamp (ms) when this record was assembled
+        timeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobTimelineEvent"
+        measurements:
+          type: object
+          nullable: true
+          description: Aggregated measurements map — keys are measurement names, values are arrays of recorded readings
+        parts:
+          $ref: "#/components/schemas/ServiceRecordParts"
+        photos:
+          $ref: "#/components/schemas/ServiceRecordPhotos"
+        aiReport:
+          $ref: "#/components/schemas/ServiceRecordAiReport"
+        equipmentMemory:
+          $ref: "#/components/schemas/ServiceRecordEquipmentMemory"
+        verification:
+          $ref: "#/components/schemas/ServiceRecordVerification"
+        exportFormats:
+          type: array
+          items: { type: string }
+          description: Available export format identifiers
+      required:
+        - job
+        - serviceRecordStatus
+        - generatedAt
+        - timeline
+        - parts
+        - photos
+        - aiReport
+        - equipmentMemory
+        - verification
+        - exportFormats

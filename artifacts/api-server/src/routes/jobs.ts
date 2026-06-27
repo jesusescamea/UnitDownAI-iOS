@@ -1,8 +1,9 @@
 import { Router, type IRouter, type Request, type Response } from "express";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db } from "@workspace/db";
-import { jobs, jobTimelineEvents } from "@workspace/db";
+import { jobs, jobTimelineEvents, usrSequences } from "@workspace/db";
+import type { Job, JobTimelineEvent } from "@workspace/db";
 
 const jobsRouter: IRouter = Router();
 
@@ -24,11 +25,179 @@ function newId(prefix: string): string {
   return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// ─── USR ID generator (atomic, never-reused) ─────────────────────────────────
+// Uses a per-year counter in usr_sequences with INSERT...ON CONFLICT DO UPDATE.
+// Atomic at the DB level — safe for concurrent requests.
+
+async function generateUsrId(): Promise<string> {
+  const year = new Date().getFullYear();
+  const result = await db.execute(sql`
+    INSERT INTO usr_sequences (year, last_counter)
+    VALUES (${year}, 1)
+    ON CONFLICT (year) DO UPDATE
+    SET last_counter = usr_sequences.last_counter + 1
+    RETURNING last_counter
+  `);
+  const counter = (result.rows[0] as { last_counter: number }).last_counter;
+  return `USR-${year}-${String(counter).padStart(6, "0")}`;
+}
+
+// ─── Service Record assembler ─────────────────────────────────────────────────
+// Reads job + events and assembles the full USS service record structure.
+// All sections are always present — missing data shows as null/empty array,
+// never omitted. This ensures the record is structurally complete even when
+// data is sparse (e.g. a short call with only voice notes).
+
+function assembleServiceRecord(job: Job, events: JobTimelineEvent[]) {
+  // ── Measurements: aggregate all key/value pairs from measurement events ──
+  const measurementMap: Record<string, string[]> = {};
+  for (const evt of events) {
+    if (evt.measurements) {
+      const m = evt.measurements as Record<string, unknown>;
+      for (const [k, v] of Object.entries(m)) {
+        if (v !== null && v !== undefined && v !== "") {
+          if (!measurementMap[k]) measurementMap[k] = [];
+          measurementMap[k].push(String(v));
+        }
+      }
+    }
+  }
+
+  // ── Parts: aggregate from part events and recommendation events ───────────
+  interface PartEntry {
+    description: string;
+    quantity?: string | number;
+    partNumber?: string;
+    eventId: string;
+    timestamp: number;
+  }
+  const partsReplaced: PartEntry[] = [];
+  const partsRecommended: PartEntry[] = [];
+
+  for (const evt of events) {
+    if (evt.eventType === "part" && evt.parts) {
+      const p = evt.parts as Record<string, unknown>;
+      const entry: PartEntry = {
+        description: String(p.description ?? p.name ?? "Unknown part"),
+        quantity: p.quantity as string | number | undefined,
+        partNumber: p.partNumber as string | undefined,
+        eventId: evt.id,
+        timestamp: evt.timestamp,
+      };
+      if (p.status === "recommended") {
+        partsRecommended.push(entry);
+      } else {
+        partsReplaced.push(entry);
+      }
+    }
+    // Recommendations without a part event also contribute to recommendations
+    if (evt.eventType === "recommendation" && evt.notes && !evt.parts) {
+      partsRecommended.push({
+        description: evt.notes,
+        eventId: evt.id,
+        timestamp: evt.timestamp,
+      });
+    }
+  }
+
+  // ── Photos: categorize by metadata.photoCategory ──────────────────────────
+  const photos: Record<string, string[]> = {
+    overview: [],
+    nameplate: [],
+    alarmScreen: [],
+    measurements: [],
+    failedParts: [],
+    installedParts: [],
+    verification: [],
+    general: [],
+  };
+
+  for (const evt of events) {
+    if (evt.photoUrls && evt.photoUrls.length > 0) {
+      const meta = evt.metadata as Record<string, unknown> | null;
+      const rawCategory = meta?.photoCategory as string | undefined;
+      const category = rawCategory && rawCategory in photos ? rawCategory : "general";
+      photos[category].push(...evt.photoUrls);
+    }
+  }
+
+  // ── AI Report: from job.metadata ──────────────────────────────────────────
+  const jobMeta = job.metadata as Record<string, unknown> | null;
+  const aiReportData = jobMeta?.aiReport as Record<string, unknown> | null;
+
+  // ── Equipment Memory: from event metadata.memoryExtracts ─────────────────
+  const memoryUpdates: string[] = [];
+  for (const evt of events) {
+    const evtMeta = evt.metadata as Record<string, unknown> | null;
+    const extracts = evtMeta?.memoryExtracts as Record<string, unknown> | null;
+    if (extracts) {
+      for (const [k, v] of Object.entries(extracts)) {
+        if (v !== null && v !== undefined && v !== "" &&
+            !Array.isArray(v) && typeof v !== "object") {
+          memoryUpdates.push(`${k}: ${v}`);
+        } else if (Array.isArray(v) && v.length > 0) {
+          for (const item of v) {
+            if (item) memoryUpdates.push(`${k}: ${String(item)}`);
+          }
+        }
+      }
+    }
+  }
+
+  // ── Verification: from the verification event ─────────────────────────────
+  const verificationEvt = events.find((e) => e.eventType === "verification");
+  const verMeta = verificationEvt?.metadata as Record<string, unknown> | null;
+
+  return {
+    job,
+    usrId: job.usrId ?? null,
+    serviceRecordStatus: job.serviceRecordStatus ?? "draft",
+    generatedAt: Date.now(),
+    timeline: events,
+    measurements: Object.keys(measurementMap).length > 0 ? measurementMap : null,
+    parts: {
+      replaced: partsReplaced,
+      recommended: partsRecommended,
+      pending: [] as PartEntry[],
+      unknown: [] as PartEntry[],
+    },
+    photos,
+    aiReport: {
+      professional: (aiReportData?.professional as string | null) ?? null,
+      customerSummary: (aiReportData?.customerSummary as string | null) ?? null,
+      invoiceSummary: (aiReportData?.invoiceSummary as string | null) ?? null,
+      confidence: (aiReportData?.confidence as number | null) ?? null,
+      officeReady: (aiReportData?.officeReady as boolean | null) ?? null,
+      completenessScore: (aiReportData?.completenessScore as number | null) ?? null,
+    },
+    equipmentMemory: {
+      updates: memoryUpdates,
+    },
+    verification: {
+      operationalStatus: (verMeta?.operationalStatus as string | null) ?? null,
+      verifiedBy: (verMeta?.verifiedBy as string | null) ?? null,
+      notes: verificationEvt?.notes ?? null,
+      followUpRequired: Boolean(verMeta?.followUpRequired),
+      returnVisit: Boolean(verMeta?.returnVisit),
+      safetyConcerns: Boolean(verMeta?.safetyConcerns),
+      warrantyMention: Boolean(verMeta?.warrantyMention),
+    },
+    exportFormats: [
+      "pdf",
+      "customer_copy",
+      "office_copy",
+      "json",
+      "uss_archive",
+      "print",
+      "email",
+      "share",
+    ],
+  };
+}
+
 // ─── Validation schemas ───────────────────────────────────────────────────────
 
 const CreateJobSchema = z.object({
-  // Client-provided ID for offline-first job creation (idempotency).
-  // If omitted, the server generates one.
   id:        z.string().optional(),
   unitId:    z.string().optional(),
   customer:  z.string().optional(),
@@ -38,19 +207,18 @@ const CreateJobSchema = z.object({
 });
 
 const UpdateJobSchema = z.object({
-  status:      z.enum(["active", "paused", "completed", "cancelled"]).optional(),
-  title:       z.string().optional(),
-  unitId:      z.string().optional(),
-  customer:    z.string().optional(),
-  site:        z.string().optional(),
-  unitLabel:   z.string().optional(),
-  completedAt: z.number().optional(),
-  metadata:    z.record(z.string(), z.unknown()).optional(),
+  status:               z.enum(["active", "paused", "completed", "cancelled"]).optional(),
+  title:                z.string().optional(),
+  unitId:               z.string().optional(),
+  customer:             z.string().optional(),
+  site:                 z.string().optional(),
+  unitLabel:            z.string().optional(),
+  completedAt:          z.number().optional(),
+  serviceRecordStatus:  z.enum(["draft", "completed", "verified", "archived"]).optional(),
+  metadata:             z.record(z.string(), z.unknown()).optional(),
 });
 
 const CreateEventSchema = z.object({
-  // Client-provided ID for idempotency (offline sync deduplication).
-  // If omitted, the server generates one.
   id:              z.string().optional(),
   eventType:       z.string(),
   title:           z.string(),
@@ -122,12 +290,12 @@ jobsRouter.post("/jobs", async (req: Request, res: Response) => {
     startedAt:   now,
     updatedAt:   now,
     completedAt: null,
+    usrId:       null,
+    serviceRecordStatus: "draft",
     metadata:    null,
   };
 
   try {
-    // onConflictDoNothing: if the client retries after a network failure, the
-    // second call is silently ignored and we return the already-created row.
     await db.insert(jobs).values(newJob).onConflictDoNothing();
     const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
     req.log.info({ jobId: job.id }, "Job created or already existed");
@@ -242,6 +410,136 @@ jobsRouter.delete("/jobs/:jobId", async (req: Request, res: Response) => {
   }
 });
 
+// ─── POST /jobs/:jobId/complete — complete a job and generate USR ID ──────────
+// This is the canonical completion endpoint. It:
+//   1. Validates the job exists and is owned by this user
+//   2. Atomically generates a permanent USR ID via usr_sequences
+//   3. Marks the job completed and sets the service record status
+//   4. Creates the "completed" timeline event (idempotent — skips if exists)
+//   5. Returns the updated job row
+//
+// Idempotent: if the job already has a USR ID (previously completed), the
+// existing USR ID is preserved — the counter is NOT incremented again.
+
+jobsRouter.post("/jobs/:jobId/complete", async (req: Request, res: Response) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
+  const jobId = String(req.params.jobId);
+
+  try {
+    const [existing] = await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.id, jobId), eq(jobs.userId, userId)));
+
+    if (!existing) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+
+    const now = Date.now();
+
+    // Idempotency: if already completed and has a USR ID, return as-is
+    if (existing.usrId) {
+      req.log.info({ jobId, usrId: existing.usrId }, "Job already completed, returning existing record");
+      const events = await db
+        .select()
+        .from(jobTimelineEvents)
+        .where(and(eq(jobTimelineEvents.jobId, jobId), eq(jobTimelineEvents.userId, userId)))
+        .orderBy(jobTimelineEvents.timestamp, jobTimelineEvents.sequenceNum);
+      res.json({ job: existing, events });
+      return;
+    }
+
+    // Generate the permanent USR ID
+    const usrId = await generateUsrId();
+
+    // Update job: completed status + USR ID + service record status
+    const [completedJob] = await db
+      .update(jobs)
+      .set({
+        status: "completed",
+        completedAt: now,
+        updatedAt: now,
+        usrId,
+        serviceRecordStatus: "completed",
+      })
+      .where(and(eq(jobs.id, jobId), eq(jobs.userId, userId)))
+      .returning();
+
+    // Create "completed" timeline event (idempotent)
+    const completedEventId = newId("evt");
+    await db
+      .insert(jobTimelineEvents)
+      .values({
+        id:          completedEventId,
+        jobId,
+        userId,
+        eventType:   "completed",
+        title:       "Job Completed",
+        timestamp:   now,
+        sequenceNum: 999,
+        notes:       null,
+        voiceTranscript: null,
+        voiceCorrected:  null,
+        photoUrls:   null,
+        measurements: null,
+        parts:       null,
+        metadata:    { usrId },
+      })
+      .onConflictDoNothing();
+
+    const events = await db
+      .select()
+      .from(jobTimelineEvents)
+      .where(and(eq(jobTimelineEvents.jobId, jobId), eq(jobTimelineEvents.userId, userId)))
+      .orderBy(jobTimelineEvents.timestamp, jobTimelineEvents.sequenceNum);
+
+    req.log.info({ jobId, usrId }, "Job completed, USR ID generated");
+    res.json({ job: completedJob, events });
+  } catch (err) {
+    req.log.error({ err }, "Failed to complete job");
+    res.status(500).json({ error: "Failed to complete job" });
+  }
+});
+
+// ─── GET /jobs/:jobId/service-record — assemble the USS service record ─────────
+// Returns the full USS-structured service record assembled from job + all events.
+// All sections are always present (never omitted). Missing data uses null/[].
+// This is the canonical read endpoint for the Service Record page.
+
+jobsRouter.get("/jobs/:jobId/service-record", async (req: Request, res: Response) => {
+  const userId = requireUserId(req, res);
+  if (!userId) return;
+
+  const jobId = String(req.params.jobId);
+
+  try {
+    const [job] = await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.id, jobId), eq(jobs.userId, userId)));
+
+    if (!job) {
+      res.status(404).json({ error: "Job not found" });
+      return;
+    }
+
+    const events = await db
+      .select()
+      .from(jobTimelineEvents)
+      .where(and(eq(jobTimelineEvents.jobId, jobId), eq(jobTimelineEvents.userId, userId)))
+      .orderBy(jobTimelineEvents.timestamp, jobTimelineEvents.sequenceNum);
+
+    const record = assembleServiceRecord(job, events);
+    res.json(record);
+  } catch (err) {
+    req.log.error({ err }, "Failed to assemble service record");
+    res.status(500).json({ error: "Failed to assemble service record" });
+  }
+});
+
 // ─── POST /jobs/:jobId/events — append a timeline event ──────────────────────
 
 jobsRouter.post("/jobs/:jobId/events", async (req: Request, res: Response) => {
@@ -284,16 +582,12 @@ jobsRouter.post("/jobs/:jobId/events", async (req: Request, res: Response) => {
       sequenceNum:     parsed.data.sequenceNum      ?? 0,
     };
 
-    // onConflictDoNothing: idempotent for offline sync retries.
-    // If the client sends the same event twice, the second insert is silently
-    // ignored and we return the already-persisted row.
     await db.insert(jobTimelineEvents).values(event).onConflictDoNothing();
     const [created] = await db
       .select()
       .from(jobTimelineEvents)
       .where(eq(jobTimelineEvents.id, eventId));
 
-    // Touch the parent job's updatedAt so resume detection works correctly
     await db
       .update(jobs)
       .set({ updatedAt: Date.now() })
@@ -389,5 +683,8 @@ jobsRouter.delete(
     }
   },
 );
+
+// Suppress unused import warning — usrSequences is used indirectly via sql``
+void usrSequences;
 
 export default jobsRouter;

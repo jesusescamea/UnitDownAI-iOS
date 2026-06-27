@@ -272,6 +272,10 @@ export interface Job {
   startedAt: number;
   updatedAt: number;
   completedAt?: number | null;
+  /** Permanent UnitDown Service Record ID (USR-YYYY-XXXXXX). Null until the job is completed online. */
+  usrId?: string | null;
+  /** Service record lifecycle: draft | completed | verified | archived */
+  serviceRecordStatus?: string | null;
   metadata?: JobMetadata;
   createdAt: string;
 }
@@ -362,4 +366,90 @@ export interface UpdateJobEventBody {
 export interface JobWithEvents {
   job: Job;
   events: JobTimelineEvent[];
+}
+
+export type ServiceRecordPartsReplacedItem = { [key: string]: unknown };
+
+export type ServiceRecordPartsRecommendedItem = { [key: string]: unknown };
+
+export type ServiceRecordPartsPendingItem = { [key: string]: unknown };
+
+export type ServiceRecordPartsUnknownItem = { [key: string]: unknown };
+
+export interface ServiceRecordParts {
+  replaced: ServiceRecordPartsReplacedItem[];
+  recommended: ServiceRecordPartsRecommendedItem[];
+  pending: ServiceRecordPartsPendingItem[];
+  unknown: ServiceRecordPartsUnknownItem[];
+}
+
+export interface ServiceRecordPhotos {
+  overview: string[];
+  nameplate: string[];
+  alarmScreen: string[];
+  measurements: string[];
+  failedParts: string[];
+  installedParts: string[];
+  verification: string[];
+  general: string[];
+}
+
+export interface ServiceRecordAiReport {
+  professional: string | null;
+  customerSummary: string | null;
+  invoiceSummary: string | null;
+  /**
+   * @minimum 0
+   * @maximum 100
+   */
+  confidence?: number | null;
+  officeReady?: boolean | null;
+  /**
+   * @minimum 0
+   * @maximum 100
+   */
+  completenessScore?: number | null;
+}
+
+export interface ServiceRecordEquipmentMemory {
+  updates: string[];
+}
+
+export interface ServiceRecordVerification {
+  operationalStatus?: string | null;
+  verifiedBy?: string | null;
+  notes?: string | null;
+  followUpRequired: boolean;
+  returnVisit: boolean;
+  safetyConcerns: boolean;
+  warrantyMention: boolean;
+}
+
+/**
+ * Aggregated measurements map — keys are measurement names, values are arrays of recorded readings
+ */
+export type ServiceRecordMeasurements = { [key: string]: unknown } | null;
+
+/**
+ * Full UnitDown Service Standard record assembled from a completed job. All sections always present — missing data uses null or empty arrays.
+
+ */
+export interface ServiceRecord {
+  job: Job;
+  /** Permanent USR identifier (USR-YYYY-XXXXXX). Null if job completed offline and not yet synced. */
+  usrId?: string | null;
+  /** draft | completed | verified | archived */
+  serviceRecordStatus: string;
+  /** Unix timestamp (ms) when this record was assembled */
+  generatedAt: number;
+  timeline: JobTimelineEvent[];
+  /** Aggregated measurements map — keys are measurement names, values are arrays of recorded readings */
+  measurements?: ServiceRecordMeasurements;
+  parts: ServiceRecordParts;
+  photos: ServiceRecordPhotos;
+  aiReport: ServiceRecordAiReport;
+  equipmentMemory: ServiceRecordEquipmentMemory;
+  verification: ServiceRecordVerification;
+  /** Available export format identifiers */
+  exportFormats: string[];
 }

@@ -27,6 +27,7 @@ import type {
   Job,
   JobTimelineEvent,
   JobWithEvents,
+  ServiceRecord,
   UpdateJobBody,
   UpdateJobEventBody,
   VoiceInterpretBody,
@@ -1126,3 +1127,179 @@ export const useDeleteJobEvent = <
 > => {
   return useMutation(getDeleteJobEventMutationOptions(options));
 };
+
+/**
+ * Marks the job as completed and atomically generates the permanent UnitDown Service Record identifier (USR-YYYY-XXXXXX). Idempotent — calling again on an already-completed job returns the existing USR ID.
+
+ * @summary Complete a job and generate the permanent USR ID
+ */
+export const getCompleteJobUrl = (jobId: string) => {
+  return `/api/jobs/${jobId}/complete`;
+};
+
+export const completeJob = async (
+  jobId: string,
+  options?: RequestInit,
+): Promise<JobWithEvents> => {
+  return customFetch<JobWithEvents>(getCompleteJobUrl(jobId), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getCompleteJobMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeJob>>,
+    TError,
+    { jobId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof completeJob>>,
+  TError,
+  { jobId: string },
+  TContext
+> => {
+  const mutationKey = ["completeJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof completeJob>>,
+    { jobId: string }
+  > = (props) => {
+    const { jobId } = props ?? {};
+
+    return completeJob(jobId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CompleteJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof completeJob>>
+>;
+
+export type CompleteJobMutationError = ErrorType<void>;
+
+/**
+ * @summary Complete a job and generate the permanent USR ID
+ */
+export const useCompleteJob = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof completeJob>>,
+    TError,
+    { jobId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof completeJob>>,
+  TError,
+  { jobId: string },
+  TContext
+> => {
+  return useMutation(getCompleteJobMutationOptions(options));
+};
+
+/**
+ * Returns the full UnitDown Service Standard record assembled from the job's timeline events. All sections are always present — missing data uses null or empty arrays, never omitted.
+
+ * @summary Assemble the USS service record for a completed job
+ */
+export const getGetJobServiceRecordUrl = (jobId: string) => {
+  return `/api/jobs/${jobId}/service-record`;
+};
+
+export const getJobServiceRecord = async (
+  jobId: string,
+  options?: RequestInit,
+): Promise<ServiceRecord> => {
+  return customFetch<ServiceRecord>(getGetJobServiceRecordUrl(jobId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetJobServiceRecordQueryKey = (jobId: string) => {
+  return [`/api/jobs/${jobId}/service-record`] as const;
+};
+
+export const getGetJobServiceRecordQueryOptions = <
+  TData = Awaited<ReturnType<typeof getJobServiceRecord>>,
+  TError = ErrorType<void>,
+>(
+  jobId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobServiceRecord>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetJobServiceRecordQueryKey(jobId);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getJobServiceRecord>>
+  > = ({ signal }) => getJobServiceRecord(jobId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!jobId,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getJobServiceRecord>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetJobServiceRecordQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getJobServiceRecord>>
+>;
+export type GetJobServiceRecordQueryError = ErrorType<void>;
+
+/**
+ * @summary Assemble the USS service record for a completed job
+ */
+
+export function useGetJobServiceRecord<
+  TData = Awaited<ReturnType<typeof getJobServiceRecord>>,
+  TError = ErrorType<void>,
+>(
+  jobId: string,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getJobServiceRecord>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetJobServiceRecordQueryOptions(jobId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

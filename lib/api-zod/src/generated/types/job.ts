@@ -19,6 +19,10 @@ export interface Job {
   startedAt: number;
   updatedAt: number;
   completedAt?: number | null;
+  /** Permanent UnitDown Service Record ID (USR-YYYY-XXXXXX). Null until the job is completed online. */
+  usrId?: string | null;
+  /** Service record lifecycle: draft | completed | verified | archived */
+  serviceRecordStatus?: string | null;
   metadata?: JobMetadata;
   createdAt: string;
 }

@@ -22,7 +22,8 @@ import {
 import { useUser } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 
-import { useJobMode, type LocalJob, type LocalEvent } from "@/context/JobModeContext";
+import { useJobMode, type LocalJob } from "@/context/JobModeContext";
+import type { LocalEvent } from "@/context/JobModeContext";
 import { StartJobSheet } from "@/components/job/StartJobSheet";
 import { JobProgressHeader } from "@/components/job/JobProgressHeader";
 import { JobTimeline } from "@/components/job/JobTimeline";
@@ -178,10 +179,16 @@ function ActiveJobScreen({ onBack }: ActiveJobScreenProps) {
   }, []);
 
   const handleComplete = useCallback(async () => {
+    // Capture ID before completeJob() modifies state
+    const jobId = job?.id;
     await completeJob();
-    navigate("/job");
+    if (jobId) {
+      navigate(`/job/${jobId}/record`);
+    } else {
+      navigate("/job");
+    }
     clearJob();
-  }, [completeJob, clearJob, navigate]);
+  }, [job, completeJob, clearJob, navigate]);
 
   const handleEditEvent = useCallback((event: LocalEvent) => {
     if (event.eventType === "note") {
