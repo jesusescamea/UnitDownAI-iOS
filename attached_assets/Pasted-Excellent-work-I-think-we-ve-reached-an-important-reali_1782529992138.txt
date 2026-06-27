@@ -1,0 +1,414 @@
+Excellent work. I think we've reached an important realization that changes the direction of the product.
+
+I no longer want to design Job Mode around "phases" or "forms."
+
+I want to design it around **Job States** and **Activities**.
+
+This is a fundamental product philosophy change.
+
+Do not write production code yet.
+
+I want to redesign the experience around this concept first.
+
+---
+
+# New Product Philosophy
+
+UnitDown does not ask technicians to document their work.
+
+UnitDown quietly observes the job, remembers everything important, and automatically builds the industry's most trusted service record while the technician simply repairs equipment.
+
+Documentation is no longer the goal.
+
+Memory is the goal.
+
+The report becomes a byproduct.
+
+---
+
+# Think Like an Experienced Apprentice
+
+The app should feel like a senior technician standing beside you.
+
+It never interrupts.
+
+It never overwhelms.
+
+It simply remembers everything and occasionally asks the next logical question.
+
+The technician should never ask:
+
+"What do I need to document?"
+
+Instead the app should quietly know.
+
+---
+
+# Replace "Phases" With "Job States"
+
+Technicians never think:
+
+"I'm entering Phase 6."
+
+They think:
+
+"I found the problem."
+
+"I replaced the belt."
+
+"I'm checking my readings."
+
+The UI should reflect that.
+
+Example Job States:
+
+Job Created
+
+↓
+
+Arrived
+
+↓
+
+Equipment Verified
+
+↓
+
+Initial Observation
+
+↓
+
+Measurements Captured
+
+↓
+
+Root Cause Identified
+
+↓
+
+Repair Started
+
+↓
+
+Repair Completed
+
+↓
+
+Verification Complete
+
+↓
+
+Recommendations Added
+
+↓
+
+Customer Reviewed
+
+↓
+
+USR Generated
+
+Each state unlocks the next intelligent suggestion.
+
+The technician progresses naturally through the repair.
+
+---
+
+# Replace "Events" With "Activities"
+
+Internally they may still be timeline events.
+
+But the technician should simply see:
+
+Job Activity
+
+Examples:
+
+🟢 Arrived
+
+📷 Nameplate Captured
+
+⚡ Alarm 82
+
+📈 Measurements Recorded
+
+🎤 Voice Note
+
+🔧 Belt Installed
+
+📷 Repair Photo
+
+✅ Verification Complete
+
+Activities feel natural.
+
+The timeline becomes the story of the repair.
+
+---
+
+# Every Activity Unlocks the Next Suggestion
+
+The app should think one step ahead.
+
+Examples:
+
+Activity:
+
+📷 Nameplate Captured
+
+Suggested next activity:
+
+Check active alarms
+
+---
+
+Activity:
+
+⚡ Alarm 82
+
+Suggested next activity:
+
+Record initial readings
+
+---
+
+Activity:
+
+📈 High head pressure
+
+Suggested next activity:
+
+Inspect condenser coil
+
+---
+
+Activity:
+
+🔧 Belt Installed
+
+Suggested next activity:
+
+Record:
+
+• Belt size
+
+• Pulley diameter
+
+• Motor amps
+
+• Rotation
+
+---
+
+Activity:
+
+Verification complete
+
+Suggested next activity:
+
+Add customer recommendation
+
+The technician never searches.
+
+The app simply guides.
+
+---
+
+# One Question At A Time
+
+Never overwhelm the technician.
+
+Instead of showing long checklists...
+
+Ask one intelligent question.
+
+Example:
+
+✓ Belt Installed
+
+What's next?
+
+○ Measure motor amps
+
+○ Take repair photo
+
+○ Verify rotation
+
+○ Nothing else
+
+One decision.
+
+Continue working.
+
+---
+
+# The Timeline Is Equipment Memory
+
+The timeline should not exist simply to build reports.
+
+It should become permanent equipment memory.
+
+Every completed activity adds to that equipment's long-term intelligence.
+
+Examples:
+
+Recurring failures
+
+Parts history
+
+Warranty history
+
+Seasonal behavior
+
+Ignored recommendations
+
+Previous measurements
+
+Known weak components
+
+Every service call makes the equipment smarter.
+
+---
+
+# Job Mode Is A Flight Recorder
+
+This is an important philosophy.
+
+Do not design Job Mode like a note-taking application.
+
+Design it like a flight recorder.
+
+The system automatically records everything important.
+
+The technician only adds information when necessary.
+
+Everything else should happen automatically whenever possible.
+
+Examples:
+
+Arrival timestamp
+
+Weather
+
+GPS
+
+Photos
+
+Voice
+
+Measurements
+
+Timeline
+
+Recommendations
+
+Repair verification
+
+All captured with minimal friction.
+
+---
+
+# Reduce Cognitive Load
+
+The technician should focus on repairing equipment.
+
+Not operating software.
+
+If a decision can be inferred...
+
+Infer it.
+
+If AI can categorize something...
+
+Categorize it.
+
+If OCR can read it...
+
+Read it.
+
+If history already exists...
+
+Reuse it.
+
+If the next step is obvious...
+
+Suggest it.
+
+---
+
+# Emotional Moments
+
+Design these moments intentionally.
+
+Starting the job.
+
+Finding the root cause.
+
+Repair complete.
+
+Verification successful.
+
+Generating the UnitDown Service Summary.
+
+Assigning the USR.
+
+Office Ready.
+
+These are the moments technicians remember.
+
+Make them satisfying.
+
+---
+
+# Long-Term Vision
+
+Job Mode is not another feature.
+
+Job Mode becomes the operating system for commercial HVAC service.
+
+Everything else plugs into it.
+
+Voice Intelligence
+
+Photo Intelligence
+
+Measurement Intelligence
+
+Parts Intelligence
+
+Equipment Memory
+
+Offline Queue
+
+Universal Service Summary
+
+Customer Summary
+
+Office Summary
+
+Predictive Maintenance
+
+Everything becomes part of one living equipment history.
+
+---
+
+# Next Design Exercise
+
+Before writing additional production code, I want to redesign the entire workflow around:
+
+Job States
+
+Activities
+
+Progressive Guidance
+
+Equipment Memory
+
+The app should constantly answer one question:
+
+"What is the single most helpful thing I can do for this technician right now?"
+
+That principle should guide every interaction in Job Mode moving forward.
+
+```
+```
