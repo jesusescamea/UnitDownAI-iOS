@@ -13,10 +13,15 @@ import {
 } from './dashboardData';
 import { AiDiagnosticModal } from './AiDiagnosticModal';
 import { MyVanModal } from './MyVanModal';
+import { ToolChecklistModal } from './ToolChecklistModal';
 import {
   INITIAL_READINESS, INITIAL_INVENTORY, AI_STOCK_LIST,
   computeJobReadiness, readinessBadge, getJobVanId,
 } from './vanData';
+import {
+  INITIAL_TOOLS, INITIAL_TOOLS_READINESS,
+  computeToolsReadiness, toolReadinessBadge,
+} from './toolData';
 
 interface Props { onStartJob: () => void }
 
@@ -64,6 +69,7 @@ export function DashboardView({ onStartJob }: Props) {
   const [diagEquipment,   setDiagEquipment]   = useState<EquipmentAttention | null>(null);
   const [jobBriefFor,     setJobBriefFor]     = useState<TodayJob | null>(null);
   const [vanOpen,         setVanOpen]         = useState(false);
+  const [toolsOpen,       setToolsOpen]       = useState(false);
   const [briefsSeen,      setBriefsSeen]      = useState<Set<string>>(new Set());
 
   const now = new Date();
@@ -190,15 +196,18 @@ export function DashboardView({ onStartJob }: Props) {
                         </div>
                       )}
                     </div>
-                    <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                    <div className="flex flex-col items-end gap-1 flex-shrink-0">
                       <ChevronRight size={16} className="text-gray-600" />
                       {(() => {
                         const vanJobId = getJobVanId(job.id);
-                        const vs = computeJobReadiness(INITIAL_INVENTORY, vanJobId);
-                        const badge = readinessBadge(vs);
+                        const ps = computeJobReadiness(INITIAL_INVENTORY, vanJobId);
+                        const ts = computeToolsReadiness(INITIAL_TOOLS, vanJobId);
+                        const pb = readinessBadge(ps);
+                        const tb = toolReadinessBadge(ts);
                         return (
-                          <div className={`text-[9px] font-bold ${badge.color}`}>
-                            {badge.dot} {vs}%
+                          <div className="flex flex-col items-end gap-0.5">
+                            <div className={`text-[9px] font-bold ${pb.color}`}>{pb.dot} {ps}% <span className="text-gray-600 font-normal">parts</span></div>
+                            <div className={`text-[9px] font-bold ${tb.color}`}>{tb.dot} {ts}% <span className="text-gray-600 font-normal">tools</span></div>
                           </div>
                         );
                       })()}
@@ -341,16 +350,14 @@ export function DashboardView({ onStartJob }: Props) {
       <div className="px-4 pt-5">
         <SectionHeader title="Quick Actions" />
         <div className="grid grid-cols-3 gap-2">
-          {/* My Van — flagship tile */}
+          {/* My Van — parts tile */}
           <button onClick={() => setVanOpen(true)}
             className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-teal-900/40 border-teal-700 active:scale-95 transition-transform">
-            {/* Readiness badge */}
             <div className={`absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full ${
               INITIAL_READINESS >= 90 ? 'bg-green-600 text-white' :
               INITIAL_READINESS >= 75 ? 'bg-yellow-500 text-gray-900' :
                                         'bg-red-600 text-white'
             }`}>{INITIAL_READINESS}%</div>
-            {/* Van icon */}
             <svg width="20" height="15" viewBox="0 0 28 21" fill="none"
               stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
               className="text-teal-300">
@@ -363,15 +370,28 @@ export function DashboardView({ onStartJob }: Props) {
             </svg>
             <div className="text-center">
               <div className="text-[10px] text-gray-200 font-bold leading-tight">My Van</div>
-              <div className="text-[9px] text-teal-400/80">Inventory</div>
+              <div className="text-[9px] text-teal-400/80">Parts</div>
+            </div>
+          </button>
+          {/* Tool Checklist tile */}
+          <button onClick={() => setToolsOpen(true)}
+            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-orange-900/40 border-orange-800 active:scale-95 transition-transform">
+            <div className={`absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+              INITIAL_TOOLS_READINESS >= 90 ? 'bg-green-600 text-white' :
+              INITIAL_TOOLS_READINESS >= 75 ? 'bg-yellow-500 text-gray-900' :
+                                              'bg-red-600 text-white'
+            }`}>{INITIAL_TOOLS_READINESS}%</div>
+            <Wrench size={18} className="text-orange-400" />
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">Tool</div>
+              <div className="text-[9px] text-orange-400/80">Checklist</div>
             </div>
           </button>
           {[
-            { icon: <Phone size={18} />,       label: 'Emergency\nCall',   color: 'bg-red-900/40 border-red-800',       iconColor: 'text-red-400' },
-            { icon: <Search size={18} />,      label: 'Search\nEquipment', color: 'bg-blue-900/40 border-blue-800',     iconColor: 'text-blue-400' },
-            { icon: <Zap size={18} />,         label: 'Scan\nNameplate',   color: 'bg-green-900/40 border-green-800',   iconColor: 'text-green-400' },
-            { icon: <Cpu size={18} />,         label: 'AI\nAssistant',     color: 'bg-purple-900/40 border-purple-800', iconColor: 'text-purple-400' },
-            { icon: <CheckCircle size={18} />, label: 'Resume\nLast Job',  color: 'bg-amber-900/40 border-amber-800',   iconColor: 'text-amber-400' },
+            { icon: <Phone size={18} />,  label: 'Emergency\nCall',   color: 'bg-red-900/40 border-red-800',       iconColor: 'text-red-400' },
+            { icon: <Search size={18} />, label: 'Search\nEquipment', color: 'bg-blue-900/40 border-blue-800',     iconColor: 'text-blue-400' },
+            { icon: <Zap size={18} />,    label: 'Scan\nNameplate',   color: 'bg-green-900/40 border-green-800',   iconColor: 'text-green-400' },
+            { icon: <Cpu size={18} />,    label: 'AI\nAssistant',     color: 'bg-purple-900/40 border-purple-800', iconColor: 'text-purple-400' },
           ].map((a, i) => (
             <button key={i} className={`flex flex-col items-center gap-2 py-4 rounded-2xl border ${a.color} active:scale-95 transition-transform`}>
               <div className={a.iconColor}>{a.icon}</div>
@@ -444,7 +464,16 @@ export function DashboardView({ onStartJob }: Props) {
 
       <AnimatePresence>
         {vanOpen && (
-          <MyVanModal onClose={() => setVanOpen(false)} />
+          <MyVanModal
+            onClose={() => setVanOpen(false)}
+            onOpenTools={() => { setVanOpen(false); setToolsOpen(true); }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {toolsOpen && (
+          <ToolChecklistModal onClose={() => setToolsOpen(false)} />
         )}
       </AnimatePresence>
 

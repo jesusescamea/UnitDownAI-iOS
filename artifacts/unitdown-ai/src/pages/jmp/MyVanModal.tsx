@@ -12,8 +12,11 @@ import {
   aiLearningNote, readinessBadge, itemHighestPriority,
   type InventoryItem, type ItemCategory, type ItemStatus, type ItemPriority,
 } from './vanData';
+import {
+  INITIAL_TOOLS, computeToolsReadiness, toolReadinessBadge,
+} from './toolData';
 
-interface Props { onClose: () => void }
+interface Props { onClose: () => void; onOpenTools?: () => void }
 type Tab = 'overview' | 'inventory' | 'restock';
 
 const TODAY_JOBS = ['summit', 'northgate', 'ridgeline'];
@@ -120,7 +123,7 @@ function useLongPress(callback: () => void, ms = 600) {
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
-export function MyVanModal({ onClose }: Props) {
+export function MyVanModal({ onClose, onOpenTools }: Props) {
   const [tab,            setTab]           = useState<Tab>('overview');
   const [inventory,      setInventory]     = useState<InventoryItem[]>(
     () => INITIAL_INVENTORY.map(i => ({ ...i })),
@@ -230,11 +233,17 @@ export function MyVanModal({ onClose }: Props) {
             <VanIcon size={20} className="text-teal-300" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">My Van</h2>
-            <div className="text-[10px] text-gray-500">Marcus Rivera · Unit #47 · {inventory.length} items</div>
+            <h2 className="text-lg font-bold text-white">My Van — Parts</h2>
+            <div className="text-[10px] text-gray-500">Marcus Rivera · Unit #47 · {inventory.length} parts</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {onOpenTools && (
+            <button onClick={onOpenTools}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-900/40 border border-orange-700/60 rounded-xl text-[10px] font-bold text-orange-300">
+              🔧 Tools
+            </button>
+          )}
           <div className={`px-2 py-1 rounded-full border text-xs font-bold ${
             score >= 90 ? 'bg-green-900/40 border-green-700 text-green-300' :
             score >= 75 ? 'bg-yellow-900/40 border-yellow-700 text-yellow-300' :
@@ -398,53 +407,107 @@ export function MyVanModal({ onClose }: Props) {
                 </div>
               </div>
 
-              {/* Job readiness cards */}
+              {/* Job readiness cards — Parts + Tools split */}
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-2">Per-Job Readiness</div>
                 <div className="space-y-2">
-                  {Object.entries(jobScores).map(([jid, s]) => {
+                  {Object.entries(jobScores).map(([jid, partsScore]) => {
                     const j = JOB_INFO[jid];
+                    const toolsScore  = computeToolsReadiness(INITIAL_TOOLS, jid);
+                    const toolsBadge  = toolReadinessBadge(toolsScore);
                     const required    = inventory.filter(i => i.requiredFor.includes(jid));
                     const recommended = inventory.filter(i => i.recommendedFor.includes(jid));
-                    const missing     = required.filter(i => itemStatus(i) === 'missing');
+                    const missingReq  = required.filter(i => itemStatus(i) === 'missing');
+                    const missingTools = INITIAL_TOOLS.filter(t => t.requiredFor.includes(jid) && t.status === 'missing');
                     return (
                       <div key={jid} className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className={`w-2 h-2 rounded-full ${j.dotColor}`} />
-                            <span className="text-sm font-bold text-white">{j.abbr}</span>
-                          </div>
-                          <span className={`text-xs font-bold ${readinessBadge(s).color}`}>{readinessBadge(s).dot} {s}%</span>
+                        {/* Job header */}
+                        <div className="flex items-center gap-2 mb-3">
+                          <div className={`w-2 h-2 rounded-full ${j.dotColor}`} />
+                          <span className="text-sm font-bold text-white flex-1">{j.abbr}</span>
                         </div>
-                        {required.map(item => {
-                          const st = itemStatus(item);
-                          return (
-                            <div key={item.id} className="flex items-center gap-2 text-xs mb-1">
-                              {st === 'ready'   && <CheckCircle size={11} className="text-green-400 flex-shrink-0" />}
-                              {st === 'low'     && <AlertTriangle size={11} className="text-yellow-400 flex-shrink-0" />}
-                              {st === 'missing' && <XCircle size={11} className="text-red-400 flex-shrink-0" />}
-                              <span className={st === 'missing' ? 'text-red-300' : st === 'low' ? 'text-yellow-300' : 'text-gray-300'}>
-                                {item.name}
-                                {st !== 'ready' && <span className="text-gray-600 ml-1.5">{item.qty}/{item.minQty} {item.unit}</span>}
+                        {/* Two readiness rows */}
+                        <div className="space-y-1.5 mb-3">
+                          {/* Parts row */}
+                          <div>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[10px] text-gray-500 font-medium">Parts Readiness</span>
+                              <span className={`text-[11px] font-bold ${readinessBadge(partsScore).color}`}>
+                                {readinessBadge(partsScore).dot} {partsScore}%
                               </span>
                             </div>
-                          );
-                        })}
-                        {recommended.slice(0, 3).map(item => {
-                          const st = itemStatus(item);
-                          if (st === 'ready') return null;
+                            <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{ width: `${partsScore}%`, backgroundColor: readinessBadge(partsScore).ring }} />
+                            </div>
+                          </div>
+                          {/* Tools row */}
+                          <div>
+                            <div className="flex items-center justify-between mb-0.5">
+                              <span className="text-[10px] text-gray-500 font-medium">Tools Readiness</span>
+                              <span className={`text-[11px] font-bold ${toolsBadge.color}`}>
+                                {toolsBadge.dot} {toolsScore}%
+                              </span>
+                            </div>
+                            <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all" style={{
+                                width: `${toolsScore}%`,
+                                backgroundColor: toolsScore >= 85 ? '#22c55e' : toolsScore >= 65 ? '#eab308' : '#ef4444',
+                              }} />
+                            </div>
+                          </div>
+                        </div>
+                        {/* Parts detail */}
+                        {required.length > 0 && (
+                          <div className="mb-2">
+                            <div className="text-[9px] text-gray-600 uppercase tracking-wider mb-1">Parts</div>
+                            {required.map(item => {
+                              const st = itemStatus(item);
+                              return (
+                                <div key={item.id} className="flex items-center gap-2 text-xs mb-0.5">
+                                  {st === 'ready'   && <CheckCircle size={10} className="text-green-400 flex-shrink-0" />}
+                                  {st === 'low'     && <AlertTriangle size={10} className="text-yellow-400 flex-shrink-0" />}
+                                  {st === 'missing' && <XCircle size={10} className="text-red-400 flex-shrink-0" />}
+                                  <span className={st === 'missing' ? 'text-red-300' : st === 'low' ? 'text-yellow-300' : 'text-gray-400'}>
+                                    {item.name}
+                                    {st !== 'ready' && <span className="text-gray-600 ml-1.5">{item.qty}/{item.minQty} {item.unit}</span>}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                            {recommended.slice(0, 2).map(item => {
+                              const st = itemStatus(item);
+                              if (st === 'ready') return null;
+                              return (
+                                <div key={item.id} className="flex items-center gap-2 text-xs mb-0.5 opacity-60">
+                                  <Minus size={9} className="text-gray-600 flex-shrink-0" />
+                                  <span className="text-gray-500">{item.name}</span>
+                                  <span className="text-[9px] text-gray-700">rec.</span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                        {/* Tools detail */}
+                        {(() => {
+                          const reqTools = INITIAL_TOOLS.filter(t => t.requiredFor.includes(jid));
+                          if (reqTools.length === 0) return null;
                           return (
-                            <div key={item.id} className="flex items-center gap-2 text-xs mb-1 opacity-70">
-                              {st === 'low'     && <AlertTriangle size={10} className="text-yellow-400 flex-shrink-0" />}
-                              {st === 'missing' && <Minus size={10} className="text-gray-500 flex-shrink-0" />}
-                              <span className="text-gray-500">{item.name}</span>
-                              <span className="text-[9px] text-gray-600">rec.</span>
+                            <div>
+                              <div className="text-[9px] text-gray-600 uppercase tracking-wider mb-1">Tools</div>
+                              {reqTools.map(t => (
+                                <div key={t.id} className="flex items-center gap-2 text-xs mb-0.5">
+                                  {t.status === 'loaded'  && <CheckCircle size={10} className="text-green-400 flex-shrink-0" />}
+                                  {t.status === 'missing' && <XCircle size={10} className="text-red-400 flex-shrink-0" />}
+                                  {t.status === 'recommended' && <AlertTriangle size={10} className="text-yellow-400 flex-shrink-0" />}
+                                  <span className={t.status === 'missing' ? 'text-red-300' : 'text-gray-400'}>{t.name}</span>
+                                </div>
+                              ))}
                             </div>
                           );
-                        })}
-                        {missing.length === 0 && (
-                          <div className="flex items-center gap-1.5 text-xs text-green-400 font-semibold mt-1">
-                            <CheckCircle size={12} /> Required items loaded
+                        })()}
+                        {missingReq.length === 0 && missingTools.length === 0 && (
+                          <div className="flex items-center gap-1.5 text-xs text-green-400 font-semibold mt-2">
+                            <CheckCircle size={11} /> Parts and tools loaded
                           </div>
                         )}
                       </div>
