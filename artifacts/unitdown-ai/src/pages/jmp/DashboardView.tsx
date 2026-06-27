@@ -12,6 +12,11 @@ import {
   RECENT_ACTIVITY, DASHBOARD_STATS, type CalendarEvent, type EquipmentAttention,
 } from './dashboardData';
 import { AiDiagnosticModal } from './AiDiagnosticModal';
+import { MyVanModal } from './MyVanModal';
+import {
+  INITIAL_READINESS, INITIAL_INVENTORY, AI_STOCK_LIST,
+  computeJobReadiness, readinessBadge, getJobVanId,
+} from './vanData';
 
 interface Props { onStartJob: () => void }
 
@@ -58,6 +63,7 @@ export function DashboardView({ onStartJob }: Props) {
   const [equipmentDetail, setEquipmentDetail] = useState<EquipmentAttention | null>(null);
   const [diagEquipment,   setDiagEquipment]   = useState<EquipmentAttention | null>(null);
   const [jobBriefFor,     setJobBriefFor]     = useState<TodayJob | null>(null);
+  const [vanOpen,         setVanOpen]         = useState(false);
   const [briefsSeen,      setBriefsSeen]      = useState<Set<string>>(new Set());
 
   const now = new Date();
@@ -186,6 +192,16 @@ export function DashboardView({ onStartJob }: Props) {
                     </div>
                     <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
                       <ChevronRight size={16} className="text-gray-600" />
+                      {(() => {
+                        const vanJobId = getJobVanId(job.id);
+                        const vs = computeJobReadiness(INITIAL_INVENTORY, vanJobId);
+                        const badge = readinessBadge(vs);
+                        return (
+                          <div className={`text-[9px] font-bold ${badge.color}`}>
+                            {badge.dot} {vs}%
+                          </div>
+                        );
+                      })()}
                       <div className="flex items-center gap-0.5 text-[10px] text-gray-500">
                         <MapPin size={9} /><span>{job.driveTime}</span>
                       </div>
@@ -325,12 +341,36 @@ export function DashboardView({ onStartJob }: Props) {
       <div className="px-4 pt-5">
         <SectionHeader title="Quick Actions" />
         <div className="grid grid-cols-3 gap-2">
+          {/* My Van — flagship tile */}
+          <button onClick={() => setVanOpen(true)}
+            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-teal-900/40 border-teal-700 active:scale-95 transition-transform">
+            {/* Readiness badge */}
+            <div className={`absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+              INITIAL_READINESS >= 90 ? 'bg-green-600 text-white' :
+              INITIAL_READINESS >= 75 ? 'bg-yellow-500 text-gray-900' :
+                                        'bg-red-600 text-white'
+            }`}>{INITIAL_READINESS}%</div>
+            {/* Van icon */}
+            <svg width="20" height="15" viewBox="0 0 28 21" fill="none"
+              stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+              className="text-teal-300">
+              <path d="M1 14 L1 7 L8 2 L25 2 L27 7 L27 14 Z" />
+              <line x1="8" y1="2" x2="8" y2="14" />
+              <rect x="9.5" y="3.5" width="6" height="4.5" rx="0.6" />
+              <circle cx="6.5" cy="17" r="2.5" />
+              <circle cx="21.5" cy="17" r="2.5" />
+              <path d="M1 14 L4 14 M9 14 L19 14 M24 14 L27 14" />
+            </svg>
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">My Van</div>
+              <div className="text-[9px] text-teal-400/80">Inventory</div>
+            </div>
+          </button>
           {[
             { icon: <Phone size={18} />,       label: 'Emergency\nCall',   color: 'bg-red-900/40 border-red-800',       iconColor: 'text-red-400' },
             { icon: <Search size={18} />,      label: 'Search\nEquipment', color: 'bg-blue-900/40 border-blue-800',     iconColor: 'text-blue-400' },
             { icon: <Zap size={18} />,         label: 'Scan\nNameplate',   color: 'bg-green-900/40 border-green-800',   iconColor: 'text-green-400' },
             { icon: <Cpu size={18} />,         label: 'AI\nAssistant',     color: 'bg-purple-900/40 border-purple-800', iconColor: 'text-purple-400' },
-            { icon: <FileText size={18} />,    label: 'Service\nRecords',  color: 'bg-gray-800 border-gray-700',        iconColor: 'text-gray-300' },
             { icon: <CheckCircle size={18} />, label: 'Resume\nLast Job',  color: 'bg-amber-900/40 border-amber-800',   iconColor: 'text-amber-400' },
           ].map((a, i) => (
             <button key={i} className={`flex flex-col items-center gap-2 py-4 rounded-2xl border ${a.color} active:scale-95 transition-transform`}>
@@ -399,6 +439,12 @@ export function DashboardView({ onStartJob }: Props) {
             eq={diagEquipment}
             onClose={() => setDiagEquipment(null)}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {vanOpen && (
+          <MyVanModal onClose={() => setVanOpen(false)} />
         )}
       </AnimatePresence>
 
@@ -593,14 +639,6 @@ const DAY_ROUTE = [
   },
 ];
 
-const TRUCK_STOCK = [
-  { item: 'Coil cleaner',       reason: 'RTU-3 condenser restriction' },
-  { item: 'Dual cap 35/5µF',   reason: 'RTU-3 risk — capacitor' },
-  { item: 'Contactor',          reason: 'RTU-3 risk — contactor' },
-  { item: 'Pressure probes',    reason: 'Refrigerant diagnostics' },
-  { item: 'Common belts',       reason: 'CRAC-1 & RTU-7 PM' },
-  { item: 'PM supplies',        reason: 'Filters, oil, belt gauge' },
-];
 
 const DAY_NOTES = [
   { job: 'Summit Medical', note: 'Recurring Code 82 — condenser cleaning alone has not resolved. Investigate fan performance and refrigerant circuit.' },
@@ -695,19 +733,28 @@ function AiDayBrief() {
                 <div className="text-[10px] text-red-200/70 mt-0.5">Code 82 repeated 3× in 12 months. Condenser cleaning has not resolved the fault — expect deeper diagnostics today.</div>
               </div>
 
-              {/* Truck stock */}
+              {/* Truck stock — live van inventory status */}
               <div>
-                <div className="text-[9px] font-bold uppercase tracking-widest text-blue-400/70 mb-2">Recommended Truck Stock</div>
+                <div className="text-[9px] font-bold uppercase tracking-widest text-blue-400/70 mb-2">Van Inventory vs. Today's Jobs</div>
                 <div className="bg-blue-950/30 border border-blue-800/30 rounded-xl p-3 space-y-2">
-                  {TRUCK_STOCK.map((s, i) => (
+                  {AI_STOCK_LIST.map((s, i) => (
                     <div key={i} className="flex items-start gap-2">
-                      <CheckCircle size={11} className="text-green-400 flex-shrink-0 mt-0.5" />
-                      <div>
-                        <span className="text-[11px] font-semibold text-white">{s.item}</span>
+                      {s.ok === 'ready'   && <CheckCircle  size={11} className="text-green-400  flex-shrink-0 mt-0.5" />}
+                      {s.ok === 'low'     && <AlertTriangle size={11} className="text-yellow-400 flex-shrink-0 mt-0.5" />}
+                      {s.ok === 'missing' && <Minus         size={11} className="text-red-400    flex-shrink-0 mt-0.5" />}
+                      <div className="min-w-0">
+                        <span className={`text-[11px] font-semibold ${
+                          s.ok === 'ready' ? 'text-white' : s.ok === 'low' ? 'text-yellow-200' : 'text-red-300'
+                        }`}>{s.item}</span>
                         <span className="text-[10px] text-gray-500"> — {s.reason}</span>
                       </div>
                     </div>
                   ))}
+                </div>
+                <div className="flex gap-3 mt-2 px-1 text-[9px] text-gray-600">
+                  <span className="flex items-center gap-1"><CheckCircle size={8} className="text-green-400" /> In van</span>
+                  <span className="flex items-center gap-1"><AlertTriangle size={8} className="text-yellow-400" /> Low stock</span>
+                  <span className="flex items-center gap-1"><Minus size={8} className="text-red-400" /> Missing</span>
                 </div>
               </div>
 
