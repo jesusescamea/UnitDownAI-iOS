@@ -1,0 +1,249 @@
+Excellent analysis. I agree with almost every point.
+
+However, I think we're still designing individual features instead of designing the technician's complete workflow.
+
+I want to step back before building more screens.
+
+Job Mode should not feel like another form.
+
+It should feel like carrying an experienced apprentice that remembers everything.
+
+## New design philosophy
+
+The technician should almost never ask:
+
+"What do I need to document?"
+
+Instead the app should constantly observe the job and quietly help.
+
+Every interaction should naturally create documentation.
+
+The technician simply works.
+
+The report writes itself.
+
+---
+
+## The new priority order
+
+### Priority 1 (Highest)
+
+Design the complete lifecycle of one service call.
+
+From:
+
+Dispatch Received
+
+↓
+
+Driving
+
+↓
+
+Arrival
+
+↓
+
+Diagnosis
+
+↓
+
+Measurements
+
+↓
+
+Repair
+
+↓
+
+Verification
+
+↓
+
+Recommendations
+
+↓
+
+Customer discussion
+
+↓
+
+Complete Job
+
+↓
+
+AI Review
+
+↓
+
+USR Generated
+
+↓
+
+Office Ready
+
+↓
+
+Equipment Memory Updated
+
+↓
+
+Ready for next call
+
+Do NOT design isolated screens.
+
+Design one continuous experience.
+
+---
+
+### Priority 2
+
+Every major event should intelligently unlock the next one.
+
+Examples:
+
+Nameplate captured
+
+↓
+
+Suggest alarm capture
+
+Alarm captured
+
+↓
+
+Suggest initial measurements
+
+High head pressure found
+
+↓
+
+Suggest condenser inspection
+
+Belt replacement detected
+
+↓
+
+Suggest:
+
+• Belt size
+
+• Pulley diameter
+
+• Motor amps
+
+• Rotation
+
+Filter replacement
+
+↓
+
+Suggest filter dimensions
+
+Filter type
+
+MERV
+
+Quantity
+
+Location
+
+The technician should never have to remember documentation requirements.
+
+---
+
+### Priority 3
+
+Design the fastest capture flow for every data type.
+
+For each one answer:
+
+How many taps?
+
+Can voice replace typing?
+
+Can AI infer the information?
+
+Can the camera identify it?
+
+Can the app suggest it automatically?
+
+Target:
+
+Most documentation should require zero or one additional tap.
+
+---
+
+### Priority 4
+
+The app must feel alive.
+
+Examples:
+
+"Photo saved."
+
+"Offline — still saving."
+
+"Recovered after reconnect."
+
+"AI identified this as a nameplate."
+
+"Looks like a blower belt."
+
+"You already replaced this belt 14 months ago."
+
+"Customer has had this alarm 3 previous visits."
+
+The technician should constantly feel assisted, not questioned.
+
+---
+
+### Priority 5
+
+Design the emotional moments.
+
+Today we only designed the work.
+
+We have not designed the moments technicians actually remember.
+
+Examples:
+
+• Starting the job.
+
+• Discovering the root cause.
+
+• Completing the repair.
+
+• AI building the report.
+
+• USR generation.
+
+• Office Ready confirmation.
+
+Those moments should feel satisfying and memorable.
+
+---
+
+### Priority 6
+
+Think bigger than documentation.
+
+The end goal is not simply producing a report.
+
+The end goal is creating the industry's trusted service record.
+
+One day customers, manufacturers, contractors, facility managers, warranty departments, and future technicians should actively ask:
+
+"Do you have the UnitDown Service Record for this equipment?"
+
+Every design decision should move toward making the UnitDown Service Record the trusted standard for documenting commercial HVAC service.
+
+---
+
+Before building another production component, I want to map the entire technician journey as one connected experience, identify every friction point, and then build each workflow in that order.
+
+Workflow first.
+
+Screens second.
+
+Visual polish last.
