@@ -2,14 +2,16 @@
  * JobProgressHeader — persistent sticky header while a job is active.
  *
  * Shows: job identity (customer / site / unit), elapsed time,
- * event count, sync status, and a Complete Job button.
+ * event count, offline/sync status, and a Complete Job button.
  *
- * Designed to stay informative but minimal — technicians are glancing,
- * not reading.
+ * The OfflineStatusBar handles all 5 connectivity states:
+ *   Online · Synced | Offline · Saving locally | Syncing… |
+ *   N items pending | Sync failed · Tap to retry
  */
 
-import { Cloud, CloudOff, Loader2, CheckCircle2, Clock, ListChecks, ChevronLeft } from "lucide-react";
+import { Clock, ListChecks, ChevronLeft, CheckCircle2 } from "lucide-react";
 import { useJobMode } from "@/context/JobModeContext";
+import { OfflineStatusBar, OfflineBanner } from "@/components/job/OfflineStatusBar";
 import { Button } from "@/components/ui/button";
 
 interface JobProgressHeaderProps {
@@ -25,46 +27,21 @@ function formatElapsed(seconds: number): string {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function SyncIndicator() {
-  const { syncStatus, hasPendingSync } = useJobMode();
-
-  if (syncStatus === "syncing") {
-    return (
-      <span className="flex items-center gap-1 text-xs text-blue-500">
-        <Loader2 className="w-3 h-3 animate-spin" />
-        Syncing
-      </span>
-    );
-  }
-  if (syncStatus === "error" || hasPendingSync) {
-    return (
-      <span className="flex items-center gap-1 text-xs text-amber-500">
-        <CloudOff className="w-3 h-3" />
-        Unsaved
-      </span>
-    );
-  }
-  return (
-    <span className="flex items-center gap-1 text-xs text-green-500">
-      <Cloud className="w-3 h-3" />
-      Saved
-    </span>
-  );
-}
-
 export function JobProgressHeader({ onBack, onComplete }: JobProgressHeaderProps) {
   const { job, events, elapsedSeconds } = useJobMode();
 
   if (!job) return null;
 
-  const label = [job.unitLabel, job.customer, job.site]
-    .filter(Boolean)
-    .join(" · ") || "New Job";
-
-  const eventCount = events.filter((e) => e.eventType !== "dispatch" && e.eventType !== "completed").length;
+  const label = [job.unitLabel, job.customer, job.site].filter(Boolean).join(" · ") || "New Job";
+  const eventCount = events.filter(
+    (e) => e.eventType !== "dispatch" && e.eventType !== "completed",
+  ).length;
 
   return (
     <div className="sticky top-0 z-30 bg-white/95 dark:bg-zinc-900/95 backdrop-blur border-b border-zinc-200 dark:border-zinc-800">
+      {/* Offline banner — only visible when offline */}
+      <OfflineBanner />
+
       {/* Main row */}
       <div className="flex items-center gap-2 px-3 h-14">
         {/* Back button */}
@@ -94,8 +71,8 @@ export function JobProgressHeader({ onBack, onComplete }: JobProgressHeaderProps
               {eventCount} {eventCount === 1 ? "event" : "events"}
             </span>
 
-            {/* Sync status */}
-            <SyncIndicator />
+            {/* Connectivity + sync status */}
+            <OfflineStatusBar />
           </div>
         </div>
 

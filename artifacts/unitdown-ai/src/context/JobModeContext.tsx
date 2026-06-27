@@ -1,18 +1,26 @@
 /**
  * JobModeContext — the operating system for every HVAC service call.
  *
- * Architecture principles:
- * - localStorage is the primary store (instant, survives backgrounding)
- * - Backend API is the secondary store (persistent, synced in background)
- * - All event creation is optimistic — UI updates instantly
- * - Auto-save runs silently after every change (5s debounce to backend)
- * - Resume detection runs on every app mount
+ * Offline-first architecture:
+ * ┌─────────────────────────────────────────────────────────────────────┐
+ * │  User action → localStorage (instant) → IndexedDB queue (durable)  │
+ * │                                ↓ when online                        │
+ * │                          flushQueue() → API server                  │
+ * └─────────────────────────────────────────────────────────────────────┘
  *
- * Extension hooks (for future features):
- * - `event.metadata` jsonb: Smart Photos, AI enrichment, Equipment Memory diffs
- * - `event.measurements` jsonb: Phase 3 typed measurement schemas
- * - `event.parts` jsonb: Phase 3 Parts Assistant output
- * - `job.metadata` jsonb: AI Report, invoice summary, equipment memory updates
+ * Key guarantees:
+ * - Every action works with zero network connectivity
+ * - Client-generated IDs are permanent — no temp→real ID swap needed
+ * - Queue survives page crash, reload, force-close (IndexedDB is durable)
+ * - Server accepts client IDs via onConflictDoNothing for idempotency
+ * - Resume detection on every app mount from localStorage
+ * - Auto-flush on reconnect; manual retry exposed via retrySync()
+ *
+ * Extension hooks (unchanged from Phase 1):
+ * - event.metadata jsonb: Smart Photos, AI enrichment, Equipment Memory
+ * - event.measurements jsonb: Phase 3 typed measurement schemas
+ * - event.parts jsonb: Phase 3 Parts Assistant output
+ * - job.metadata jsonb: AI Report, invoice summary
  */
 
 import {
@@ -25,6 +33,15 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useUser } from "@clerk/clerk-react";
+import {
+  enqueueOp,
+  getQueuedOps,
+  dequeueOp,
+  markOpFailed,
+  getQueueSize,
+  type QueuedOp,
+} from "@/services/jobOfflineDB";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,14 +74,13 @@ export interface LocalJob {
   startedAt: number;
   updatedAt: number;
   completedAt: number | null;
-  // Extension hook: future AI systems write keyed sub-objects here
   metadata: Record<string, unknown> | null;
   createdAt: string;
 }
 
 export interface LocalEvent {
   id: string;
-  /** True once the event has been confirmed persisted to the backend. */
+  /** True once the event has been confirmed persisted to the server. */
   _synced: boolean;
   jobId: string;
   userId: string;
@@ -74,14 +90,9 @@ export interface LocalEvent {
   notes: string | null;
   voiceTranscript: string | null;
   voiceCorrected: string | null;
-  // Phase 2: object storage paths (not URLs); retrieve via signed URL
   photoUrls: string[] | null;
-  // Phase 1: free-form key/value readings e.g. { "Suction Pressure": "72 psi" }
-  // Phase 3: will be superseded by typed measurement schemas
   measurements: Record<string, string> | null;
-  // Phase 3: Parts Assistant structured output
   parts: unknown;
-  // Extension hook: AI enrichment, Smart Photos, Equipment Memory updates, etc.
   metadata: Record<string, unknown> | null;
   sequenceNum: number;
   createdAt: string;
@@ -109,14 +120,23 @@ export interface StartJobOptions {
   title?: string;
 }
 
-export type SyncStatus = "idle" | "syncing" | "error";
+/**
+ * Connectivity + sync state.
+ * idle    = online and fully synced
+ * syncing = actively flushing the queue
+ * pending = queue not empty; will flush when next window opens
+ * error   = last flush attempt had failures
+ * offline = no network connectivity
+ */
+export type SyncStatus = "idle" | "syncing" | "pending" | "error" | "offline";
 
 export interface JobModeContextValue {
   // ── Current session ──────────────────────────────────────────────────────
   job: LocalJob | null;
   events: LocalEvent[];
   syncStatus: SyncStatus;
-  hasPendingSync: boolean;
+  pendingCount: number;
+  isOnline: boolean;
   /** Elapsed seconds since the job started (live counter). */
   elapsedSeconds: number;
   isLoaded: boolean;
@@ -133,10 +153,18 @@ export interface JobModeContextValue {
   updateEvent: (id: string, updates: Partial<LocalEvent>) => void;
   removeEvent: (id: string) => void;
 
+  // ── Sync control ──────────────────────────────────────────────────────────
+  retrySync: () => void;
+
   // ── Resume detection ──────────────────────────────────────────────────────
-  /** IDs of active jobs found in localStorage (for resume banner). */
   pendingJobIds: string[];
   loadPendingJobs: () => LocalJob[];
+}
+
+// ─── Client-side ID generator (matches server format) ─────────────────────────
+
+function clientId(prefix: string): string {
+  return `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
 // ─── localStorage helpers ─────────────────────────────────────────────────────
@@ -160,7 +188,7 @@ function writeSnapshot(job: LocalJob, events: LocalEvent[]): void {
       localStorage.removeItem(LS_ACTIVE_KEY);
     }
   } catch {
-    // Storage full — silently ignore; server sync is the backup
+    // Storage quota exceeded — silently ignore; server sync is the backup
   }
 }
 
@@ -184,11 +212,6 @@ function clearSnapshot(id: string): void {
   }
 }
 
-function getActiveJobId(): string | null {
-  return localStorage.getItem(LS_ACTIVE_KEY);
-}
-
-// Find all locally-saved jobs (active + paused ones that didn't get cleared)
 function getAllPendingJobIds(): string[] {
   const ids: string[] = [];
   for (let i = 0; i < localStorage.length; i++) {
@@ -200,7 +223,7 @@ function getAllPendingJobIds(): string[] {
   return ids;
 }
 
-// ─── API helpers ──────────────────────────────────────────────────────────────
+// ─── API helper ───────────────────────────────────────────────────────────────
 
 async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   const res = await fetch(`/api${path}`, {
@@ -212,11 +235,59 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// ─── ID generator ─────────────────────────────────────────────────────────────
+// ─── Queue operation executor ─────────────────────────────────────────────────
 
-let _seq = 0;
-function tempId(): string {
-  return `tmp_${Date.now()}_${++_seq}`;
+async function executeOp(
+  op: QueuedOp,
+  dispatch: React.Dispatch<Action>,
+): Promise<void> {
+  switch (op.type) {
+    case "create_job": {
+      await apiFetch<LocalJob>("/jobs", {
+        method: "POST",
+        body: JSON.stringify(op.payload),
+      });
+      break;
+    }
+    case "patch_job": {
+      const { jobId, ...data } = op.payload as { jobId: string; [k: string]: unknown };
+      await apiFetch(`/jobs/${jobId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
+      break;
+    }
+    case "create_event": {
+      const { jobId, ...body } = op.payload as { jobId: string; id: string; [k: string]: unknown };
+      await apiFetch(`/jobs/${jobId}/events`, {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      dispatch({ type: "MARK_EVENT_SYNCED", eventId: op.id });
+      break;
+    }
+    case "patch_event": {
+      const { jobId, eventId, ...data } = op.payload as {
+        jobId: string;
+        eventId: string;
+        [k: string]: unknown;
+      };
+      await apiFetch(`/jobs/${jobId}/events/${eventId}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      });
+      break;
+    }
+    case "delete_event": {
+      const { jobId, eventId } = op.payload as { jobId: string; eventId: string };
+      await apiFetch(`/jobs/${jobId}/events/${eventId}`, { method: "DELETE" });
+      break;
+    }
+    case "upload_photo": {
+      // Phase 2 — blobs stay in IndexedDB until photo upload is implemented
+      break;
+    }
+  }
 }
 
 // ─── State + reducer ──────────────────────────────────────────────────────────
@@ -224,7 +295,6 @@ function tempId(): string {
 interface State {
   job: LocalJob | null;
   events: LocalEvent[];
-  syncStatus: SyncStatus;
 }
 
 type Action =
@@ -233,8 +303,7 @@ type Action =
   | { type: "ADD_EVENT"; event: LocalEvent }
   | { type: "UPDATE_EVENT"; id: string; updates: Partial<LocalEvent> }
   | { type: "REMOVE_EVENT"; id: string }
-  | { type: "MARK_SYNCED"; tempId: string; realId: string }
-  | { type: "SET_SYNC_STATUS"; status: SyncStatus }
+  | { type: "MARK_EVENT_SYNCED"; eventId: string }
   | { type: "CLEAR" };
 
 function reducer(state: State, action: Action): State {
@@ -250,22 +319,22 @@ function reducer(state: State, action: Action): State {
       return {
         ...state,
         events: state.events.map((e) =>
-          e.id === action.id ? { ...e, ...action.updates, updatedAt: new Date().toISOString() } : e,
+          e.id === action.id
+            ? { ...e, ...action.updates, updatedAt: new Date().toISOString() }
+            : e,
         ),
       };
     case "REMOVE_EVENT":
       return { ...state, events: state.events.filter((e) => e.id !== action.id) };
-    case "MARK_SYNCED":
+    case "MARK_EVENT_SYNCED":
       return {
         ...state,
         events: state.events.map((e) =>
-          e.id === action.tempId ? { ...e, id: action.realId, _synced: true } : e,
+          e.id === action.eventId ? { ...e, _synced: true } : e,
         ),
       };
-    case "SET_SYNC_STATUS":
-      return { ...state, syncStatus: action.status };
     case "CLEAR":
-      return { job: null, events: [], syncStatus: "idle" };
+      return { job: null, events: [] };
     default:
       return state;
   }
@@ -284,19 +353,20 @@ export function useJobMode(): JobModeContextValue {
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function JobModeProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(reducer, {
-    job: null,
-    events: [],
-    syncStatus: "idle",
-  });
+  const { user } = useUser();
+
+  const [state, dispatch] = useReducer(reducer, { job: null, events: [] });
   const [isLoaded, setIsLoaded] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [pendingJobIds, setPendingJobIds] = useState<string[]>([]);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [isOnline, setIsOnline] = useState(() => navigator.onLine);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
 
-  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const syncingRef = useRef(false);
+  const isFlushingRef = useRef(false);
+  const flushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Elapsed time counter ─────────────────────────────────────────────────
+  // ── Elapsed timer ─────────────────────────────────────────────────────────
 
   useEffect(() => {
     if (!state.job || state.job.status !== "active") {
@@ -305,96 +375,140 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     }
     const start = state.job.startedAt;
     setElapsedSeconds(Math.floor((Date.now() - start) / 1000));
-
     const timer = setInterval(() => {
       setElapsedSeconds(Math.floor((Date.now() - start) / 1000));
     }, 1000);
     return () => clearInterval(timer);
   }, [state.job?.id, state.job?.status, state.job?.startedAt]);
 
-  // ── localStorage persistence (fires after every state change) ────────────
+  // ── localStorage persistence (fires after every state change) ─────────────
 
   useEffect(() => {
     if (!state.job) return;
     writeSnapshot(state.job, state.events);
   }, [state.job, state.events]);
 
-  // ── On mount: detect pending jobs ────────────────────────────────────────
+  // ── On mount: detect pending jobs + seed pending count ────────────────────
 
   useEffect(() => {
-    const ids = getAllPendingJobIds();
-    setPendingJobIds(ids);
+    setPendingJobIds(getAllPendingJobIds());
     setIsLoaded(true);
+    void getQueueSize().then(setPendingCount);
   }, []);
 
-  // ── Background sync to server ─────────────────────────────────────────────
-  // Called after any addEvent. Debounced 5 seconds.
+  // ── Online/offline detection ──────────────────────────────────────────────
 
-  const scheduleSyncToServer = useCallback(() => {
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    syncTimerRef.current = setTimeout(() => {
-      void syncToServer();
-    }, 5000);
-  }, []); // eslint-disable-line
+  const flushQueue = useCallback(async () => {
+    if (!navigator.onLine) return;
+    if (isFlushingRef.current) return;
+    isFlushingRef.current = true;
+    setSyncStatus("syncing");
 
-  const syncToServer = useCallback(async () => {
-    const { job, events } = state;
-    if (!job || syncingRef.current) return;
-
-    const pending = events.filter((e) => !e._synced);
-    if (pending.length === 0) return;
-
-    syncingRef.current = true;
-    dispatch({ type: "SET_SYNC_STATUS", status: "syncing" });
-
-    try {
-      for (const evt of pending) {
-        const body = {
-          eventType: evt.eventType,
-          title: evt.title,
-          timestamp: evt.timestamp,
-          notes: evt.notes,
-          voiceTranscript: evt.voiceTranscript,
-          voiceCorrected: evt.voiceCorrected,
-          photoUrls: evt.photoUrls,
-          measurements: evt.measurements,
-          parts: evt.parts,
-          metadata: evt.metadata,
-          sequenceNum: evt.sequenceNum,
-        };
-
-        const created = await apiFetch<{ id: string }>(`/jobs/${job.id}/events`, {
-          method: "POST",
-          body: JSON.stringify(body),
-        });
-
-        dispatch({ type: "MARK_SYNCED", tempId: evt.id, realId: created.id });
-      }
-      dispatch({ type: "SET_SYNC_STATUS", status: "idle" });
-    } catch {
-      dispatch({ type: "SET_SYNC_STATUS", status: "error" });
-    } finally {
-      syncingRef.current = false;
+    const ops = await getQueuedOps();
+    if (ops.length === 0) {
+      setSyncStatus("idle");
+      setPendingCount(0);
+      isFlushingRef.current = false;
+      return;
     }
-  }, [state]);
 
-  // ── startJob ──────────────────────────────────────────────────────────────
+    let hadError = false;
+    for (const op of ops) {
+      try {
+        await executeOp(op, dispatch);
+        await dequeueOp(op.id);
+      } catch (err) {
+        await markOpFailed(op.id, String(err));
+        hadError = true;
+      }
+    }
+
+    const remaining = await getQueueSize();
+    setPendingCount(remaining);
+    setSyncStatus(hadError ? "error" : remaining > 0 ? "pending" : "idle");
+    isFlushingRef.current = false;
+  }, []);
+
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      setSyncStatus((prev) => (prev === "offline" ? "pending" : prev));
+      void flushQueue();
+    };
+    const handleOffline = () => {
+      setIsOnline(false);
+      setSyncStatus("offline");
+    };
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+    // Reflect initial state
+    if (!navigator.onLine) setSyncStatus("offline");
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [flushQueue]);
+
+  // ── Periodic pending count refresh (every 10s) ────────────────────────────
+
+  useEffect(() => {
+    const timer = setInterval(async () => {
+      const count = await getQueueSize();
+      setPendingCount(count);
+    }, 10_000);
+    return () => clearInterval(timer);
+  }, []);
+
+  // ── Debounced flush (fires 3s after last write while online) ──────────────
+
+  const scheduleFlush = useCallback(() => {
+    if (flushTimerRef.current) clearTimeout(flushTimerRef.current);
+    flushTimerRef.current = setTimeout(() => {
+      void flushQueue();
+    }, 3000);
+  }, [flushQueue]);
+
+  // ── retrySync ─────────────────────────────────────────────────────────────
+
+  const retrySync = useCallback(() => {
+    setSyncStatus("pending");
+    void flushQueue();
+  }, [flushQueue]);
+
+  // ── startJob (offline-first) ──────────────────────────────────────────────
+  // Creates the job locally and enqueues a create_job operation.
+  // Network is NOT required — job starts immediately regardless of connectivity.
 
   const startJob = useCallback(async (opts?: StartJobOptions): Promise<LocalJob> => {
-    const serverJob = await apiFetch<LocalJob>("/jobs", {
-      method: "POST",
-      body: JSON.stringify(opts ?? {}),
-    });
+    const now = Date.now();
+    const jobId = clientId("job");
+    const userId = user?.id ?? "offline";
 
-    // Seed the timeline with a "job started" event immediately
+    const localJob: LocalJob = {
+      id: jobId,
+      userId,
+      unitId: opts?.unitId ?? null,
+      customer: opts?.customer ?? null,
+      site: opts?.site ?? null,
+      unitLabel: opts?.unitLabel ?? null,
+      title: opts?.title ?? null,
+      status: "active",
+      startedAt: now,
+      updatedAt: now,
+      completedAt: null,
+      metadata: null,
+      createdAt: new Date().toISOString(),
+    };
+
+    const startEventId = clientId("evt");
     const startEvent: LocalEvent = {
-      id: tempId(),
+      id: startEventId,
       _synced: false,
-      jobId: serverJob.id,
-      userId: serverJob.userId,
+      jobId,
+      userId,
       eventType: "dispatch",
       title: "Job Started",
-      timestamp: serverJob.startedAt,
+      timestamp: now,
       notes: null,
       voiceTranscript: null,
       voiceCorrected: null,
@@ -407,22 +521,60 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
       updatedAt: new Date().toISOString(),
     };
 
-    dispatch({ type: "SET_JOB", job: serverJob, events: [startEvent] });
-    setPendingJobIds((ids) => [...new Set([...ids, serverJob.id])]);
-    scheduleSyncToServer();
-    return serverJob;
-  }, [scheduleSyncToServer]);
+    // Write to state and localStorage immediately (offline-safe)
+    dispatch({ type: "SET_JOB", job: localJob, events: [startEvent] });
+    setPendingJobIds((ids) => [...new Set([...ids, jobId])]);
+
+    // Queue the server sync operations
+    const opTime = now;
+    await enqueueOp({
+      id: jobId,
+      type: "create_job",
+      payload: { id: jobId, ...opts },
+      enqueuedAt: opTime,
+      retries: 0,
+      lastError: null,
+    });
+    await enqueueOp({
+      id: startEventId,
+      type: "create_event",
+      payload: {
+        id: startEventId,
+        jobId,
+        eventType: "dispatch",
+        title: "Job Started",
+        timestamp: now,
+        sequenceNum: 0,
+      },
+      enqueuedAt: opTime + 1,
+      retries: 0,
+      lastError: null,
+    });
+
+    const count = await getQueueSize();
+    setPendingCount(count);
+
+    if (!isOnline) {
+      setSyncStatus("offline");
+    } else {
+      setSyncStatus("pending");
+      scheduleFlush();
+    }
+
+    return localJob;
+  }, [user?.id, isOnline, scheduleFlush]);
 
   // ── resumeJob ─────────────────────────────────────────────────────────────
 
   const resumeJob = useCallback(async (id: string): Promise<void> => {
-    // 1. Load from localStorage immediately (instant UI)
+    // 1. Load from localStorage immediately (instant, works offline)
     const snap = readSnapshot(id);
     if (snap) {
       dispatch({ type: "SET_JOB", job: snap.job, events: snap.events });
     }
 
-    // 2. Fetch from server in background (merge any server-side events)
+    // 2. Merge server state in background (if online)
+    if (!navigator.onLine) return;
     try {
       const data = await apiFetch<{ job: LocalJob; events: LocalEvent[] }>(`/jobs/${id}`);
       const serverEventIds = new Set(data.events.map((e) => e.id));
@@ -435,36 +587,51 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
       ].sort((a, b) => a.timestamp - b.timestamp || a.sequenceNum - b.sequenceNum);
 
       dispatch({ type: "SET_JOB", job: data.job, events: mergedEvents });
-      if (localUnsyncedEvents.length > 0) scheduleSyncToServer();
+
+      // If there are unsynced local events, push them now
+      if (localUnsyncedEvents.length > 0) {
+        scheduleFlush();
+      }
     } catch {
-      // Server fetch failed — localStorage data is still usable
+      // Network error — localStorage data is still displayed, which is correct
     }
-  }, [scheduleSyncToServer]);
+  }, [scheduleFlush]);
 
   // ── patchJob ──────────────────────────────────────────────────────────────
 
   const patchJob = useCallback((updates: Partial<LocalJob>) => {
+    if (!state.job) return;
+    const jobId = state.job.id;
     dispatch({ type: "PATCH_JOB", updates });
-    if (state.job) {
-      void apiFetch(`/jobs/${state.job.id}`, {
-        method: "PATCH",
-        body: JSON.stringify(updates),
-      }).catch(() => {/* best-effort */});
-    }
-  }, [state.job]);
+
+    void enqueueOp({
+      id: `patch_job_${jobId}_${Date.now()}`,
+      type: "patch_job",
+      payload: { jobId, ...updates },
+      enqueuedAt: Date.now(),
+      retries: 0,
+      lastError: null,
+    }).then(async () => {
+      const count = await getQueueSize();
+      setPendingCount(count);
+      scheduleFlush();
+    });
+  }, [state.job, scheduleFlush]);
 
   // ── completeJob ───────────────────────────────────────────────────────────
 
   const completeJob = useCallback(async (): Promise<void> => {
     if (!state.job) return;
-
     const now = Date.now();
-    // Add final timeline event
+    const jobId = state.job.id;
+    const userId = state.job.userId;
+    const eventId = clientId("evt");
+
     const completionEvent: LocalEvent = {
-      id: tempId(),
+      id: eventId,
       _synced: false,
-      jobId: state.job.id,
-      userId: state.job.userId,
+      jobId,
+      userId,
       eventType: "completed",
       title: "Job Completed",
       timestamp: now,
@@ -483,23 +650,42 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "ADD_EVENT", event: completionEvent });
     dispatch({ type: "PATCH_JOB", updates: { status: "completed", completedAt: now } });
 
-    // Sync immediately (don't wait for debounce)
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    await apiFetch(`/jobs/${state.job.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: "completed", completedAt: now }),
-    }).catch(() => {});
-
-    await apiFetch(`/jobs/${state.job.id}/events`, {
-      method: "POST",
-      body: JSON.stringify({
+    // Queue both ops — these work offline
+    const enqueueTime = now;
+    await enqueueOp({
+      id: `patch_job_${jobId}_complete`,
+      type: "patch_job",
+      payload: { jobId, status: "completed", completedAt: now },
+      enqueuedAt: enqueueTime,
+      retries: 0,
+      lastError: null,
+    });
+    await enqueueOp({
+      id: eventId,
+      type: "create_event",
+      payload: {
+        id: eventId,
+        jobId,
         eventType: "completed",
         title: "Job Completed",
         timestamp: now,
         sequenceNum: state.events.length,
-      }),
-    }).catch(() => {});
-  }, [state.job, state.events.length]);
+      },
+      enqueuedAt: enqueueTime + 1,
+      retries: 0,
+      lastError: null,
+    });
+
+    const count = await getQueueSize();
+    setPendingCount(count);
+
+    if (navigator.onLine) {
+      // Flush immediately — job completion is high priority
+      void flushQueue();
+    } else {
+      setSyncStatus("offline");
+    }
+  }, [state.job, state.events.length, flushQueue]);
 
   // ── clearJob ──────────────────────────────────────────────────────────────
 
@@ -508,13 +694,15 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     dispatch({ type: "CLEAR" });
   }, [state.job]);
 
-  // ── addEvent (optimistic) ─────────────────────────────────────────────────
+  // ── addEvent (optimistic, offline-first) ─────────────────────────────────
 
   const addEvent = useCallback((input: CreateEventInput): LocalEvent => {
     if (!state.job) throw new Error("No active job");
     const now = input.timestamp ?? Date.now();
+    const eventId = clientId("evt");
+
     const event: LocalEvent = {
-      id: tempId(),
+      id: eventId,
       _synced: false,
       jobId: state.job.id,
       userId: state.job.userId,
@@ -532,35 +720,80 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
+
     dispatch({ type: "ADD_EVENT", event });
-    scheduleSyncToServer();
+
+    // Queue for server sync (fires regardless of connectivity)
+    void enqueueOp({
+      id: eventId,
+      type: "create_event",
+      payload: {
+        id: eventId,
+        jobId: state.job.id,
+        eventType: input.eventType,
+        title: input.title,
+        timestamp: now,
+        notes: input.notes,
+        voiceTranscript: input.voiceTranscript,
+        voiceCorrected: input.voiceCorrected,
+        photoUrls: input.photoUrls,
+        measurements: input.measurements,
+        parts: input.parts,
+        metadata: input.metadata,
+        sequenceNum: state.events.length,
+      },
+      enqueuedAt: now,
+      retries: 0,
+      lastError: null,
+    }).then(async () => {
+      const count = await getQueueSize();
+      setPendingCount(count);
+      if (!isOnline) {
+        setSyncStatus("offline");
+      } else {
+        setSyncStatus("pending");
+        scheduleFlush();
+      }
+    });
+
     return event;
-  }, [state.job, state.events.length, scheduleSyncToServer]);
+  }, [state.job, state.events.length, isOnline, scheduleFlush]);
 
   // ── updateEvent ───────────────────────────────────────────────────────────
 
   const updateEvent = useCallback((id: string, updates: Partial<LocalEvent>) => {
+    if (!state.job) return;
+    const jobId = state.job.id;
     dispatch({ type: "UPDATE_EVENT", id, updates });
-    if (state.job) {
-      void apiFetch(`/jobs/${state.job.id}/events/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify(updates),
-      }).catch(() => {});
-    }
-  }, [state.job]);
+
+    void enqueueOp({
+      id: `patch_evt_${id}_${Date.now()}`,
+      type: "patch_event",
+      payload: { jobId, eventId: id, ...updates },
+      enqueuedAt: Date.now(),
+      retries: 0,
+      lastError: null,
+    }).then(() => scheduleFlush());
+  }, [state.job, scheduleFlush]);
 
   // ── removeEvent ───────────────────────────────────────────────────────────
 
   const removeEvent = useCallback((id: string) => {
+    if (!state.job) return;
+    const jobId = state.job.id;
     dispatch({ type: "REMOVE_EVENT", id });
-    if (state.job) {
-      void apiFetch(`/jobs/${state.job.id}/events/${id}`, {
-        method: "DELETE",
-      }).catch(() => {});
-    }
-  }, [state.job]);
 
-  // ── loadPendingJobs (for resume list) ─────────────────────────────────────
+    void enqueueOp({
+      id: `del_evt_${id}`,
+      type: "delete_event",
+      payload: { jobId, eventId: id },
+      enqueuedAt: Date.now(),
+      retries: 0,
+      lastError: null,
+    }).then(() => scheduleFlush());
+  }, [state.job, scheduleFlush]);
+
+  // ── loadPendingJobs ───────────────────────────────────────────────────────
 
   const loadPendingJobs = useCallback((): LocalJob[] => {
     return pendingJobIds
@@ -569,13 +802,16 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
       .sort((a, b) => b.updatedAt - a.updatedAt);
   }, [pendingJobIds]);
 
+  // ── Derived hasPendingSync (backwards-compat) ─────────────────────────────
+
   const hasPendingSync = state.events.some((e) => !e._synced);
 
   const value: JobModeContextValue = {
     job: state.job,
     events: state.events,
-    syncStatus: state.syncStatus,
-    hasPendingSync,
+    syncStatus,
+    pendingCount,
+    isOnline,
     elapsedSeconds,
     isLoaded,
     startJob,
@@ -586,6 +822,7 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     addEvent,
     updateEvent,
     removeEvent,
+    retrySync,
     pendingJobIds,
     loadPendingJobs,
   };

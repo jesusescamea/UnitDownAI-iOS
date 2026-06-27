@@ -2,4 +2,4 @@
 - [Equipment Timeline architecture](equipment-timeline.md) — diagnostic events are virtual (synthesized from diagnostic_logs at query time), not stored in equipment_timeline; avoids dual-write sync issues.
 - [Capacitor iOS pk_test_ root cause](capacitor-ios-clerk-key.md) — dev env VITE_CLERK_PUBLISHABLE_KEY=pk_test_ bakes into iOS bundle; fix is build with pk_live_ then cap sync, not just changing source.
 - [Trial + credit + reward system](trial-credit-reward-system.md) — full architecture for 7-day trial, 25 initial credits, 5-credit onboarding rewards, and backend enforcement via user_trials table.
-- [Voice Intelligence 2.0 architecture](voice-intelligence-architecture.md) — separate /api/ai/voice/interpret endpoint (not /api/ai/polish); single JSON-mode GPT call returns all 3 versions + confidence + uncertainPhrases + memoryExtracts; per-user learning stored in localStorage.
+- [Job Mode offline-first architecture](job-mode-offline.md) — client-generated permanent IDs, IndexedDB sync queue (idb), onConflictDoNothing idempotency; startJob never requires network.

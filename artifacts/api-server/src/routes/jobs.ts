@@ -27,6 +27,9 @@ function newId(prefix: string): string {
 // ─── Validation schemas ───────────────────────────────────────────────────────
 
 const CreateJobSchema = z.object({
+  // Client-provided ID for offline-first job creation (idempotency).
+  // If omitted, the server generates one.
+  id:        z.string().optional(),
   unitId:    z.string().optional(),
   customer:  z.string().optional(),
   site:      z.string().optional(),
@@ -46,9 +49,12 @@ const UpdateJobSchema = z.object({
 });
 
 const CreateEventSchema = z.object({
+  // Client-provided ID for idempotency (offline sync deduplication).
+  // If omitted, the server generates one.
+  id:              z.string().optional(),
   eventType:       z.string(),
   title:           z.string(),
-  timestamp:       z.number(),
+  timestamp:       z.number().optional(),
   notes:           z.string().optional(),
   voiceTranscript: z.string().optional(),
   voiceCorrected:  z.string().optional(),
@@ -103,8 +109,9 @@ jobsRouter.post("/jobs", async (req: Request, res: Response) => {
   }
 
   const now = Date.now();
+  const jobId = parsed.data.id ?? newId("job");
   const newJob = {
-    id:          newId("job"),
+    id:          jobId,
     userId,
     unitId:      parsed.data.unitId      ?? null,
     customer:    parsed.data.customer    ?? null,
@@ -119,9 +126,12 @@ jobsRouter.post("/jobs", async (req: Request, res: Response) => {
   };
 
   try {
-    const [created] = await db.insert(jobs).values(newJob).returning();
-    req.log.info({ jobId: created.id }, "Job created");
-    res.status(201).json(created);
+    // onConflictDoNothing: if the client retries after a network failure, the
+    // second call is silently ignored and we return the already-created row.
+    await db.insert(jobs).values(newJob).onConflictDoNothing();
+    const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId));
+    req.log.info({ jobId: job.id }, "Job created or already existed");
+    res.status(201).json(job);
   } catch (err) {
     req.log.error({ err }, "Failed to create job");
     res.status(500).json({ error: "Failed to create job" });
@@ -256,13 +266,14 @@ jobsRouter.post("/jobs/:jobId/events", async (req: Request, res: Response) => {
       return;
     }
 
+    const eventId = parsed.data.id ?? newId("evt");
     const event = {
-      id:              newId("evt"),
+      id:              eventId,
       jobId,
       userId,
       eventType:       parsed.data.eventType,
       title:           parsed.data.title,
-      timestamp:       parsed.data.timestamp,
+      timestamp:       parsed.data.timestamp ?? Date.now(),
       notes:           parsed.data.notes           ?? null,
       voiceTranscript: parsed.data.voiceTranscript ?? null,
       voiceCorrected:  parsed.data.voiceCorrected  ?? null,
@@ -273,7 +284,14 @@ jobsRouter.post("/jobs/:jobId/events", async (req: Request, res: Response) => {
       sequenceNum:     parsed.data.sequenceNum      ?? 0,
     };
 
-    const [created] = await db.insert(jobTimelineEvents).values(event).returning();
+    // onConflictDoNothing: idempotent for offline sync retries.
+    // If the client sends the same event twice, the second insert is silently
+    // ignored and we return the already-persisted row.
+    await db.insert(jobTimelineEvents).values(event).onConflictDoNothing();
+    const [created] = await db
+      .select()
+      .from(jobTimelineEvents)
+      .where(eq(jobTimelineEvents.id, eventId));
 
     // Touch the parent job's updatedAt so resume detection works correctly
     await db

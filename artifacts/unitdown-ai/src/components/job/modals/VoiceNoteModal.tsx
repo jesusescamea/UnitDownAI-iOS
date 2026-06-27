@@ -5,17 +5,21 @@
  * 1. Tap "Start Recording" → Web Speech API begins listening
  * 2. Technician speaks naturally
  * 3. Tap "Stop" → transcript captured
- * 4. HVAC Voice Interpreter corrects terminology (XV→TXV, etc.)
- * 5. Technician can edit before adding
+ * 4. Online: HVAC Voice Interpreter corrects terminology (TXV, superheat, etc.)
+ *    Offline: raw transcript saved immediately with ai_pending flag
+ * 5. Technician can edit before adding (online flow only)
  * 6. Tap "Add to Timeline" → optimistic add, modal closes
  *
- * Uses the same HVAC Voice Interpreter endpoint as SmartServiceReport.
- * Future: Phase 2 will pipe corrected transcript into AI enrichment.
+ * AI fallback (offline):
+ * - Skips the interpretation call entirely
+ * - Saves voice note with metadata.ai_pending = true
+ * - When connection returns, AI correction can be applied retrospectively
+ * - Shows clear message: "No reception. Saved locally. Correction will apply when connection returns."
  */
 
 import { useState, useRef, useCallback } from "react";
 import {
-  Mic, MicOff, Loader2, X, CheckCircle2, Wand2, AlertCircle,
+  Mic, MicOff, Loader2, X, CheckCircle2, Wand2, AlertCircle, WifiOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -25,7 +29,7 @@ interface VoiceNoteModalProps {
   onClose: () => void;
 }
 
-type Phase = "idle" | "recording" | "interpreting" | "review";
+type Phase = "idle" | "recording" | "interpreting" | "review" | "offline_saved";
 
 // ─── Web Speech API types ──────────────────────────────────────────────────────
 
@@ -79,7 +83,7 @@ async function interpretTranscript(
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
-  const { addEvent } = useJobMode();
+  const { addEvent, isOnline } = useJobMode();
   const [phase, setPhase] = useState<Phase>("idle");
   const [rawTranscript, setRawTranscript] = useState("");
   const [corrected, setCorrected] = useState("");
@@ -138,16 +142,14 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
     };
 
     rec.onend = () => {
-      if (phase === "recording") {
-        // Auto-restarted by stopRecording flow
-      }
+      // handled by stopRecording
     };
 
     rec.start();
     recognitionRef.current = rec;
     setPhase("recording");
     setRawTranscript("");
-  }, [phase]);
+  }, []);
 
   const stopRecording = useCallback(async () => {
     recognitionRef.current?.stop();
@@ -159,16 +161,34 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
       return;
     }
 
+    // ── Offline path: save immediately without AI interpretation ─────────────
+    if (!isOnline) {
+      const title = transcript.slice(0, 80);
+      addEvent({
+        eventType: "voice_note",
+        title: (title.charAt(0).toUpperCase() + title.slice(1)) || "Voice Note",
+        voiceTranscript: transcript.trim(),
+        voiceCorrected: undefined,
+        metadata: {
+          ai_pending: true,
+          ai_task: "voice_interpret",
+          ai_note: "HVAC terminology correction pending — no connection at time of recording",
+        },
+      });
+      setPhase("offline_saved");
+      return;
+    }
+
+    // ── Online path: run HVAC interpretation ─────────────────────────────────
     setPhase("interpreting");
     const { corrected: interp, error } = await interpretTranscript(transcript.trim());
     if (error) setInterpError(error);
-
     setCorrected(interp);
     setEditedCorrected(interp);
     setPhase("review");
-  }, [rawTranscript]);
+  }, [rawTranscript, isOnline, addEvent]);
 
-  // ── Confirm + add to timeline ─────────────────────────────────────────────
+  // ── Confirm + add to timeline (online review phase) ────────────────────────
 
   const handleAdd = () => {
     const titleRaw = editedCorrected.slice(0, 80);
@@ -188,7 +208,10 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
   return (
     <>
       {/* Backdrop */}
-      <div className="fixed inset-0 bg-black/50 z-40" onClick={phase === "recording" ? undefined : onClose} />
+      <div
+        className="fixed inset-0 bg-black/50 z-40"
+        onClick={phase === "recording" ? undefined : onClose}
+      />
 
       {/* Sheet */}
       <div className="fixed inset-x-0 bottom-0 z-50 rounded-t-2xl bg-white dark:bg-zinc-900 shadow-2xl safe-area-pb max-h-[85vh] flex flex-col">
@@ -205,7 +228,11 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
             </div>
             <div>
               <h2 className="font-semibold text-zinc-900 dark:text-zinc-100">Voice Note</h2>
-              <p className="text-xs text-zinc-500">Speak naturally — HVAC terms corrected automatically</p>
+              <p className="text-xs text-zinc-500">
+                {isOnline
+                  ? "Speak naturally — HVAC terms corrected automatically"
+                  : "Offline — saved locally, correction runs when connection returns"}
+              </p>
             </div>
           </div>
           <button
@@ -220,6 +247,16 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
           </button>
         </div>
 
+        {/* Offline badge */}
+        {!isOnline && phase !== "offline_saved" && (
+          <div className="mx-5 mb-3 flex items-center gap-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-3 py-2 shrink-0">
+            <WifiOff className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+            <p className="text-xs text-amber-700 dark:text-amber-400">
+              No reception — HVAC correction will apply automatically when connection returns.
+            </p>
+          </div>
+        )}
+
         {/* Content */}
         <div className="flex-1 overflow-y-auto px-5 pb-6">
           {/* Error messages */}
@@ -233,7 +270,6 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
           {/* ── Idle / recording phase ── */}
           {(phase === "idle" || phase === "recording") && (
             <div className="flex flex-col items-center py-6 gap-6">
-              {/* Big mic button */}
               <button
                 onClick={phase === "idle" ? startRecording : stopRecording}
                 className={`w-24 h-24 rounded-full flex items-center justify-center transition-all duration-200 shadow-lg ${
@@ -257,7 +293,6 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
                 )}
               </p>
 
-              {/* Live transcript preview */}
               {rawTranscript && (
                 <div className="w-full rounded-xl bg-zinc-50 dark:bg-zinc-800 p-4">
                   <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-2">
@@ -281,7 +316,28 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
             </div>
           )}
 
-          {/* ── Review phase ── */}
+          {/* ── Offline saved confirmation ── */}
+          {phase === "offline_saved" && (
+            <div className="flex flex-col items-center py-8 gap-5 text-center">
+              <div className="w-16 h-16 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center">
+                <WifiOff className="w-8 h-8 text-amber-500" />
+              </div>
+              <div>
+                <p className="font-semibold text-zinc-900 dark:text-zinc-100 mb-1">
+                  Saved locally
+                </p>
+                <p className="text-sm text-zinc-500 max-w-xs">
+                  No reception. Voice note added to timeline.{" "}
+                  HVAC correction will run automatically when connection returns.
+                </p>
+              </div>
+              <Button className="h-11 px-8 bg-blue-600 hover:bg-blue-700 text-white" onClick={onClose}>
+                Done
+              </Button>
+            </div>
+          )}
+
+          {/* ── Review phase (online) ── */}
           {phase === "review" && (
             <div className="space-y-4 pt-2">
               {interpError && (
@@ -291,7 +347,6 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
                 </div>
               )}
 
-              {/* Corrected transcript (editable) */}
               <div>
                 <div className="flex items-center gap-1.5 mb-2">
                   <Wand2 className="w-3.5 h-3.5 text-blue-500" />
@@ -308,7 +363,6 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
                 />
               </div>
 
-              {/* Original (read-only) */}
               {rawTranscript !== corrected && (
                 <div>
                   <p className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wide mb-1.5">
@@ -320,7 +374,6 @@ export function VoiceNoteModal({ onClose }: VoiceNoteModalProps) {
                 </div>
               )}
 
-              {/* Actions */}
               <div className="flex gap-3 pt-2">
                 <Button
                   variant="outline"
