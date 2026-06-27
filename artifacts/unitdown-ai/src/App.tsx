@@ -26,6 +26,8 @@ import UnitFormPage from "./pages/UnitFormPage";
 import UnitDetailPage from "./pages/UnitDetailPage";
 import DiagnosticLogDetailPage from "./pages/DiagnosticLogDetailPage";
 import DevEquipmentPreview from "./pages/DevEquipmentPreview";
+import { JobModePage } from "./pages/JobModePage";
+import { JobModeProvider } from "./context/JobModeContext";
 import InstallPromptBanner from "./components/InstallPromptBanner";
 import EmailWallModal from "./components/EmailWallModal";
 import { getFingerprint } from "./lib/fingerprint";
@@ -84,6 +86,7 @@ import {
   FlaskConical,
   BookOpen,
   KeyRound,
+  Briefcase,
   LogOut,
   UserCircle,
   ThumbsUp,
@@ -2282,6 +2285,16 @@ function Home() {
                 <span className="hidden sm:inline">Field Hub</span>
               </button>
             )}
+            {clerkLoaded && clerkUser && (
+              <button
+                onClick={() => navigate("/job")}
+                className="flex items-center gap-1.5 text-sm font-semibold text-slate-600 hover:text-blue-600 transition-colors px-2 sm:px-3 py-1.5 rounded-lg hover:bg-blue-50"
+                data-testid="nav-job-mode"
+              >
+                <Briefcase className="w-4 h-4" />
+                <span className="hidden sm:inline">Job Mode</span>
+              </button>
+            )}
           </nav>
 
           <div className="flex items-center gap-2">
@@ -3449,31 +3462,40 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
-          <Switch>
-            <Route path="/" component={Home} />
-            <Route path="/admin" component={AdminView} />
-            <Route path="/terms" component={TermsPage} />
-            <Route path="/privacy" component={PrivacyPage} />
-            <Route path="/legal" component={LegalPage} />
-            <Route path="/login" component={LoginPage} />
-            <Route path="/signup" component={SignupPage} />
-            <Route path="/sso-callback" component={SsoCallbackPage} />
-            <Route path="/guides" component={TroubleshootingHub} />
-            <Route path="/guides/:slug" component={SeoPage} />
-            <Route path="/brand-guides" component={BrandHub} />
-            <Route path="/brand-guides/:slug" component={BrandPage} />
-            <Route path="/sponsor" component={SponsorPage} />
-            <Route path="/account" component={AccountPage} />
-            <Route path="/records" component={RecordsPage} />
-            <Route path="/records/new" component={UnitFormPage} />
-            <Route path="/records/:id/edit" component={UnitFormPage} />
-            <Route path="/records/:id" component={UnitDetailPage} />
-            <Route path="/logs/:id" component={DiagnosticLogDetailPage} />
-            <Route path="/dev/equipment-preview" component={DevEquipmentPreview} />
-            <Route path="*">
-              <div className="p-10 font-bold text-xl">404 Not Found</div>
-            </Route>
-          </Switch>
+          <JobModeProvider>
+            <Switch>
+              <Route path="/" component={Home} />
+              <Route path="/admin" component={AdminView} />
+              <Route path="/terms" component={TermsPage} />
+              <Route path="/privacy" component={PrivacyPage} />
+              <Route path="/legal" component={LegalPage} />
+              <Route path="/login" component={LoginPage} />
+              <Route path="/signup" component={SignupPage} />
+              <Route path="/sso-callback" component={SsoCallbackPage} />
+              <Route path="/guides" component={TroubleshootingHub} />
+              <Route path="/guides/:slug" component={SeoPage} />
+              <Route path="/brand-guides" component={BrandHub} />
+              <Route path="/brand-guides/:slug" component={BrandPage} />
+              <Route path="/sponsor" component={SponsorPage} />
+              <Route path="/account" component={AccountPage} />
+              <Route path="/records" component={RecordsPage} />
+              <Route path="/records/new" component={UnitFormPage} />
+              <Route path="/records/:id/edit" component={UnitFormPage} />
+              <Route path="/records/:id" component={UnitDetailPage} />
+              <Route path="/logs/:id" component={DiagnosticLogDetailPage} />
+              <Route path="/dev/equipment-preview" component={DevEquipmentPreview} />
+              {/* ── Job Mode ── */}
+              <Route path="/job">
+                <JobModePage />
+              </Route>
+              <Route path="/job/:id">
+                {(params) => <JobModePage jobId={params.id} />}
+              </Route>
+              <Route path="*">
+                <div className="p-10 font-bold text-xl">404 Not Found</div>
+              </Route>
+            </Switch>
+          </JobModeProvider>
         </WouterRouter>
         <Toaster />
         <InstallPromptBanner />

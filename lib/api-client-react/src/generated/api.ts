@@ -19,9 +19,16 @@ import type {
 import type {
   AiPolishBody,
   AiPolishResponse,
+  CreateJobBody,
+  CreateJobEventBody,
   DiagnoseHvacBody,
   HealthStatus,
   HvacDiagnosisResult,
+  Job,
+  JobTimelineEvent,
+  JobWithEvents,
+  UpdateJobBody,
+  UpdateJobEventBody,
   VoiceInterpretBody,
   VoiceInterpretResult,
   VoiceReportBody,
@@ -461,4 +468,661 @@ export const useDiagnoseHvac = <
   TContext
 > => {
   return useMutation(getDiagnoseHvacMutationOptions(options));
+};
+
+/**
+ * @summary List all jobs for the authenticated user
+ */
+export const getListJobsUrl = () => {
+  return `/api/jobs`;
+};
+
+export const listJobs = async (options?: RequestInit): Promise<Job[]> => {
+  return customFetch<Job[]>(getListJobsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListJobsQueryKey = () => {
+  return [`/api/jobs`] as const;
+};
+
+export const getListJobsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listJobs>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listJobs>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListJobsQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listJobs>>> = ({
+    signal,
+  }) => listJobs({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listJobs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListJobsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listJobs>>
+>;
+export type ListJobsQueryError = ErrorType<void>;
+
+/**
+ * @summary List all jobs for the authenticated user
+ */
+
+export function useListJobs<
+  TData = Awaited<ReturnType<typeof listJobs>>,
+  TError = ErrorType<void>,
+>(options?: {
+  query?: UseQueryOptions<Awaited<ReturnType<typeof listJobs>>, TError, TData>;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListJobsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Create a new job session
+ */
+export const getCreateJobUrl = () => {
+  return `/api/jobs`;
+};
+
+export const createJob = async (
+  createJobBody: CreateJobBody,
+  options?: RequestInit,
+): Promise<Job> => {
+  return customFetch<Job>(getCreateJobUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createJobBody),
+  });
+};
+
+export const getCreateJobMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createJob>>,
+    TError,
+    { data: BodyType<CreateJobBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createJob>>,
+  TError,
+  { data: BodyType<CreateJobBody> },
+  TContext
+> => {
+  const mutationKey = ["createJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createJob>>,
+    { data: BodyType<CreateJobBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createJob(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createJob>>
+>;
+export type CreateJobMutationBody = BodyType<CreateJobBody>;
+export type CreateJobMutationError = ErrorType<void>;
+
+/**
+ * @summary Create a new job session
+ */
+export const useCreateJob = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createJob>>,
+    TError,
+    { data: BodyType<CreateJobBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createJob>>,
+  TError,
+  { data: BodyType<CreateJobBody> },
+  TContext
+> => {
+  return useMutation(getCreateJobMutationOptions(options));
+};
+
+/**
+ * @summary Get a job with its full timeline
+ */
+export const getGetJobUrl = (jobId: string) => {
+  return `/api/jobs/${jobId}`;
+};
+
+export const getJob = async (
+  jobId: string,
+  options?: RequestInit,
+): Promise<JobWithEvents> => {
+  return customFetch<JobWithEvents>(getGetJobUrl(jobId), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetJobQueryKey = (jobId: string) => {
+  return [`/api/jobs/${jobId}`] as const;
+};
+
+export const getGetJobQueryOptions = <
+  TData = Awaited<ReturnType<typeof getJob>>,
+  TError = ErrorType<void>,
+>(
+  jobId: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getJob>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetJobQueryKey(jobId);
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getJob>>> = ({
+    signal,
+  }) => getJob(jobId, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!jobId,
+    ...queryOptions,
+  } as UseQueryOptions<Awaited<ReturnType<typeof getJob>>, TError, TData> & {
+    queryKey: QueryKey;
+  };
+};
+
+export type GetJobQueryResult = NonNullable<Awaited<ReturnType<typeof getJob>>>;
+export type GetJobQueryError = ErrorType<void>;
+
+/**
+ * @summary Get a job with its full timeline
+ */
+
+export function useGetJob<
+  TData = Awaited<ReturnType<typeof getJob>>,
+  TError = ErrorType<void>,
+>(
+  jobId: string,
+  options?: {
+    query?: UseQueryOptions<Awaited<ReturnType<typeof getJob>>, TError, TData>;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetJobQueryOptions(jobId, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update a job (status, title, metadata)
+ */
+export const getUpdateJobUrl = (jobId: string) => {
+  return `/api/jobs/${jobId}`;
+};
+
+export const updateJob = async (
+  jobId: string,
+  updateJobBody: UpdateJobBody,
+  options?: RequestInit,
+): Promise<Job> => {
+  return customFetch<Job>(getUpdateJobUrl(jobId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateJobBody),
+  });
+};
+
+export const getUpdateJobMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateJob>>,
+    TError,
+    { jobId: string; data: BodyType<UpdateJobBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateJob>>,
+  TError,
+  { jobId: string; data: BodyType<UpdateJobBody> },
+  TContext
+> => {
+  const mutationKey = ["updateJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateJob>>,
+    { jobId: string; data: BodyType<UpdateJobBody> }
+  > = (props) => {
+    const { jobId, data } = props ?? {};
+
+    return updateJob(jobId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateJob>>
+>;
+export type UpdateJobMutationBody = BodyType<UpdateJobBody>;
+export type UpdateJobMutationError = ErrorType<void>;
+
+/**
+ * @summary Update a job (status, title, metadata)
+ */
+export const useUpdateJob = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateJob>>,
+    TError,
+    { jobId: string; data: BodyType<UpdateJobBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateJob>>,
+  TError,
+  { jobId: string; data: BodyType<UpdateJobBody> },
+  TContext
+> => {
+  return useMutation(getUpdateJobMutationOptions(options));
+};
+
+/**
+ * @summary Delete a job and all its events
+ */
+export const getDeleteJobUrl = (jobId: string) => {
+  return `/api/jobs/${jobId}`;
+};
+
+export const deleteJob = async (
+  jobId: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteJobUrl(jobId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteJobMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteJob>>,
+    TError,
+    { jobId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteJob>>,
+  TError,
+  { jobId: string },
+  TContext
+> => {
+  const mutationKey = ["deleteJob"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteJob>>,
+    { jobId: string }
+  > = (props) => {
+    const { jobId } = props ?? {};
+
+    return deleteJob(jobId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteJobMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteJob>>
+>;
+
+export type DeleteJobMutationError = ErrorType<void>;
+
+/**
+ * @summary Delete a job and all its events
+ */
+export const useDeleteJob = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteJob>>,
+    TError,
+    { jobId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteJob>>,
+  TError,
+  { jobId: string },
+  TContext
+> => {
+  return useMutation(getDeleteJobMutationOptions(options));
+};
+
+/**
+ * @summary Append a timeline event to a job
+ */
+export const getCreateJobEventUrl = (jobId: string) => {
+  return `/api/jobs/${jobId}/events`;
+};
+
+export const createJobEvent = async (
+  jobId: string,
+  createJobEventBody: CreateJobEventBody,
+  options?: RequestInit,
+): Promise<JobTimelineEvent> => {
+  return customFetch<JobTimelineEvent>(getCreateJobEventUrl(jobId), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createJobEventBody),
+  });
+};
+
+export const getCreateJobEventMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createJobEvent>>,
+    TError,
+    { jobId: string; data: BodyType<CreateJobEventBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createJobEvent>>,
+  TError,
+  { jobId: string; data: BodyType<CreateJobEventBody> },
+  TContext
+> => {
+  const mutationKey = ["createJobEvent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createJobEvent>>,
+    { jobId: string; data: BodyType<CreateJobEventBody> }
+  > = (props) => {
+    const { jobId, data } = props ?? {};
+
+    return createJobEvent(jobId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateJobEventMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createJobEvent>>
+>;
+export type CreateJobEventMutationBody = BodyType<CreateJobEventBody>;
+export type CreateJobEventMutationError = ErrorType<void>;
+
+/**
+ * @summary Append a timeline event to a job
+ */
+export const useCreateJobEvent = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createJobEvent>>,
+    TError,
+    { jobId: string; data: BodyType<CreateJobEventBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createJobEvent>>,
+  TError,
+  { jobId: string; data: BodyType<CreateJobEventBody> },
+  TContext
+> => {
+  return useMutation(getCreateJobEventMutationOptions(options));
+};
+
+/**
+ * @summary Edit a timeline event
+ */
+export const getUpdateJobEventUrl = (jobId: string, eventId: string) => {
+  return `/api/jobs/${jobId}/events/${eventId}`;
+};
+
+export const updateJobEvent = async (
+  jobId: string,
+  eventId: string,
+  updateJobEventBody: UpdateJobEventBody,
+  options?: RequestInit,
+): Promise<JobTimelineEvent> => {
+  return customFetch<JobTimelineEvent>(getUpdateJobEventUrl(jobId, eventId), {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(updateJobEventBody),
+  });
+};
+
+export const getUpdateJobEventMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateJobEvent>>,
+    TError,
+    { jobId: string; eventId: string; data: BodyType<UpdateJobEventBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateJobEvent>>,
+  TError,
+  { jobId: string; eventId: string; data: BodyType<UpdateJobEventBody> },
+  TContext
+> => {
+  const mutationKey = ["updateJobEvent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateJobEvent>>,
+    { jobId: string; eventId: string; data: BodyType<UpdateJobEventBody> }
+  > = (props) => {
+    const { jobId, eventId, data } = props ?? {};
+
+    return updateJobEvent(jobId, eventId, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateJobEventMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateJobEvent>>
+>;
+export type UpdateJobEventMutationBody = BodyType<UpdateJobEventBody>;
+export type UpdateJobEventMutationError = ErrorType<void>;
+
+/**
+ * @summary Edit a timeline event
+ */
+export const useUpdateJobEvent = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateJobEvent>>,
+    TError,
+    { jobId: string; eventId: string; data: BodyType<UpdateJobEventBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateJobEvent>>,
+  TError,
+  { jobId: string; eventId: string; data: BodyType<UpdateJobEventBody> },
+  TContext
+> => {
+  return useMutation(getUpdateJobEventMutationOptions(options));
+};
+
+/**
+ * @summary Remove a timeline event
+ */
+export const getDeleteJobEventUrl = (jobId: string, eventId: string) => {
+  return `/api/jobs/${jobId}/events/${eventId}`;
+};
+
+export const deleteJobEvent = async (
+  jobId: string,
+  eventId: string,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteJobEventUrl(jobId, eventId), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteJobEventMutationOptions = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteJobEvent>>,
+    TError,
+    { jobId: string; eventId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteJobEvent>>,
+  TError,
+  { jobId: string; eventId: string },
+  TContext
+> => {
+  const mutationKey = ["deleteJobEvent"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteJobEvent>>,
+    { jobId: string; eventId: string }
+  > = (props) => {
+    const { jobId, eventId } = props ?? {};
+
+    return deleteJobEvent(jobId, eventId, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteJobEventMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteJobEvent>>
+>;
+
+export type DeleteJobEventMutationError = ErrorType<void>;
+
+/**
+ * @summary Remove a timeline event
+ */
+export const useDeleteJobEvent = <
+  TError = ErrorType<void>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteJobEvent>>,
+    TError,
+    { jobId: string; eventId: string },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteJobEvent>>,
+  TError,
+  { jobId: string; eventId: string },
+  TContext
+> => {
+  return useMutation(getDeleteJobEventMutationOptions(options));
 };

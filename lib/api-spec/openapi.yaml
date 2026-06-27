@@ -126,6 +126,190 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HvacDiagnosisResult"
+  /jobs:
+    get:
+      operationId: listJobs
+      tags: [jobs]
+      summary: List all jobs for the authenticated user
+      responses:
+        "200":
+          description: List of jobs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Job"
+        "401":
+          description: Unauthorized
+    post:
+      operationId: createJob
+      tags: [jobs]
+      summary: Create a new job session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobBody"
+      responses:
+        "201":
+          description: Created job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          description: Unauthorized
+  /jobs/{jobId}:
+    get:
+      operationId: getJob
+      tags: [jobs]
+      summary: Get a job with its full timeline
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Job with events
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobWithEvents"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
+    patch:
+      operationId: updateJob
+      tags: [jobs]
+      summary: Update a job (status, title, metadata)
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateJobBody"
+      responses:
+        "200":
+          description: Updated job
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteJob
+      tags: [jobs]
+      summary: Delete a job and all its events
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
+  /jobs/{jobId}/events:
+    post:
+      operationId: createJobEvent
+      tags: [jobs]
+      summary: Append a timeline event to a job
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateJobEventBody"
+      responses:
+        "201":
+          description: Created event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobTimelineEvent"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Job not found
+  /jobs/{jobId}/events/{eventId}:
+    patch:
+      operationId: updateJobEvent
+      tags: [jobs]
+      summary: Edit a timeline event
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateJobEventBody"
+      responses:
+        "200":
+          description: Updated event
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/JobTimelineEvent"
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
+    delete:
+      operationId: deleteJobEvent
+      tags: [jobs]
+      summary: Remove a timeline event
+      parameters:
+        - name: jobId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: eventId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "204":
+          description: Deleted
+        "401":
+          description: Unauthorized
+        "404":
+          description: Not found
 components:
   schemas:
     AiPolishMode:
@@ -523,3 +707,102 @@ components:
         - primary
         - alternatives
         - isPro
+    Job:
+      type: object
+      properties:
+        id:          { type: string }
+        userId:      { type: string }
+        unitId:      { type: string, nullable: true }
+        customer:    { type: string, nullable: true }
+        site:        { type: string, nullable: true }
+        unitLabel:   { type: string, nullable: true }
+        title:       { type: string, nullable: true }
+        status:      { type: string }
+        startedAt:   { type: number }
+        updatedAt:   { type: number }
+        completedAt: { type: number, nullable: true }
+        metadata:    { type: object, nullable: true }
+        createdAt:   { type: string }
+      required: [id, userId, status, startedAt, updatedAt, createdAt]
+    CreateJobBody:
+      type: object
+      properties:
+        unitId:    { type: string }
+        customer:  { type: string }
+        site:      { type: string }
+        unitLabel: { type: string }
+        title:     { type: string }
+    UpdateJobBody:
+      type: object
+      properties:
+        status:      { type: string }
+        title:       { type: string }
+        unitId:      { type: string }
+        customer:    { type: string }
+        site:        { type: string }
+        unitLabel:   { type: string }
+        completedAt: { type: number }
+        metadata:    { type: object }
+    JobTimelineEvent:
+      type: object
+      properties:
+        id:              { type: string }
+        jobId:           { type: string }
+        userId:          { type: string }
+        eventType:       { type: string }
+        title:           { type: string }
+        timestamp:       { type: number }
+        notes:           { type: string, nullable: true }
+        voiceTranscript: { type: string, nullable: true }
+        voiceCorrected:  { type: string, nullable: true }
+        photoUrls:
+          type: array
+          items: { type: string }
+          nullable: true
+        measurements: { type: object, nullable: true }
+        parts:        { type: object, nullable: true }
+        metadata:     { type: object, nullable: true }
+        sequenceNum:  { type: integer }
+        createdAt:    { type: string }
+        updatedAt:    { type: string }
+      required: [id, jobId, userId, eventType, title, timestamp, sequenceNum, createdAt, updatedAt]
+    CreateJobEventBody:
+      type: object
+      properties:
+        eventType:       { type: string }
+        title:           { type: string }
+        timestamp:       { type: number }
+        notes:           { type: string }
+        voiceTranscript: { type: string }
+        voiceCorrected:  { type: string }
+        photoUrls:
+          type: array
+          items: { type: string }
+        measurements: { type: object }
+        parts:        { type: object }
+        metadata:     { type: object }
+        sequenceNum:  { type: integer }
+      required: [eventType, title, timestamp]
+    UpdateJobEventBody:
+      type: object
+      properties:
+        title:           { type: string }
+        notes:           { type: string }
+        voiceTranscript: { type: string }
+        voiceCorrected:  { type: string }
+        photoUrls:
+          type: array
+          items: { type: string }
+        measurements: { type: object }
+        parts:        { type: object }
+        metadata:     { type: object }
+    JobWithEvents:
+      type: object
+      properties:
+        job:
+          $ref: "#/components/schemas/Job"
+        events:
+          type: array
+          items:
+            $ref: "#/components/schemas/JobTimelineEvent"
+      required: [job, events]

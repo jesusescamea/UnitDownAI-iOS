@@ -257,3 +257,109 @@ export interface HvacDiagnosisResult {
   /** Whether this response contains full Pro-tier data */
   isPro: boolean;
 }
+
+export type JobMetadata = { [key: string]: unknown } | null;
+
+export interface Job {
+  id: string;
+  userId: string;
+  unitId?: string | null;
+  customer?: string | null;
+  site?: string | null;
+  unitLabel?: string | null;
+  title?: string | null;
+  status: string;
+  startedAt: number;
+  updatedAt: number;
+  completedAt?: number | null;
+  metadata?: JobMetadata;
+  createdAt: string;
+}
+
+export interface CreateJobBody {
+  unitId?: string;
+  customer?: string;
+  site?: string;
+  unitLabel?: string;
+  title?: string;
+}
+
+export type UpdateJobBodyMetadata = { [key: string]: unknown };
+
+export interface UpdateJobBody {
+  status?: string;
+  title?: string;
+  unitId?: string;
+  customer?: string;
+  site?: string;
+  unitLabel?: string;
+  completedAt?: number;
+  metadata?: UpdateJobBodyMetadata;
+}
+
+export type JobTimelineEventMeasurements = { [key: string]: unknown } | null;
+
+export type JobTimelineEventParts = { [key: string]: unknown } | null;
+
+export type JobTimelineEventMetadata = { [key: string]: unknown } | null;
+
+export interface JobTimelineEvent {
+  id: string;
+  jobId: string;
+  userId: string;
+  eventType: string;
+  title: string;
+  timestamp: number;
+  notes?: string | null;
+  voiceTranscript?: string | null;
+  voiceCorrected?: string | null;
+  photoUrls?: string[] | null;
+  measurements?: JobTimelineEventMeasurements;
+  parts?: JobTimelineEventParts;
+  metadata?: JobTimelineEventMetadata;
+  sequenceNum: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type CreateJobEventBodyMeasurements = { [key: string]: unknown };
+
+export type CreateJobEventBodyParts = { [key: string]: unknown };
+
+export type CreateJobEventBodyMetadata = { [key: string]: unknown };
+
+export interface CreateJobEventBody {
+  eventType: string;
+  title: string;
+  timestamp: number;
+  notes?: string;
+  voiceTranscript?: string;
+  voiceCorrected?: string;
+  photoUrls?: string[];
+  measurements?: CreateJobEventBodyMeasurements;
+  parts?: CreateJobEventBodyParts;
+  metadata?: CreateJobEventBodyMetadata;
+  sequenceNum?: number;
+}
+
+export type UpdateJobEventBodyMeasurements = { [key: string]: unknown };
+
+export type UpdateJobEventBodyParts = { [key: string]: unknown };
+
+export type UpdateJobEventBodyMetadata = { [key: string]: unknown };
+
+export interface UpdateJobEventBody {
+  title?: string;
+  notes?: string;
+  voiceTranscript?: string;
+  voiceCorrected?: string;
+  photoUrls?: string[];
+  measurements?: UpdateJobEventBodyMeasurements;
+  parts?: UpdateJobEventBodyParts;
+  metadata?: UpdateJobEventBodyMetadata;
+}
+
+export interface JobWithEvents {
+  job: Job;
+  events: JobTimelineEvent[];
+}

@@ -452,3 +452,187 @@ export const DiagnoseHvacResponse = zod
       .describe("Whether this response contains full Pro-tier data"),
   })
   .describe("Top diagnosis match plus up to 2 alternatives");
+
+/**
+ * @summary List all jobs for the authenticated user
+ */
+export const ListJobsResponseItem = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  unitId: zod.string().nullish(),
+  customer: zod.string().nullish(),
+  site: zod.string().nullish(),
+  unitLabel: zod.string().nullish(),
+  title: zod.string().nullish(),
+  status: zod.string(),
+  startedAt: zod.number(),
+  updatedAt: zod.number(),
+  completedAt: zod.number().nullish(),
+  metadata: zod.object({}).passthrough().nullish(),
+  createdAt: zod.string(),
+});
+export const ListJobsResponse = zod.array(ListJobsResponseItem);
+
+/**
+ * @summary Create a new job session
+ */
+export const CreateJobBody = zod.object({
+  unitId: zod.string().optional(),
+  customer: zod.string().optional(),
+  site: zod.string().optional(),
+  unitLabel: zod.string().optional(),
+  title: zod.string().optional(),
+});
+
+/**
+ * @summary Get a job with its full timeline
+ */
+export const GetJobParams = zod.object({
+  jobId: zod.coerce.string(),
+});
+
+export const GetJobResponse = zod.object({
+  job: zod.object({
+    id: zod.string(),
+    userId: zod.string(),
+    unitId: zod.string().nullish(),
+    customer: zod.string().nullish(),
+    site: zod.string().nullish(),
+    unitLabel: zod.string().nullish(),
+    title: zod.string().nullish(),
+    status: zod.string(),
+    startedAt: zod.number(),
+    updatedAt: zod.number(),
+    completedAt: zod.number().nullish(),
+    metadata: zod.object({}).passthrough().nullish(),
+    createdAt: zod.string(),
+  }),
+  events: zod.array(
+    zod.object({
+      id: zod.string(),
+      jobId: zod.string(),
+      userId: zod.string(),
+      eventType: zod.string(),
+      title: zod.string(),
+      timestamp: zod.number(),
+      notes: zod.string().nullish(),
+      voiceTranscript: zod.string().nullish(),
+      voiceCorrected: zod.string().nullish(),
+      photoUrls: zod.array(zod.string()).nullish(),
+      measurements: zod.object({}).passthrough().nullish(),
+      parts: zod.object({}).passthrough().nullish(),
+      metadata: zod.object({}).passthrough().nullish(),
+      sequenceNum: zod.number(),
+      createdAt: zod.string(),
+      updatedAt: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * @summary Update a job (status, title, metadata)
+ */
+export const UpdateJobParams = zod.object({
+  jobId: zod.coerce.string(),
+});
+
+export const UpdateJobBody = zod.object({
+  status: zod.string().optional(),
+  title: zod.string().optional(),
+  unitId: zod.string().optional(),
+  customer: zod.string().optional(),
+  site: zod.string().optional(),
+  unitLabel: zod.string().optional(),
+  completedAt: zod.number().optional(),
+  metadata: zod.object({}).passthrough().optional(),
+});
+
+export const UpdateJobResponse = zod.object({
+  id: zod.string(),
+  userId: zod.string(),
+  unitId: zod.string().nullish(),
+  customer: zod.string().nullish(),
+  site: zod.string().nullish(),
+  unitLabel: zod.string().nullish(),
+  title: zod.string().nullish(),
+  status: zod.string(),
+  startedAt: zod.number(),
+  updatedAt: zod.number(),
+  completedAt: zod.number().nullish(),
+  metadata: zod.object({}).passthrough().nullish(),
+  createdAt: zod.string(),
+});
+
+/**
+ * @summary Delete a job and all its events
+ */
+export const DeleteJobParams = zod.object({
+  jobId: zod.coerce.string(),
+});
+
+/**
+ * @summary Append a timeline event to a job
+ */
+export const CreateJobEventParams = zod.object({
+  jobId: zod.coerce.string(),
+});
+
+export const CreateJobEventBody = zod.object({
+  eventType: zod.string(),
+  title: zod.string(),
+  timestamp: zod.number(),
+  notes: zod.string().optional(),
+  voiceTranscript: zod.string().optional(),
+  voiceCorrected: zod.string().optional(),
+  photoUrls: zod.array(zod.string()).optional(),
+  measurements: zod.object({}).passthrough().optional(),
+  parts: zod.object({}).passthrough().optional(),
+  metadata: zod.object({}).passthrough().optional(),
+  sequenceNum: zod.number().optional(),
+});
+
+/**
+ * @summary Edit a timeline event
+ */
+export const UpdateJobEventParams = zod.object({
+  jobId: zod.coerce.string(),
+  eventId: zod.coerce.string(),
+});
+
+export const UpdateJobEventBody = zod.object({
+  title: zod.string().optional(),
+  notes: zod.string().optional(),
+  voiceTranscript: zod.string().optional(),
+  voiceCorrected: zod.string().optional(),
+  photoUrls: zod.array(zod.string()).optional(),
+  measurements: zod.object({}).passthrough().optional(),
+  parts: zod.object({}).passthrough().optional(),
+  metadata: zod.object({}).passthrough().optional(),
+});
+
+export const UpdateJobEventResponse = zod.object({
+  id: zod.string(),
+  jobId: zod.string(),
+  userId: zod.string(),
+  eventType: zod.string(),
+  title: zod.string(),
+  timestamp: zod.number(),
+  notes: zod.string().nullish(),
+  voiceTranscript: zod.string().nullish(),
+  voiceCorrected: zod.string().nullish(),
+  photoUrls: zod.array(zod.string()).nullish(),
+  measurements: zod.object({}).passthrough().nullish(),
+  parts: zod.object({}).passthrough().nullish(),
+  metadata: zod.object({}).passthrough().nullish(),
+  sequenceNum: zod.number(),
+  createdAt: zod.string(),
+  updatedAt: zod.string(),
+});
+
+/**
+ * @summary Remove a timeline event
+ */
+export const DeleteJobEventParams = zod.object({
+  jobId: zod.coerce.string(),
+  eventId: zod.coerce.string(),
+});
