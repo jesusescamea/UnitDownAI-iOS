@@ -114,7 +114,7 @@ export function DashboardView({ onStartJob }: Props) {
 
       {/* ── AI Morning Brief ─────────────────────────────────────── */}
       <div className="px-4 pt-4">
-        <AiMorningBrief />
+        <AiDayBrief />
       </div>
 
       {/* ── Calendar ─────────────────────────────────────────────── */}
@@ -538,61 +538,180 @@ export function DashboardView({ onStartJob }: Props) {
   );
 }
 
-// ─── AI Morning Brief ──────────────────────────────────────────────────────────
-function AiMorningBrief() {
-  const [expanded, setExpanded] = useState(true);
+// ─── AI Day Brief ─────────────────────────────────────────────────────────────
+const DAY_ROUTE = [
+  {
+    stop: 1,
+    customer: 'Summit Medical Plaza',
+    unitTag: 'North Roof · RTU-3',
+    model: 'Carrier 50XCQ006',
+    time: '8:00 AM',
+    priority: 'high' as const,
+    badge: 'HIGH PRIORITY',
+    badgeColor: 'bg-amber-500 text-white',
+    risk: 'Code 82 history — 3 lockouts in 12 months',
+    driveFromPrev: null,
+    driveTo: '12 min from shop',
+  },
+  {
+    stop: 2,
+    customer: 'Northgate Data Center',
+    unitTag: 'Server Room B · CRAC-1',
+    model: 'Liebert DS150',
+    time: '1:00 PM',
+    priority: 'pm' as const,
+    badge: 'PM DUE',
+    badgeColor: 'bg-gray-700 text-gray-300',
+    risk: null,
+    driveFromPrev: '~22 min from Summit',
+    driveTo: null,
+  },
+  {
+    stop: 3,
+    customer: 'Ridgeline Office Park',
+    unitTag: 'Rooftop · RTU-7',
+    model: 'Trane YCD150',
+    time: '3:30 PM',
+    priority: 'pm' as const,
+    badge: 'PM DUE',
+    badgeColor: 'bg-gray-700 text-gray-300',
+    risk: null,
+    driveFromPrev: '~18 min from Northgate',
+    driveTo: null,
+  },
+];
 
-  const PARTS = ['Dual cap 35/5µF', 'Contactor', 'Coil cleaner', 'Pressure probes', 'R-410A'];
+const TRUCK_STOCK = [
+  { item: 'Coil cleaner',       reason: 'RTU-3 condenser restriction' },
+  { item: 'Dual cap 35/5µF',   reason: 'RTU-3 risk — capacitor' },
+  { item: 'Contactor',          reason: 'RTU-3 risk — contactor' },
+  { item: 'Pressure probes',    reason: 'Refrigerant diagnostics' },
+  { item: 'Common belts',       reason: 'CRAC-1 & RTU-7 PM' },
+  { item: 'PM supplies',        reason: 'Filters, oil, belt gauge' },
+];
+
+const DAY_NOTES = [
+  { job: 'Summit Medical', note: 'Recurring Code 82 — condenser cleaning alone has not resolved. Investigate fan performance and refrigerant circuit.' },
+  { job: 'Northgate',      note: 'Time shifted to 1:00 PM per customer. Badge required at security gate.' },
+];
+
+function AiDayBrief() {
+  const [expanded, setExpanded] = useState(false);
 
   return (
     <div className="bg-gradient-to-br from-blue-950/60 to-indigo-950/60 border border-blue-800/50 rounded-2xl overflow-hidden">
+      {/* Collapsed header — always visible */}
       <button onClick={() => setExpanded(e => !e)}
         className="w-full flex items-center justify-between px-4 py-3">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 min-w-0">
           <div className="w-6 h-6 rounded-lg bg-blue-600/40 flex items-center justify-center flex-shrink-0">
             <Sparkles size={12} className="text-blue-300" />
           </div>
-          <span className="text-xs font-bold text-blue-200 tracking-wide">AI Morning Brief</span>
-          <span className="text-[9px] bg-blue-700/50 text-blue-300 px-1.5 py-0.5 rounded-full font-semibold">3 Jobs</span>
+          <span className="text-xs font-bold text-blue-200 tracking-wide">AI Day Brief</span>
+          <span className="text-[9px] bg-blue-700/50 text-blue-300 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">3 Jobs</span>
+          <span className="text-[9px] text-blue-400/60 truncate">· 8:00 AM – ~5:00 PM</span>
         </div>
-        <ChevronDown size={14} className={`text-blue-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+        <ChevronDown size={14} className={`text-blue-400 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`} />
       </button>
 
       <AnimatePresence>
         {expanded && (
           <motion.div
             initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}>
-            <div className="px-4 pb-4 space-y-3 border-t border-blue-800/30 pt-3">
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { label: 'Drive Time',       value: '1 hr 18 min', icon: '🚗' },
-                  { label: 'Est. Finish',       value: '4:40 PM',     icon: '🏁' },
-                  { label: 'Highest Risk',      value: 'RTU-3',       icon: '⚠️' },
-                  { label: 'Recurring Fault',   value: 'Code 82',     icon: '🔴' },
-                ].map(({ label, value, icon }) => (
-                  <div key={label} className="bg-blue-950/50 rounded-xl px-3 py-2">
-                    <div className="text-[9px] text-blue-400 uppercase tracking-wider mb-0.5">{icon} {label}</div>
-                    <div className="text-sm font-bold text-white">{value}</div>
-                  </div>
-                ))}
+            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.22 }}>
+            <div className="px-4 pb-4 space-y-4 border-t border-blue-800/30 pt-3">
+
+              {/* Day window stat */}
+              <div className="flex gap-2">
+                <div className="flex-1 bg-blue-950/50 rounded-xl px-3 py-2">
+                  <div className="text-[9px] text-blue-400 uppercase tracking-wider mb-0.5">🗓 Projected Day Window</div>
+                  <div className="text-sm font-bold text-white">8:00 AM – ~5:00 PM</div>
+                </div>
+                <div className="flex-1 bg-blue-950/50 rounded-xl px-3 py-2">
+                  <div className="text-[9px] text-blue-400 uppercase tracking-wider mb-0.5">🚗 Total Drive Time</div>
+                  <div className="text-sm font-bold text-white">~52 min</div>
+                </div>
               </div>
 
-              <div className="bg-blue-950/50 rounded-xl px-3 py-2.5">
-                <div className="text-[9px] text-blue-400 uppercase tracking-wider mb-1.5">🔧 Suggested Parts for RTU-3</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {PARTS.map(p => (
-                    <div key={p} className="flex items-center gap-1 bg-blue-800/30 rounded-full px-2 py-0.5">
-                      <CheckCircle size={9} className="text-green-400 flex-shrink-0" />
-                      <span className="text-[10px] text-blue-100">{p}</span>
+              {/* Route */}
+              <div>
+                <div className="text-[9px] font-bold uppercase tracking-widest text-blue-400/70 mb-2">Route Order</div>
+                <div className="space-y-0">
+                  {DAY_ROUTE.map((stop, i) => (
+                    <div key={i}>
+                      {/* Drive indicator between stops */}
+                      {stop.driveFromPrev && (
+                        <div className="flex items-center gap-2 pl-4 py-1">
+                          <div className="w-px h-3 bg-blue-800/50 mx-1.5" />
+                          <span className="text-[9px] text-blue-400/50">{stop.driveFromPrev}</span>
+                        </div>
+                      )}
+                      <div className="bg-blue-950/40 border border-blue-800/30 rounded-xl p-3">
+                        <div className="flex items-start gap-2.5">
+                          <div className="w-5 h-5 rounded-full bg-blue-700/50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                            <span className="text-[10px] font-bold text-blue-200">{stop.stop}</span>
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                              <span className="font-bold text-white text-sm leading-tight">{stop.customer}</span>
+                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${stop.badgeColor}`}>{stop.badge}</span>
+                              <span className="text-[9px] text-blue-400/60 ml-auto flex-shrink-0">{stop.time}</span>
+                            </div>
+                            <div className="text-[10px] text-blue-300/70 mb-0.5">{stop.unitTag}</div>
+                            <div className="text-[9px] font-mono text-gray-600">{stop.model}</div>
+                            {stop.risk && (
+                              <div className="mt-1.5 flex items-start gap-1.5 text-[10px] text-amber-300/80 bg-amber-950/30 rounded-lg px-2 py-1">
+                                <span className="flex-shrink-0">⚠️</span>
+                                <span>{stop.risk}</span>
+                              </div>
+                            )}
+                            {stop.driveTo && (
+                              <div className="mt-1 text-[9px] text-blue-400/50">{stop.driveTo}</div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   ))}
                 </div>
               </div>
 
-              <p className="text-[10px] text-blue-300/70 leading-relaxed">
-                Summit Medical RTU-3 has locked out on Code 82 three times in 12 months. Condenser cleaning alone hasn't resolved it — check fan RPM and look for refrigerant system issues today.
-              </p>
+              {/* Highest risk callout */}
+              <div className="bg-red-950/40 border border-red-800/40 rounded-xl px-3 py-2.5">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-red-400 mb-1">⚠️ Highest Risk Today</div>
+                <div className="text-sm font-bold text-white">Summit Medical Plaza · RTU-3</div>
+                <div className="text-[10px] text-red-200/70 mt-0.5">Code 82 repeated 3× in 12 months. Condenser cleaning has not resolved the fault — expect deeper diagnostics today.</div>
+              </div>
+
+              {/* Truck stock */}
+              <div>
+                <div className="text-[9px] font-bold uppercase tracking-widest text-blue-400/70 mb-2">Recommended Truck Stock</div>
+                <div className="bg-blue-950/30 border border-blue-800/30 rounded-xl p-3 space-y-2">
+                  {TRUCK_STOCK.map((s, i) => (
+                    <div key={i} className="flex items-start gap-2">
+                      <CheckCircle size={11} className="text-green-400 flex-shrink-0 mt-0.5" />
+                      <div>
+                        <span className="text-[11px] font-semibold text-white">{s.item}</span>
+                        <span className="text-[10px] text-gray-500"> — {s.reason}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Important notes */}
+              <div>
+                <div className="text-[9px] font-bold uppercase tracking-widest text-blue-400/70 mb-2">Important Notes</div>
+                <div className="space-y-2">
+                  {DAY_NOTES.map((n, i) => (
+                    <div key={i} className="flex items-start gap-2.5 bg-gray-800/60 rounded-xl px-3 py-2.5">
+                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider flex-shrink-0 mt-0.5 w-14 leading-snug">{n.job}</span>
+                      <span className="text-[11px] text-gray-300 leading-relaxed">{n.note}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
             </div>
           </motion.div>
         )}
