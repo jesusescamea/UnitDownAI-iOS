@@ -1,5 +1,5 @@
 import { useReducer, useEffect, useRef } from 'react';
-import { DispatchView } from './jmp/DispatchView';
+import { DashboardView } from './jmp/DashboardView';
 import { ActiveJobView } from './jmp/ActiveJobView';
 import { CompletionFlow } from './jmp/CompletionFlow';
 import { ServiceRecordView } from './jmp/ServiceRecordView';
@@ -117,7 +117,7 @@ export default function JobModePrototype() {
       </div>
 
       <div className="pt-0">
-        {state.stage === 'dispatch' && <DispatchView onStartJob={handleStartJob} />}
+        {state.stage === 'dispatch' && <DashboardView onStartJob={handleStartJob} />}
         {state.stage === 'active' && <ActiveJobView state={state} dispatch={dispatch} onComplete={handleComplete} />}
         {(state.stage === 'completing' || state.stage === 'ceremony') && (
           <CompletionFlow state={state} dispatch={dispatch} onShowRecord={handleShowRecord} />
