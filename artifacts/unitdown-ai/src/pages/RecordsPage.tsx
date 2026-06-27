@@ -9,13 +9,14 @@ import {
   TrendingUp, CheckCheck, ChevronLeft, ChevronDown,
   Zap, Shield, ArrowRight, BarChart3, Target,
   MapPin, Users, LayoutList, CalendarDays, ListOrdered,
-  Layers,
+  Layers, Briefcase,
 } from "lucide-react";
 import RtuIcon from "@/components/RtuIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import ScheduledEventModal, { type ScheduledEvent } from "@/components/ScheduledEventModal";
+import { useJobMode } from "@/context/JobModeContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -824,7 +825,7 @@ function MonthCalendar({
 }
 
 function LocationGroupCard({
-  group, healthScoreMap, expanded, onToggle, onUnitClick, onToggleFavorite,
+  group, healthScoreMap, expanded, onToggle, onUnitClick, onToggleFavorite, onStartJob,
 }: {
   group: LocationGroup;
   healthScoreMap: Record<string, number>;
@@ -832,6 +833,7 @@ function LocationGroupCard({
   onToggle: () => void;
   onUnitClick: (id: string) => void;
   onToggleFavorite: (unit: UnitRecord, e: React.MouseEvent) => void;
+  onStartJob: (customer: string) => void;
 }) {
   const lastVisitLabel = group.lastVisit ? relativeDate(group.lastVisit) : null;
   const nextVisitLabel = group.nextVisit ? futureDateLabel(group.nextVisit) : null;
@@ -964,6 +966,17 @@ function LocationGroupCard({
         </div>
       </div>
 
+      {/* ── Start Job action row ─────────────────────────────────────────────── */}
+      <div className="border-t border-slate-100 px-3 py-2">
+        <button
+          onClick={(e) => { e.stopPropagation(); onStartJob(group.customer); }}
+          className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg py-2 transition-colors"
+        >
+          <Briefcase className="w-3.5 h-3.5" />
+          Start Job — {group.customer}
+        </button>
+      </div>
+
       {/* ── Expanded: Equipment Locations ─────────────────────────────────────── */}
       {expanded && (
         <div className="border-t border-slate-100">
@@ -1039,6 +1052,20 @@ function FilteredViewHeader({
 export default function RecordsPage() {
   const [, navigate] = useLocation();
   const { user: clerkUser, isLoaded } = useUser();
+  const { startJob } = useJobMode();
+
+  const handleStartJobForCustomer = useCallback(
+    async (customer: string) => {
+      if (!clerkUser) { navigate("/login"); return; }
+      try {
+        const newJob = await startJob({ customer });
+        navigate(`/job/${newJob.id}`);
+      } catch {
+        // silently fail — user can retry
+      }
+    },
+    [startJob, navigate, clerkUser],
+  );
 
   // Data
   const [units, setUnits] = useState<UnitRecord[]>([]);
@@ -2025,6 +2052,7 @@ export default function RecordsPage() {
                         }}
                         onUnitClick={(id) => navigate(`/records/unit/${id}`)}
                         onToggleFavorite={toggleFavorite}
+                        onStartJob={handleStartJobForCustomer}
                       />
                     ))}
                   </div>

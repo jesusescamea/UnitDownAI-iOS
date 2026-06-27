@@ -30,6 +30,7 @@ import { JobModePage } from "./pages/JobModePage";
 import { ServiceRecordPage } from "./pages/ServiceRecordPage";
 import { JobModeProvider } from "./context/JobModeContext";
 import InstallPromptBanner from "./components/InstallPromptBanner";
+import { ActiveJobBanner } from "./components/job/ActiveJobBanner";
 import EmailWallModal from "./components/EmailWallModal";
 import { getFingerprint } from "./lib/fingerprint";
 import { applyTheme } from "./lib/theme";
@@ -3499,6 +3500,7 @@ function App() {
                 <div className="p-10 font-bold text-xl">404 Not Found</div>
               </Route>
             </Switch>
+            <ActiveJobBanner />
           </JobModeProvider>
         </WouterRouter>
         <Toaster />

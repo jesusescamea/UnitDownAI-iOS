@@ -5,7 +5,7 @@ import {
   ChevronRight, Wrench, Edit2, Trash2, Pencil,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
   MapPin, Activity, Loader2, FileText, Settings, Camera, Search,
-  ZoomIn, X, Star, Bell, Info,
+  ZoomIn, X, Star, Bell, Info, Briefcase,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -14,6 +14,7 @@ import EquipmentResources from "@/components/EquipmentResources";
 import PhotoAlbum from "@/components/PhotoAlbum";
 import ScheduledEventModal, { type ScheduledEvent } from "@/components/ScheduledEventModal";
 import RtuIcon from "@/components/RtuIcon";
+import { useJobMode } from "@/context/JobModeContext";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -428,8 +429,10 @@ export default function UnitDetailPage() {
   const [, navigate] = useLocation();
   const params = useParams<{ id: string }>();
   const { user: clerkUser, isLoaded } = useUser();
+  const { job, startJob } = useJobMode();
 
   const [unit, setUnit] = useState<UnitRecord | null>(null);
+  const [jobStarting, setJobStarting] = useState(false);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [unitLogs, setUnitLogs] = useState<DiagnosticLog[]>([]);
   const [loading, setLoading] = useState(true);
@@ -637,6 +640,26 @@ export default function UnitDetailPage() {
     setShowAddModal(true);
   }, []);
 
+  const handleStartJobFromUnit = useCallback(async () => {
+    if (!unit) return;
+    setJobStarting(true);
+    try {
+      const unitLabel = unit.nickname ?? unit.modelNumber ?? unit.equipmentType ?? "Unit";
+      const newJob = await startJob({
+        unitId: unit.id,
+        customer: unit.siteCustomerName ?? undefined,
+        site: unit.location ?? undefined,
+        unitLabel,
+        title: `${unitLabel} — Service Call`,
+      });
+      navigate(`/job/${newJob.id}`);
+    } catch {
+      // silently fail — user can retry
+    } finally {
+      setJobStarting(false);
+    }
+  }, [unit, startJob, navigate]);
+
   const handleToggleFavorite = useCallback(async () => {
     if (!unit || favLoading) return;
     const newVal = !unit.isFavorite;
@@ -842,6 +865,31 @@ export default function UnitDetailPage() {
               <ctaConfig.Icon className="w-4 h-4 mr-2" />
               {ctaConfig.label}
             </Button>
+
+            {/* Start / Resume Job — one tap to open a field service record */}
+            {job && job.status === "active" ? (
+              <Button
+                onClick={() => navigate(`/job/${job.id}`)}
+                className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-semibold rounded-xl h-10 text-sm"
+              >
+                <Briefcase className="w-4 h-4 mr-2" />
+                Resume Active Job
+              </Button>
+            ) : (
+              <Button
+                variant="outline"
+                onClick={handleStartJobFromUnit}
+                disabled={jobStarting}
+                className="w-full border-zinc-300 text-zinc-700 font-semibold rounded-xl h-10 text-sm hover:bg-zinc-50"
+              >
+                {jobStarting ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <Briefcase className="w-4 h-4 mr-2" />
+                )}
+                {jobStarting ? "Starting…" : "Start Job"}
+              </Button>
+            )}
           </div>
         </div>
 

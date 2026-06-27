@@ -1,0 +1,335 @@
+# Job Mode UX Refactor — Technician Workflow First
+
+Do NOT add new backend architecture.
+
+Do NOT modify the database schema.
+
+Do NOT change the Job Timeline architecture.
+
+Do NOT change the offline queue.
+
+Do NOT change USS.
+
+This is strictly a **user experience refactor**.
+
+---
+
+# Problem
+
+Job Mode currently behaves like a separate module.
+
+Technicians do not think:
+
+"I'm going to Job Mode."
+
+They think:
+
+"I'm going to Sunrise Medical Center."
+
+Then:
+
+"I'm working on RTU-3."
+
+Job Mode should naturally begin from the equipment they are already viewing.
+
+The current navigation introduces unnecessary friction.
+
+---
+
+# New Workflow
+
+Field Hub
+
+↓
+
+Customer / Site
+
+↓
+
+Equipment
+
+↓
+
+START JOB
+
+↓
+
+Job Mode
+
+↓
+
+Complete Job
+
+↓
+
+UnitDown Service Record
+
+The technician should never need to hunt for Job Mode.
+
+---
+
+# 1. Customer Card
+
+Every Customer/Site card should include:
+
+▶ Start Job
+
+If a job already exists:
+
+▶ Resume Job
+
+Starting from the customer automatically carries:
+
+Customer
+
+Site
+
+Technician
+
+Date
+
+into the Job Session.
+
+---
+
+# 2. Equipment Detail
+
+The Equipment Detail page becomes the primary place technicians begin work.
+
+Near:
+
+Start Diagnosis
+
+Add:
+
+Start Job
+
+If a job already exists:
+
+Resume Job
+
+This should become one of the most visible actions on the page.
+
+---
+
+# 3. Active Job Banner
+
+While a job is active, display a persistent banner throughout the app.
+
+Example:
+
+ACTIVE JOB
+
+Sunrise Medical Center
+
+RTU-3
+
+01:14 elapsed
+
+Resume →
+
+This banner should appear regardless of where the technician navigates.
+
+The technician should always be one tap away from returning to the active job.
+
+---
+
+# 4. Floating Resume Button
+
+If an active job exists:
+
+Show a floating Resume button.
+
+This replaces the need to navigate back through menus.
+
+---
+
+# 5. Job Mode Navigation
+
+Do NOT remove the standalone Job Mode page.
+
+Instead rename its purpose.
+
+Current:
+
+Job Mode
+
+New purpose:
+
+Active Jobs
+
+This page becomes a dashboard.
+
+Contents:
+
+Current Job
+
+Draft Jobs
+
+Offline Jobs
+
+Pending Sync
+
+Completed Today
+
+Resume buttons
+
+It is NOT where technicians start work.
+
+It is where they manage active work.
+
+---
+
+# 6. Auto Navigation
+
+After pressing:
+
+Start Job
+
+Automatically:
+
+Open Job Mode.
+
+No intermediate screens.
+
+No extra confirmation.
+
+Begin immediately.
+
+---
+
+# 7. Resume Logic
+
+If a technician taps:
+
+Start Job
+
+while an unfinished job already exists for that equipment:
+
+Prompt:
+
+Resume existing job?
+
+Start new job?
+
+This prevents accidental duplicates.
+
+---
+
+# 8. Equipment Context
+
+When Job Mode opens it should already know:
+
+Customer
+
+Site
+
+Equipment
+
+Equipment type
+
+Manufacturer
+
+Model
+
+Serial
+
+Existing recommendations
+
+Existing Equipment Memory
+
+Recent service history
+
+The technician should never re-enter information already available.
+
+---
+
+# 9. Completion Flow
+
+When Complete Job is pressed:
+
+Automatically:
+
+Generate USS record
+
+Generate USR ID
+
+Generate Service Record
+
+Navigate directly to the completed Service Record.
+
+Do NOT return the technician to Job Mode.
+
+---
+
+# 10. Remove Navigation Friction
+
+A technician should be able to begin documenting work in two taps:
+
+Customer
+
+↓
+
+Start Job
+
+or
+
+Equipment
+
+↓
+
+Start Job
+
+No additional setup screens.
+
+---
+
+# 11. UX Philosophy
+
+Design Job Mode around how technicians actually think.
+
+They think in:
+
+Customers
+
+Buildings
+
+Equipment
+
+Problems
+
+Repairs
+
+NOT:
+
+Jobs
+
+Modules
+
+Workspaces
+
+The app should adapt to the technician—not the other way around.
+
+---
+
+# Deliverables
+
+Return:
+
+• Updated navigation flow
+
+• Files modified
+
+• Components changed
+
+• Screenshots
+
+• Typecheck results
+
+Do NOT modify backend architecture.
+
+Do NOT modify USS.
+
+Do NOT modify offline architecture.
+
+This task is focused entirely on making Job Mode feel like a seamless extension of the equipment workflow rather than a separate feature.

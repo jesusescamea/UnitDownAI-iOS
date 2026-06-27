@@ -77,7 +77,7 @@ function JobsListScreen({ onStartNew, onResume }: JobsListScreenProps) {
             <Briefcase className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Job Mode</h1>
+            <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-100">Active Jobs</h1>
             <p className="text-sm text-zinc-500 dark:text-zinc-400">
               Every service call — automatically documented
             </p>
