@@ -22,13 +22,23 @@ export const JUNE_EVENTS: CalendarEvent[] = [
 ];
 
 export const EVENT_COLORS: Record<CalendarEvent['type'], string> = {
-  pm:          'bg-blue-500',
-  training:    'bg-green-500',
-  appointment: 'bg-amber-500',
-  vacation:    'bg-gray-500',
-  emergency:   'bg-red-500',
-  followup:    'bg-orange-500',
-  completed:   'bg-gray-600',
+  appointment: 'bg-orange-500',   // Service Call  = Orange
+  pm:          'bg-blue-500',     // PM            = Blue
+  emergency:   'bg-red-500',      // Emergency     = Red
+  completed:   'bg-green-500',    // Completed     = Green
+  followup:    'bg-yellow-400',   // Follow-up     = Yellow
+  training:    'bg-teal-500',     // Training      = Teal
+  vacation:    'bg-gray-500',     // Vacation      = Gray
+};
+
+export const EVENT_LABELS: Record<CalendarEvent['type'], string> = {
+  appointment: 'Service Call',
+  pm:          'PM',
+  emergency:   'Emergency',
+  completed:   'Completed',
+  followup:    'Follow-up',
+  training:    'Training',
+  vacation:    'Vacation',
 };
 
 export interface EquipmentAttention {
