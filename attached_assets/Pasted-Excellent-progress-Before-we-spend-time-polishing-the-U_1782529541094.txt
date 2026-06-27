@@ -1,0 +1,103 @@
+Excellent progress. Before we spend time polishing the UI, I want to validate the workflow itself.
+
+Please do not focus yet on card density, colors, spacing, FAB placement, or visual polish.
+
+Instead, I want to evaluate whether this truly matches a commercial HVAC technician's real workflow.
+
+As we review the merged mockup, use these design principles:
+
+## 1. Every tap must save time.
+
+If a screen, dialog, or interaction doesn't make the technician faster, simplify or remove it.
+
+---
+
+## 2. The technician should rarely type.
+
+The preferred order of data capture should be:
+
+Photo
+
+Voice
+
+Measurement
+
+One-tap selection
+
+Typing only as a last resort.
+
+---
+
+## 3. The timeline is the product.
+
+Everything should become a chronological event.
+
+No duplicate screens.
+
+No separate documentation workflow.
+
+The report should build itself naturally from the technician's work.
+
+---
+
+## 4. The technician should never wonder what to do next.
+
+The interface should gently guide the next logical step.
+
+Examples:
+
+• Belt replaced → suggest belt size and pulley information.
+
+• Capacitor replaced → suggest capacitance and voltage.
+
+• Motor replaced → suggest amps and rotation.
+
+The app should quietly coach documentation without interrupting work.
+
+---
+
+## 5. Everything should be recoverable.
+
+If the technician loses signal, closes the app, switches to another app, answers a phone call, or locks the phone, the job should reopen exactly where it was.
+
+Nothing should ever be lost.
+
+---
+
+## 6. Photos should become structured information.
+
+Instead of simply attaching photos, they should automatically become:
+
+Nameplate
+
+Failed Part
+
+Repair
+
+Wiring
+
+Measurement
+
+Overall Unit
+
+The technician can override the category if needed.
+
+---
+
+## 7. The interface should reduce cognitive load.
+
+At any moment, the technician should only think about the next action—not the final report.
+
+The report should assemble itself automatically in the background.
+
+---
+
+## 8. The final experience should feel rewarding.
+
+Completing a job should feel like generating an official maintenance record, not simply pressing "Finish."
+
+The technician should feel that they have created something valuable for themselves, their office, the customer, and the equipment's future history.
+
+---
+
+After reviewing the merged mockup against these principles, tell me what workflow friction still exists before we continue refining the visual design.
