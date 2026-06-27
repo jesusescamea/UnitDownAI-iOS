@@ -11,6 +11,7 @@ import {
   JUNE_EVENTS, EVENT_COLORS, EVENT_LABELS, EQUIPMENT_ATTENTION, OFFICE_MESSAGES,
   RECENT_ACTIVITY, DASHBOARD_STATS, type CalendarEvent, type EquipmentAttention,
 } from './dashboardData';
+import { AiDiagnosticModal } from './AiDiagnosticModal';
 
 interface Props { onStartJob: () => void }
 
@@ -55,6 +56,7 @@ export function DashboardView({ onStartJob }: Props) {
   const [accountOpen,     setAccountOpen]     = useState(false);
   const [overviewFilter,  setOverviewFilter]  = useState<string | null>(null);
   const [equipmentDetail, setEquipmentDetail] = useState<EquipmentAttention | null>(null);
+  const [diagEquipment,   setDiagEquipment]   = useState<EquipmentAttention | null>(null);
   const [jobBriefFor,     setJobBriefFor]     = useState<TodayJob | null>(null);
   const [briefsSeen,      setBriefsSeen]      = useState<Set<string>>(new Set());
 
@@ -386,6 +388,16 @@ export function DashboardView({ onStartJob }: Props) {
           <EquipmentDetailModal
             eq={equipmentDetail}
             onClose={() => setEquipmentDetail(null)}
+            onLaunchDiagnostic={eq => { setEquipmentDetail(null); setDiagEquipment(eq); }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {diagEquipment && (
+          <AiDiagnosticModal
+            eq={diagEquipment}
+            onClose={() => setDiagEquipment(null)}
           />
         )}
       </AnimatePresence>
@@ -1107,7 +1119,11 @@ function OverviewFilterSheet({ filterId, onClose, onSelectJob }: {
 }
 
 // ─── Equipment Detail Modal ────────────────────────────────────────────────────
-function EquipmentDetailModal({ eq, onClose }: { eq: EquipmentAttention; onClose: () => void }) {
+function EquipmentDetailModal({ eq, onClose, onLaunchDiagnostic }: {
+  eq: EquipmentAttention;
+  onClose: () => void;
+  onLaunchDiagnostic: (eq: EquipmentAttention) => void;
+}) {
   const sev = SEV_STYLE[eq.severity];
   const TREND_ICON = { up: TrendingUp, down: TrendingDown, stable: Minus };
   const TREND_COLOR = { up: 'text-red-400', down: 'text-green-400', stable: 'text-gray-400' };
@@ -1224,11 +1240,13 @@ function EquipmentDetailModal({ eq, onClose }: { eq: EquipmentAttention; onClose
 
         {/* Launch Diagnostic */}
         <div className="px-4 pb-8 pt-2">
-          <button className="w-full bg-white text-gray-950 font-bold py-5 rounded-2xl text-base flex items-center justify-center gap-2">
+          <button
+            onClick={() => onLaunchDiagnostic(eq)}
+            className="w-full bg-white text-gray-950 font-bold py-5 rounded-2xl text-base flex items-center justify-center gap-2 active:scale-[0.98] transition-transform">
             <Zap size={18} />
             Launch Diagnostic
           </button>
-          <div className="text-center text-[10px] text-gray-600 mt-2">Opens full HVAC diagnostic workflow for {eq.unit}</div>
+          <div className="text-center text-[10px] text-gray-600 mt-2">AI will preload all known history — no re-entry required</div>
         </div>
       </div>
     </motion.div>
