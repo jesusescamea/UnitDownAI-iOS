@@ -1,0 +1,330 @@
+Implement the following improvements to the Dispatch Dashboard prototype. These are UX enhancements only. Preserve the existing UnitDown design language, dark theme, spacing, animations, and performance.
+
+====================================================
+1. JOB CARD HIERARCHY
+====================================================
+
+The customer/business location should always be the primary piece of information.
+
+Current:
+
+Carrier 50XCQ006 – RTU-3
+Summit Medical Plaza
+
+Replace with:
+
+Summit Medical Plaza
+North Roof • RTU-3
+Carrier 50XCQ006
+
+Reason:
+Technicians think:
+"Where am I going?"
+before
+"What unit am I working on?"
+
+Business/location should be the largest and boldest text.
+
+----------------------------------------------------
+
+====================================================
+2. PROFILE ICON
+====================================================
+
+The initials avatar (MR) should no longer be decorative.
+
+Make it fully clickable.
+
+Open an Account Dashboard containing:
+
+• Profile
+• My Account
+• Subscription
+• Today's Statistics
+• Hours Worked
+• Completed Jobs
+• Active Jobs
+• PM Completion %
+• Follow-ups
+• Saved Equipment
+• Inventory
+• Settings
+• Offline Mode
+• Help & Support
+• Logout
+
+Eventually this becomes the technician's personal hub.
+
+----------------------------------------------------
+
+====================================================
+3. OVERVIEW CARDS
+====================================================
+
+The Overview cards should function as navigation shortcuts.
+
+Today's Jobs
+→ opens today's assignments
+
+In Progress
+→ opens active jobs
+
+PM Due
+→ opens PM schedule
+
+Follow-ups
+→ opens pending callbacks, quoted repairs, customer approvals, unresolved recommendations
+
+Each card should open a filtered dashboard instead of only displaying numbers.
+
+----------------------------------------------------
+
+====================================================
+4. CALENDAR
+====================================================
+
+Keep the compact monthly calendar.
+
+It should become the technician's timeline.
+
+Each day should display colored indicators.
+
+Orange = Service Call
+
+Blue = PM
+
+Red = Emergency
+
+Green = Completed
+
+Yellow = Follow-up
+
+Gray = No activity
+
+Selecting a day filters the dashboard to that day's activity.
+
+Future enhancement:
+
+Small indicator numbers showing job count per day.
+
+----------------------------------------------------
+
+====================================================
+5. EQUIPMENT INTELLIGENCE
+====================================================
+
+This should become UnitDown's flagship feature.
+
+Instead of simply displaying previous repairs...
+
+The AI should analyze repair history and infer likely root causes.
+
+Example:
+
+Repeated Code 82
+
+Current:
+
+Repeated Code 82
+
+Replace with:
+
+Repeated Code 82
+
+3 lockouts
+3 visits
+2 condenser cleanings
+
+AI Insight
+
+Repeated condenser cleaning has not resolved the issue.
+
+Possible root causes:
+
+• Condenser airflow restriction
+• Incorrect fan operation
+• Overcharge
+• Non-condensables
+• Liquid line restriction
+
+Another example:
+
+3 belt replacements in 2 months
+
+AI Insight
+
+Repeated belt failures are rarely caused by the belt itself.
+
+Inspect:
+
+• Pulley alignment
+• Worn sheaves
+• Motor bearings
+• Shaft runout
+• Motor mounting
+• Belt tension
+
+Another:
+
+TXV replaced twice
+
+AI Insight
+
+The history suggests the TXV may not be the root problem.
+
+Investigate:
+
+• Moisture contamination
+• Liquid restriction
+• Poor evacuation
+• Improper sensing bulb installation
+• Refrigerant contamination
+
+The AI should continuously compare previous visits and formulate the most probable underlying issue before the technician even starts diagnostics.
+
+----------------------------------------------------
+
+====================================================
+6. EQUIPMENT INTELLIGENCE DETAILS
+====================================================
+
+Every Equipment Intelligence card should be clickable.
+
+Opening one displays:
+
+• Full service history
+• Timeline
+• Previous repairs
+• AI reasoning
+• Technician notes
+• Measurements
+• Alarm history
+• Parts replaced
+• Trends
+• Predicted next failure
+• Launch Diagnostic button
+
+This becomes the "brain" of UnitDown.
+
+----------------------------------------------------
+
+====================================================
+7. MESSAGES
+====================================================
+
+Messages should not live at the bottom where technicians may overlook them.
+
+Instead...
+
+When Start Job is pressed...
+
+If dispatch notes exist...
+
+Show a required Job Brief popup.
+
+Example:
+
+Before you leave...
+
+Dispatch Notes
+
+• Badge required
+
+• Customer requested arrival after 1 PM
+
+• Gate code changed
+
+• Roof hatch unlocked
+
+• Previous technician reported recurring Code 82
+
+Technician taps:
+
+✓ Continue
+
+Only display this popup when important notes exist.
+
+Do not interrupt the workflow unnecessarily.
+
+----------------------------------------------------
+
+====================================================
+8. AI MORNING BRIEF
+====================================================
+
+Add an optional AI Morning Brief card near the top of the dashboard.
+
+Example:
+
+AI Morning Brief
+
+Today's workload:
+3 Jobs
+
+Estimated drive:
+1 hr 18 min
+
+Highest-risk equipment:
+Carrier RTU-3
+
+Recurring failure:
+Code 82
+
+Suggested parts:
+
+✔ Capacitor
+
+✔ Contactor
+
+✔ Coil cleaner
+
+✔ Pressure probes
+
+Estimated finish:
+4:40 PM
+
+The goal is to mentally prepare the technician before leaving for the first call.
+
+----------------------------------------------------
+
+====================================================
+9. DASHBOARD WITH NO SCHEDULED JOBS
+====================================================
+
+When a technician has no jobs scheduled, do not display an empty dashboard.
+
+Instead show a productivity dashboard featuring:
+
+• Compact monthly calendar
+• Follow-ups
+• Equipment Intelligence
+• Saved equipment
+• PMs due this week
+• Recent activity
+• Open recommendations
+• AI insights
+• Training reminders
+• Equipment needing attention
+
+This keeps the app useful every day, even without active dispatches.
+
+----------------------------------------------------
+
+====================================================
+10. OVERALL DESIGN GOAL
+====================================================
+
+Shift UnitDown from being perceived as "an AI diagnostic app" to becoming a complete Commercial HVAC Field Operating System.
+
+The dashboard should feel like the command center for a commercial service technician, where dispatch, history, predictive maintenance, AI diagnostics, customer information, PM tracking, follow-ups, equipment intelligence, and technician workflow all come together in one place.
+
+The interface should immediately answer:
+
+• Where am I going?
+• What needs attention?
+• What has happened before?
+• What should I bring?
+• What should I check first?
+• What can I finish today?
+
+Build this to feel polished, premium, and production-ready while maintaining the current UnitDown design language.

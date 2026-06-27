@@ -113,12 +113,15 @@ export interface TodayJob {
   status: 'open' | 'in-progress' | 'complete';
   type: string;
   customer: string;
+  unitTag: string;
+  model: string;
   equipment: string;
   address: string;
   symptom: string;
   driveTime: string;
   scheduledTime: string;
   techNote: string | null;
+  dispatchNotes?: string[];
   isPrototype: boolean;
 }
 
@@ -129,12 +132,21 @@ export const TODAY_JOBS: TodayJob[] = [
     status: 'open',
     type: 'Service Call',
     customer: 'Summit Medical Plaza',
+    unitTag: 'North Roof · RTU-3',
+    model: 'Carrier 50XCQ006',
     equipment: 'Carrier 50XCQ006 — RTU-3',
     address: '4521 Medical Drive, Dallas TX 75201',
     symptom: 'Unit not cooling — high pressure alarm active. Code 82.',
     driveTime: '12 min',
     scheduledTime: '08:00',
     techNote: 'Code 82 on last 2 visits. Previous tech noted coil restriction.',
+    dispatchNotes: [
+      'Medical facility — badge required at main entrance',
+      'Customer requested arrival no earlier than 8:00 AM',
+      'Roof hatch is unlocked — direct rooftop access available',
+      'Previous tech (D. Carter) noted recurring Code 82, coil restriction suspected',
+      'R-410A cylinder and dual capacitor 35/5µF loaded on your truck',
+    ],
     isPrototype: true,
   },
   {
@@ -143,12 +155,19 @@ export const TODAY_JOBS: TodayJob[] = [
     status: 'open',
     type: 'Preventive Maintenance',
     customer: 'Northgate Data Center',
+    unitTag: 'Server Room B · CRAC-1',
+    model: 'Liebert DS150',
     equipment: 'Liebert DS150 — CRAC-1',
     address: '8800 Northgate Blvd, Dallas TX 75243',
     symptom: 'Annual PM — filter change, coil inspection, belt check.',
     driveTime: '28 min',
     scheduledTime: '13:00',
     techNote: 'Critical facility. Badge required at security gate.',
+    dispatchNotes: [
+      'Time shifted to 1:00 PM per customer request',
+      'Badge required at security gate — check in with front desk',
+      'Critical data center — no service windows, work can proceed anytime after 1 PM',
+    ],
     isPrototype: false,
   },
   {
@@ -157,6 +176,8 @@ export const TODAY_JOBS: TodayJob[] = [
     status: 'open',
     type: 'Preventive Maintenance',
     customer: 'Ridgeline Office Park',
+    unitTag: 'Rooftop · RTU-7',
+    model: 'Trane YCD150',
     equipment: 'Trane YCD150 — RTU-7',
     address: '3200 Ridgeline Drive, Plano TX 75023',
     symptom: 'Quarterly PM — filter change and inspection.',

@@ -1,13 +1,11 @@
 // ─── Dashboard-specific mock data ─────────────────────────────────────────────
-// Kept separate from mockData.ts so the active-job data stays clean
 
 export interface CalendarEvent {
-  day: number; // day of month (June 2026)
+  day: number;
   type: 'pm' | 'training' | 'appointment' | 'vacation' | 'emergency' | 'followup' | 'completed';
   label: string;
 }
 
-// June 2026 — today is June 27 (Saturday)
 export const JUNE_EVENTS: CalendarEvent[] = [
   { day: 2,  type: 'completed',   label: 'PM Complete — Northgate Data Center' },
   { day: 5,  type: 'training',    label: 'EPA Section 608 Review — 9am, Office' },
@@ -22,13 +20,13 @@ export const JUNE_EVENTS: CalendarEvent[] = [
 ];
 
 export const EVENT_COLORS: Record<CalendarEvent['type'], string> = {
-  appointment: 'bg-orange-500',   // Service Call  = Orange
-  pm:          'bg-blue-500',     // PM            = Blue
-  emergency:   'bg-red-500',      // Emergency     = Red
-  completed:   'bg-green-500',    // Completed     = Green
-  followup:    'bg-yellow-400',   // Follow-up     = Yellow
-  training:    'bg-teal-500',     // Training      = Teal
-  vacation:    'bg-gray-500',     // Vacation      = Gray
+  appointment: 'bg-orange-500',
+  pm:          'bg-blue-500',
+  emergency:   'bg-red-500',
+  completed:   'bg-green-500',
+  followup:    'bg-yellow-400',
+  training:    'bg-teal-500',
+  vacation:    'bg-gray-500',
 };
 
 export const EVENT_LABELS: Record<CalendarEvent['type'], string> = {
@@ -41,9 +39,30 @@ export const EVENT_LABELS: Record<CalendarEvent['type'], string> = {
   vacation:    'Vacation',
 };
 
+// ─── Equipment Intelligence ────────────────────────────────────────────────────
+
+export interface AiInsight {
+  pattern: string;
+  stats: string[];
+  analysis: string;
+  rootCauses: string[];
+  suggestedParts: string[];
+}
+
+export interface EqServiceHistory {
+  date: string;
+  tech: string;
+  type: string;
+  summary: string;
+  alarms?: string[];
+  parts?: string[];
+}
+
 export interface EquipmentAttention {
   id: string;
   unit: string;
+  unitTag: string;
+  model: string;
   customer: string;
   location: string;
   issue: string;
@@ -52,12 +71,17 @@ export interface EquipmentAttention {
   visits: number;
   period: string;
   lastService: string;
+  aiInsight: AiInsight;
+  serviceHistory: EqServiceHistory[];
+  measurements?: { label: string; value: string; trend?: 'up' | 'down' | 'stable' }[];
 }
 
 export const EQUIPMENT_ATTENTION: EquipmentAttention[] = [
   {
     id: 'RTU-3',
-    unit: 'Carrier 50XCQ006 — RTU-3',
+    unit: 'Summit Medical Plaza',
+    unitTag: 'North Roof · RTU-3',
+    model: 'Carrier 50XCQ006',
     customer: 'Summit Medical Plaza',
     location: 'Rooftop, North Wing',
     issue: 'Repeated Code 82',
@@ -66,22 +90,76 @@ export const EQUIPMENT_ATTENTION: EquipmentAttention[] = [
     visits: 3,
     period: '12 months',
     lastService: 'Today',
+    aiInsight: {
+      pattern: 'Repeated Code 82 — High Pressure Lockout',
+      stats: ['3 lockouts', '3 visits in 12 mo.', '2 condenser cleanings'],
+      analysis: 'Repeated condenser cleaning has not resolved the high-pressure condition. When cleaning alone fails to correct Code 82, the root cause is likely upstream of the coil — restricted airflow, fan performance, or refrigerant system issues.',
+      rootCauses: [
+        'Condenser airflow restriction (blocked inlet/discharge)',
+        'Condenser fan not reaching rated RPM',
+        'Refrigerant overcharge',
+        'Non-condensables in the refrigerant circuit',
+        'Liquid line restriction',
+        'Failed or incorrect TXV',
+      ],
+      suggestedParts: ['Dual run capacitor', 'Contactor', 'Coil cleaner', 'Pressure gauges', 'Refrigerant'],
+    },
+    serviceHistory: [
+      { date: 'Jun 27, 2026', tech: 'M. Rivera', type: 'Service Call', summary: 'Code 82 active. Unit not cooling.', alarms: ['Code 82 — High Pressure'] },
+      { date: 'Apr 15, 2025', tech: 'D. Carter', type: 'Service Call', summary: 'Code 82. Cleared alarm, recommended condenser cleaning. Deferred.', alarms: ['Code 82 — High Pressure'] },
+      { date: 'Aug 3, 2024',  tech: 'M. Rivera', type: 'Service Call', summary: 'Code 82. Cleared and restarted. Condenser cleaning deferred again.', alarms: ['Code 82 — High Pressure'] },
+      { date: 'Mar 12, 2024', tech: 'D. Carter', type: 'PM',           summary: 'Annual PM. Belt replaced (3VX425). All readings within spec.', parts: ['Belt 3VX425'] },
+    ],
+    measurements: [
+      { label: 'Head Pressure',  value: '385 psi', trend: 'up' },
+      { label: 'Superheat',      value: '24°F',    trend: 'up' },
+      { label: 'Supply Air',     value: '61°F',    trend: 'stable' },
+      { label: 'Delta T',        value: '11°F',    trend: 'down' },
+    ],
   },
   {
     id: 'AHU-5',
-    unit: 'Trane AHU-5',
+    unit: 'Parkway Medical Center',
+    unitTag: 'Mech Room B · AHU-5',
+    model: 'Trane AHU-5',
     customer: 'Parkway Medical Center',
     location: 'Mechanical Room B',
-    issue: 'Bearing vibration increasing',
+    issue: 'Escalating bearing vibration',
     detail: 'Supply fan motor vibration 0.12 in/s → 0.31 in/s over last 2 visits. Approaching alarm threshold.',
     severity: 'medium',
     visits: 2,
     period: '6 months',
     lastService: 'Yesterday',
+    aiInsight: {
+      pattern: 'Progressive vibration increase over 3 readings',
+      stats: ['0.12 → 0.31 in/s', '2 visits, 6 months', 'Approaching 0.4 in/s alarm'],
+      analysis: 'A bearing that is progressively worsening over multiple visits rarely fails in isolation. Progressive vibration increase points to a mechanical root cause that the bearing is reacting to — not originating from.',
+      rootCauses: [
+        'Worn or misaligned sheaves on belt drive',
+        'Pulley misalignment creating radial load',
+        'Motor shaft runout or bent shaft',
+        'Belt tension too tight',
+        'Motor mounting feet loose or soft-footing',
+        'Resonance from structural attachment point',
+      ],
+      suggestedParts: ['Replacement bearings', 'Sheave set', 'Belt set', 'Vibration meter', 'Motor alignment tool'],
+    },
+    serviceHistory: [
+      { date: 'Jun 26, 2026', tech: 'M. Rivera', type: 'Service Call', summary: 'Vibration at 0.31 in/s. Fan motor quoted for replacement.' },
+      { date: 'Jan 8, 2026',  tech: 'D. Carter', type: 'PM',           summary: 'Vibration first noted at 0.12 in/s. Logged for monitoring.' },
+      { date: 'Jul 2025',     tech: 'M. Rivera', type: 'PM',           summary: 'Routine PM. No abnormal readings. Belts replaced.' },
+    ],
+    measurements: [
+      { label: 'Vibration',    value: '0.31 in/s', trend: 'up' },
+      { label: 'Motor Amps',   value: '14.2 A',    trend: 'up' },
+      { label: 'Supply CFM',   value: '4,200',     trend: 'stable' },
+    ],
   },
   {
     id: 'CRAC-3',
-    unit: 'Liebert DS150 — CRAC-3',
+    unit: 'Northgate Data Center',
+    unitTag: 'Server Room C · CRAC-3',
+    model: 'Liebert DS150',
     customer: 'Northgate Data Center',
     location: 'Server Room C',
     issue: 'Humidifier canister overdue',
@@ -90,8 +168,26 @@ export const EQUIPMENT_ATTENTION: EquipmentAttention[] = [
     visits: 1,
     period: '3 months',
     lastService: 'Jun 2',
+    aiInsight: {
+      pattern: 'Humidifier canister past service interval',
+      stats: ['35 days overdue', '1 deferred replacement', 'Humidity trending -4%'],
+      analysis: 'A scaled canister increases resistance in the humidifier circuit, reducing output and stressing the heating element. In data center environments, low humidity is a static discharge risk. The longer the deferral, the more likely the canister will fail mid-cycle rather than at a scheduled replacement.',
+      rootCauses: [
+        'High mineral content in local water supply (scale buildup)',
+        'Incorrect canister specification for water hardness',
+        'Deferred PM schedule causing accelerated scaling',
+      ],
+      suggestedParts: ['Humidifier canister (Liebert DS-series)', 'Water treatment tablets', 'Descaling solution'],
+    },
+    serviceHistory: [
+      { date: 'Jun 2, 2026',  tech: 'M. Rivera', type: 'PM', summary: 'Annual PM. Canister noted as needing replacement. Deferred pending parts order.', parts: ['Canister on order'] },
+      { date: 'Feb 5, 2026',  tech: 'D. Carter', type: 'PM', summary: 'Quarterly PM. Canister at 80% life. Noted for replacement at next PM.' },
+      { date: 'Jun 20, 2025', tech: 'M. Rivera', type: 'Emergency', summary: 'High temperature alarm. Low humidity contributing factor. Canister replaced.', alarms: ['High Temp Alarm'] },
+    ],
   },
 ];
+
+// ─── Office Messages ──────────────────────────────────────────────────────────
 
 export interface OfficeMessage {
   id: string;
@@ -129,6 +225,8 @@ export const OFFICE_MESSAGES: OfficeMessage[] = [
   },
 ];
 
+// ─── Recent Activity ──────────────────────────────────────────────────────────
+
 export interface RecentActivity {
   id: string;
   type: 'usr' | 'recommendation' | 'pm' | 'arrival' | 'emergency' | 'part' | 'note' | 'quote';
@@ -140,61 +238,15 @@ export interface RecentActivity {
 }
 
 export const RECENT_ACTIVITY: RecentActivity[] = [
-  {
-    id: 'ra-1',
-    type: 'usr',
-    summary: 'USR Generated — USR-2026-004920',
-    customer: 'Parkway Medical Center',
-    equipment: 'AHU-5',
-    timeLabel: 'Yesterday 4:47 PM',
-    icon: '📄',
-  },
-  {
-    id: 'ra-2',
-    type: 'recommendation',
-    summary: 'Recommendation added — fan motor replacement quoted',
-    customer: 'Parkway Medical Center',
-    equipment: 'AHU-5',
-    timeLabel: 'Yesterday 3:21 PM',
-    icon: '📋',
-  },
-  {
-    id: 'ra-3',
-    type: 'pm',
-    summary: 'PM Completed — quarterly service',
-    customer: 'Lakeside Tower',
-    equipment: 'RTU-2',
-    timeLabel: 'Jun 25 2:10 PM',
-    icon: '✅',
-  },
-  {
-    id: 'ra-4',
-    type: 'emergency',
-    summary: 'Emergency call — CRAC-1 high temp alarm',
-    customer: 'Northgate Data Center',
-    equipment: 'Liebert CRAC-1',
-    timeLabel: 'Jun 20 11:34 AM',
-    icon: '🚨',
-  },
-  {
-    id: 'ra-5',
-    type: 'note',
-    summary: 'Note logged — unit restarted, monitoring overnight',
-    customer: 'Northgate Data Center',
-    equipment: 'Liebert CRAC-1',
-    timeLabel: 'Jun 20 12:05 PM',
-    icon: '📝',
-  },
-  {
-    id: 'ra-6',
-    type: 'pm',
-    summary: 'Annual PM — all readings in spec',
-    customer: 'Northgate Data Center',
-    equipment: 'CRAC-1',
-    timeLabel: 'Jun 2 1:45 PM',
-    icon: '✅',
-  },
+  { id: 'ra-1', type: 'usr',            summary: 'USR Generated — USR-2026-004920',                customer: 'Parkway Medical Center', equipment: 'AHU-5',         timeLabel: 'Yesterday 4:47 PM', icon: '📄' },
+  { id: 'ra-2', type: 'recommendation', summary: 'Recommendation added — fan motor quoted',         customer: 'Parkway Medical Center', equipment: 'AHU-5',         timeLabel: 'Yesterday 3:21 PM', icon: '📋' },
+  { id: 'ra-3', type: 'pm',             summary: 'PM Completed — quarterly service',                customer: 'Lakeside Tower',         equipment: 'RTU-2',         timeLabel: 'Jun 25 2:10 PM',    icon: '✅' },
+  { id: 'ra-4', type: 'emergency',      summary: 'Emergency call — CRAC-1 high temp alarm',         customer: 'Northgate Data Center',  equipment: 'Liebert CRAC-1',timeLabel: 'Jun 20 11:34 AM',   icon: '🚨' },
+  { id: 'ra-5', type: 'note',           summary: 'Note logged — unit restarted, monitoring O/N',    customer: 'Northgate Data Center',  equipment: 'Liebert CRAC-1',timeLabel: 'Jun 20 12:05 PM',   icon: '📝' },
+  { id: 'ra-6', type: 'pm',             summary: 'Annual PM — all readings in spec',                customer: 'Northgate Data Center',  equipment: 'CRAC-1',        timeLabel: 'Jun 2 1:45 PM',     icon: '✅' },
 ];
+
+// ─── Dashboard stat tiles ──────────────────────────────────────────────────────
 
 export interface DashboardStat {
   id: string;
@@ -208,12 +260,12 @@ export interface DashboardStat {
 }
 
 export const DASHBOARD_STATS: DashboardStat[] = [
-  { id: 'jobs',      label: "Today's Jobs",    value: 3,   subtitle: '1 high priority',   icon: '🔧', color: 'bg-amber-950/40',  borderColor: 'border-amber-800/60',  urgent: true  },
-  { id: 'progress',  label: 'In Progress',     value: 0,   subtitle: 'none active',       icon: '▶',  color: 'bg-gray-900',      borderColor: 'border-gray-800',      urgent: false },
-  { id: 'pms',       label: 'PMs Due',         value: 2,   subtitle: 'this week',         icon: '📅', color: 'bg-blue-950/40',   borderColor: 'border-blue-800/60',   urgent: false },
-  { id: 'followups', label: 'Follow-Ups',      value: 2,   subtitle: '1 due in 13 days',  icon: '🔁', color: 'bg-orange-950/40', borderColor: 'border-orange-800/60', urgent: false },
-  { id: 'quotes',    label: 'Open Quotes',     value: 1,   subtitle: 'AHU-5 motor quote', icon: '💬', color: 'bg-gray-900',      borderColor: 'border-gray-800',      urgent: false },
-  { id: 'parts',     label: 'Waiting on Parts',value: 1,   subtitle: 'CRAC-3 canister',   icon: '📦', color: 'bg-gray-900',      borderColor: 'border-gray-800',      urgent: false },
-  { id: 'messages',  label: 'Messages',        value: 2,   subtitle: '2 unread',          icon: '💬', color: 'bg-purple-950/40', borderColor: 'border-purple-800/60', urgent: false },
-  { id: 'training',  label: 'Training Due',    value: '!', subtitle: 'EPA 608 — Aug 1',   icon: '🎓', color: 'bg-green-950/40',  borderColor: 'border-green-800/60',  urgent: false },
+  { id: 'jobs',      label: "Today's Jobs",     value: 3,   subtitle: '1 high priority',   icon: '🔧', color: 'bg-amber-950/40',  borderColor: 'border-amber-800/60',  urgent: true  },
+  { id: 'progress',  label: 'In Progress',      value: 0,   subtitle: 'none active',       icon: '▶',  color: 'bg-gray-900',      borderColor: 'border-gray-800',      urgent: false },
+  { id: 'pms',       label: 'PMs Due',          value: 2,   subtitle: 'this week',         icon: '📅', color: 'bg-blue-950/40',   borderColor: 'border-blue-800/60',   urgent: false },
+  { id: 'followups', label: 'Follow-Ups',       value: 2,   subtitle: '1 due in 13 days',  icon: '🔁', color: 'bg-orange-950/40', borderColor: 'border-orange-800/60', urgent: false },
+  { id: 'quotes',    label: 'Open Quotes',      value: 1,   subtitle: 'AHU-5 motor quote', icon: '💬', color: 'bg-gray-900',      borderColor: 'border-gray-800',      urgent: false },
+  { id: 'parts',     label: 'Waiting on Parts', value: 1,   subtitle: 'CRAC-3 canister',   icon: '📦', color: 'bg-gray-900',      borderColor: 'border-gray-800',      urgent: false },
+  { id: 'messages',  label: 'Messages',         value: 2,   subtitle: '2 unread',          icon: '💬', color: 'bg-purple-950/40', borderColor: 'border-purple-800/60', urgent: false },
+  { id: 'training',  label: 'Training Due',     value: '!', subtitle: 'EPA 608 — Aug 1',   icon: '🎓', color: 'bg-green-950/40',  borderColor: 'border-green-800/60',  urgent: false },
 ];

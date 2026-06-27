@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronRight, ChevronLeft, X, Wrench, Calendar as CalIcon,
-  AlertTriangle, MapPin, Clock, Phone,
-  Search, Cpu, FileText, Zap, CheckCircle, Maximize2,
+  AlertTriangle, MapPin, Clock, Phone, Search, Cpu, FileText,
+  Zap, CheckCircle, Maximize2, User, Settings, LogOut, ChevronDown,
+  TrendingUp, TrendingDown, Minus, Lightbulb, Sparkles,
 } from 'lucide-react';
-import { TODAY_JOBS, MOCK_HISTORY, MOCK_EQUIPMENT, type TodayJob } from './mockData';
+import { TODAY_JOBS, MOCK_HISTORY, MOCK_EQUIPMENT, FOLLOW_UP_ITEMS, type TodayJob } from './mockData';
 import {
   JUNE_EVENTS, EVENT_COLORS, EVENT_LABELS, EQUIPMENT_ATTENTION, OFFICE_MESSAGES,
-  RECENT_ACTIVITY, DASHBOARD_STATS, type CalendarEvent,
+  RECENT_ACTIVITY, DASHBOARD_STATS, type CalendarEvent, type EquipmentAttention,
 } from './dashboardData';
 
 interface Props { onStartJob: () => void }
@@ -21,17 +22,14 @@ const PRIORITY_STYLE = {
 };
 
 const SEV_STYLE = {
-  high:   { ring: 'border-red-800',   bg: 'bg-red-950/30',   dot: 'bg-red-500',   label: 'text-red-400',   badge: 'HIGH' },
-  medium: { ring: 'border-amber-800', bg: 'bg-amber-950/30', dot: 'bg-amber-500', label: 'text-amber-400', badge: 'WATCH' },
-  low:    { ring: 'border-gray-700',  bg: 'bg-gray-900',     dot: 'bg-gray-500',  label: 'text-gray-400',  badge: 'INFO' },
+  high:   { ring: 'border-red-800',   bg: 'bg-red-950/30',   dot: 'bg-red-500',   label: 'text-red-400',   badge: 'HIGH',  badgeBg: 'bg-red-900/50 text-red-400' },
+  medium: { ring: 'border-amber-800', bg: 'bg-amber-950/30', dot: 'bg-amber-500', label: 'text-amber-400', badge: 'WATCH', badgeBg: 'bg-amber-900/50 text-amber-400' },
+  low:    { ring: 'border-gray-700',  bg: 'bg-gray-900',     dot: 'bg-gray-500',  label: 'text-gray-400',  badge: 'INFO',  badgeBg: 'bg-gray-800 text-gray-400' },
 };
 
-// June 2026 constants
-const CAL_YEAR = 2026;
-const CAL_MONTH = 6;   // 1-indexed
-const CAL_FIRST_DAY = 0;   // Sunday
+const CAL_FIRST_DAY = 0;
 const CAL_DAYS = 30;
-const TODAY_DAY = 27;  // June 27
+const TODAY_DAY = 27;
 
 function buildEventMap(events: CalendarEvent[]) {
   const m = new Map<number, CalendarEvent[]>();
@@ -42,23 +40,52 @@ function buildEventMap(events: CalendarEvent[]) {
   return m;
 }
 
+function buildCells(): (number | null)[] {
+  const cells: (number | null)[] = Array(CAL_FIRST_DAY).fill(null);
+  for (let d = 1; d <= CAL_DAYS; d++) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
 export function DashboardView({ onStartJob }: Props) {
-  const [selectedJob, setSelectedJob]       = useState<TodayJob | null>(null);
-  const [selectedDay, setSelectedDay]       = useState<{ day: number; events: CalendarEvent[] } | null>(null);
-  const [calFullScreen, setCalFullScreen]   = useState(false);
+  const [selectedJob,     setSelectedJob]     = useState<TodayJob | null>(null);
+  const [selectedDay,     setSelectedDay]     = useState<{ day: number; events: CalendarEvent[] } | null>(null);
+  const [calFullScreen,   setCalFullScreen]   = useState(false);
+  const [accountOpen,     setAccountOpen]     = useState(false);
+  const [overviewFilter,  setOverviewFilter]  = useState<string | null>(null);
+  const [equipmentDetail, setEquipmentDetail] = useState<EquipmentAttention | null>(null);
+  const [jobBriefFor,     setJobBriefFor]     = useState<TodayJob | null>(null);
+  const [briefsSeen,      setBriefsSeen]      = useState<Set<string>>(new Set());
 
   const now = new Date();
   const hour = now.getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
-  function handleDayTap(day: number, events: CalendarEvent[]) {
-    setSelectedDay({ day, events });
+  function handleStartJob(job: TodayJob) {
+    setSelectedJob(null);
+    const hasNotes = job.dispatchNotes && job.dispatchNotes.length > 0;
+    const alreadySeen = briefsSeen.has(job.id);
+    if (hasNotes && !alreadySeen) {
+      setJobBriefFor(job);
+    } else {
+      onStartJob();
+    }
+  }
+
+  function handleBriefContinue() {
+    if (jobBriefFor) {
+      setBriefsSeen(prev => new Set(prev).add(jobBriefFor!.id));
+      const isPrototype = jobBriefFor.isPrototype;
+      setJobBriefFor(null);
+      if (isPrototype) onStartJob();
+    }
   }
 
   return (
     <div className="min-h-screen bg-gray-950 text-white overflow-y-auto pb-24">
+
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="bg-gray-900 border-b border-gray-800 px-4 pt-12 pb-4">
         <div className="flex items-start justify-between">
@@ -71,7 +98,10 @@ export function DashboardView({ onStartJob }: Props) {
               <span>{timeStr}</span>
             </div>
           </div>
-          <div className="w-12 h-12 rounded-2xl bg-blue-700 flex items-center justify-center font-bold text-white text-lg flex-shrink-0">MR</div>
+          <button onClick={() => setAccountOpen(true)}
+            className="w-12 h-12 rounded-2xl bg-blue-700 flex items-center justify-center font-bold text-white text-lg flex-shrink-0 active:scale-95 transition-transform">
+            MR
+          </button>
         </div>
         <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
           <span>🌤 91°F · Partly Cloudy</span>
@@ -82,30 +112,36 @@ export function DashboardView({ onStartJob }: Props) {
         </div>
       </div>
 
-      {/* ── Calendar Widget ──────────────────────────────────────── */}
+      {/* ── AI Morning Brief ─────────────────────────────────────── */}
+      <div className="px-4 pt-4">
+        <AiMorningBrief />
+      </div>
+
+      {/* ── Calendar ─────────────────────────────────────────────── */}
       <div className="px-4 pt-4">
         <CalendarCard
           events={JUNE_EVENTS}
           today={TODAY_DAY}
-          onDayTap={handleDayTap}
+          onDayTap={(day, evts) => setSelectedDay({ day, events: evts })}
           onExpand={() => setCalFullScreen(true)}
         />
       </div>
 
-      {/* ── Overview stat tiles ─────────────────────────────────── */}
+      {/* ── Overview tiles ───────────────────────────────────────── */}
       <div className="pt-4">
         <div className="px-4 mb-2">
           <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Overview</span>
         </div>
         <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 snap-x snap-mandatory">
           {DASHBOARD_STATS.map(s => (
-            <div key={s.id}
-              className={`flex-shrink-0 w-[86px] rounded-2xl border ${s.borderColor} ${s.color} p-3 snap-start`}>
+            <button key={s.id}
+              onClick={() => setOverviewFilter(s.id)}
+              className={`flex-shrink-0 w-[86px] rounded-2xl border ${s.borderColor} ${s.color} p-3 snap-start text-left active:scale-95 transition-transform`}>
               <div className="text-xl mb-1">{s.icon}</div>
               <div className={`text-2xl font-bold leading-none ${s.urgent ? 'text-amber-400' : 'text-white'}`}>{s.value}</div>
               <div className="text-[9px] font-bold text-gray-400 uppercase tracking-wide mt-1 leading-tight">{s.label}</div>
               <div className="text-[9px] text-gray-600 mt-0.5 leading-tight">{s.subtitle}</div>
-            </div>
+            </button>
           ))}
         </div>
       </div>
@@ -130,14 +166,16 @@ export function DashboardView({ onStartJob }: Props) {
                   className={`w-full bg-gray-900 border border-gray-800 border-l-4 ${style.border} rounded-r-2xl rounded-bl-2xl p-4 text-left`}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full flex-shrink-0 ${style.badge}`}>{style.label}</span>
                         <span className="text-[10px] font-mono text-gray-600">{job.id}</span>
                         <span className="text-[10px] text-gray-600 ml-auto">{job.scheduledTime}</span>
                       </div>
-                      <div className="font-bold text-white text-sm leading-snug">{job.equipment}</div>
-                      <div className="text-xs text-gray-400 truncate">{job.customer}</div>
-                      <div className="text-xs text-gray-500 mt-1 leading-snug">{job.symptom}</div>
+                      {/* Location-first hierarchy */}
+                      <div className="font-bold text-white text-base leading-snug">{job.customer}</div>
+                      <div className="text-xs text-blue-300/80 mt-0.5">{job.unitTag}</div>
+                      <div className="text-[10px] text-gray-600 font-mono mt-0.5">{job.model}</div>
+                      <div className="text-xs text-gray-400 mt-1.5 leading-snug">{job.symptom}</div>
                       {job.techNote && (
                         <div className="mt-1.5 text-[10px] text-amber-300/80 bg-amber-950/30 rounded-lg px-2 py-1 border border-amber-900/30">
                           💡 {job.techNote}
@@ -149,6 +187,11 @@ export function DashboardView({ onStartJob }: Props) {
                       <div className="flex items-center gap-0.5 text-[10px] text-gray-500">
                         <MapPin size={9} /><span>{job.driveTime}</span>
                       </div>
+                      {job.dispatchNotes && (
+                        <div className="text-[9px] bg-blue-900/40 text-blue-400 px-1.5 py-0.5 rounded-full border border-blue-800/60">
+                          Brief
+                        </div>
+                      )}
                     </div>
                   </div>
                 </motion.button>
@@ -160,36 +203,70 @@ export function DashboardView({ onStartJob }: Props) {
 
       {/* ── Equipment Intelligence ───────────────────────────────── */}
       <div className="px-4 pt-5">
-        <SectionHeader title="Equipment Intelligence" subtitle="Needs attention" />
+        <SectionHeader title="Equipment Intelligence" subtitle="AI-assisted pattern analysis" />
         <div className="space-y-3">
           {EQUIPMENT_ATTENTION.map((eq, i) => {
             const sev = SEV_STYLE[eq.severity];
             return (
-              <motion.div key={eq.id}
+              <motion.button key={eq.id}
                 initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
-                className={`${sev.bg} border ${sev.ring} rounded-2xl p-4`}>
+                onClick={() => setEquipmentDetail(eq)} whileTap={{ scale: 0.98 }}
+                className={`w-full text-left ${sev.bg} border ${sev.ring} rounded-2xl p-4`}>
                 <div className="flex items-start gap-3">
                   <div className={`w-2.5 h-2.5 rounded-full ${sev.dot} flex-shrink-0 mt-1.5`} />
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-start justify-between gap-2 mb-2">
                       <div className="min-w-0">
                         <div className="font-bold text-white text-sm leading-snug">{eq.unit}</div>
-                        <div className="text-[10px] text-gray-500">{eq.customer} · {eq.location}</div>
+                        <div className="text-[10px] text-blue-300/70">{eq.unitTag}</div>
+                        <div className="text-[9px] font-mono text-gray-600">{eq.model}</div>
                       </div>
-                      <span className={`text-[9px] font-bold uppercase tracking-wider flex-shrink-0 mt-0.5 ${sev.label}`}>{sev.badge}</span>
+                      <span className={`text-[9px] font-bold uppercase tracking-wider flex-shrink-0 mt-0.5 px-1.5 py-0.5 rounded-full ${sev.badgeBg}`}>{sev.badge}</span>
                     </div>
-                    <div className="mt-2 bg-black/20 rounded-xl px-3 py-2">
-                      <div className="text-xs font-semibold text-white">{eq.issue}</div>
-                      <div className="text-[10px] text-gray-400 mt-0.5 leading-relaxed">{eq.detail}</div>
+
+                    {/* Pattern + stats */}
+                    <div className="bg-black/20 rounded-xl px-3 py-2.5 mb-2">
+                      <div className="text-xs font-bold text-white mb-1">{eq.aiInsight.pattern}</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {eq.aiInsight.stats.map((s, si) => (
+                          <span key={si} className="text-[9px] bg-white/10 text-gray-300 px-1.5 py-0.5 rounded-full">{s}</span>
+                        ))}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3 mt-2 text-[10px] text-gray-600">
-                      <span>{eq.visits} visit{eq.visits !== 1 ? 's' : ''} / {eq.period}</span>
-                      <span>·</span>
-                      <span>Last: {eq.lastService}</span>
+
+                    {/* AI Insight */}
+                    <div className="bg-blue-950/40 border border-blue-800/40 rounded-xl px-3 py-2.5 mb-2">
+                      <div className="flex items-center gap-1.5 mb-1.5">
+                        <Sparkles size={10} className="text-blue-400 flex-shrink-0" />
+                        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400">AI Insight</span>
+                      </div>
+                      <p className="text-[10px] text-blue-100/80 leading-relaxed mb-2">{eq.aiInsight.analysis}</p>
+                      <div className="space-y-0.5">
+                        {eq.aiInsight.rootCauses.slice(0, 3).map((rc, ri) => (
+                          <div key={ri} className="flex items-start gap-1.5 text-[10px] text-gray-300">
+                            <span className="text-blue-500 flex-shrink-0 mt-0.5">•</span>
+                            <span>{rc}</span>
+                          </div>
+                        ))}
+                        {eq.aiInsight.rootCauses.length > 3 && (
+                          <div className="text-[9px] text-blue-400 mt-1">+{eq.aiInsight.rootCauses.length - 3} more root causes</div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3 text-[9px] text-gray-600">
+                        <span>{eq.visits} visit{eq.visits !== 1 ? 's' : ''} / {eq.period}</span>
+                        <span>·</span>
+                        <span>Last: {eq.lastService}</span>
+                      </div>
+                      <span className="text-[9px] text-blue-400 font-semibold flex items-center gap-0.5">
+                        Full history <ChevronRight size={10} />
+                      </span>
                     </div>
                   </div>
                 </div>
-              </motion.div>
+              </motion.button>
             );
           })}
         </div>
@@ -214,9 +291,9 @@ export function DashboardView({ onStartJob }: Props) {
         </div>
       </div>
 
-      {/* ── Recent Activity Timeline ─────────────────────────────── */}
+      {/* ── Recent Activity ──────────────────────────────────────── */}
       <div className="px-4 pt-5">
-        <SectionHeader title="Recent Activity" subtitle="Your field history" />
+        <SectionHeader title="Recent Activity" subtitle="Field history" />
         <div className="relative">
           <div className="absolute left-[11px] top-0 bottom-0 w-px bg-gray-800" />
           <div className="space-y-0">
@@ -247,14 +324,14 @@ export function DashboardView({ onStartJob }: Props) {
         <SectionHeader title="Quick Actions" />
         <div className="grid grid-cols-3 gap-2">
           {[
-            { icon: <Phone size={18} />,      label: 'Emergency\nCall',   color: 'bg-red-900/40 border-red-800',       iconColor: 'text-red-400' },
-            { icon: <Search size={18} />,     label: 'Search\nEquipment', color: 'bg-blue-900/40 border-blue-800',     iconColor: 'text-blue-400' },
-            { icon: <Zap size={18} />,        label: 'Scan\nNameplate',   color: 'bg-green-900/40 border-green-800',   iconColor: 'text-green-400' },
-            { icon: <Cpu size={18} />,        label: 'AI\nAssistant',     color: 'bg-purple-900/40 border-purple-800', iconColor: 'text-purple-400' },
-            { icon: <FileText size={18} />,   label: 'Service\nRecords',  color: 'bg-gray-800 border-gray-700',        iconColor: 'text-gray-300' },
-            { icon: <CheckCircle size={18} />,label: 'Resume\nLast Job',  color: 'bg-amber-900/40 border-amber-800',   iconColor: 'text-amber-400' },
+            { icon: <Phone size={18} />,       label: 'Emergency\nCall',   color: 'bg-red-900/40 border-red-800',       iconColor: 'text-red-400' },
+            { icon: <Search size={18} />,      label: 'Search\nEquipment', color: 'bg-blue-900/40 border-blue-800',     iconColor: 'text-blue-400' },
+            { icon: <Zap size={18} />,         label: 'Scan\nNameplate',   color: 'bg-green-900/40 border-green-800',   iconColor: 'text-green-400' },
+            { icon: <Cpu size={18} />,         label: 'AI\nAssistant',     color: 'bg-purple-900/40 border-purple-800', iconColor: 'text-purple-400' },
+            { icon: <FileText size={18} />,    label: 'Service\nRecords',  color: 'bg-gray-800 border-gray-700',        iconColor: 'text-gray-300' },
+            { icon: <CheckCircle size={18} />, label: 'Resume\nLast Job',  color: 'bg-amber-900/40 border-amber-800',   iconColor: 'text-amber-400' },
           ].map((a, i) => (
-            <button key={i} className={`flex flex-col items-center gap-2 py-4 rounded-2xl border ${a.color}`}>
+            <button key={i} className={`flex flex-col items-center gap-2 py-4 rounded-2xl border ${a.color} active:scale-95 transition-transform`}>
               <div className={a.iconColor}>{a.icon}</div>
               <span className="text-[10px] text-gray-300 font-medium text-center leading-tight whitespace-pre-line">{a.label}</span>
             </button>
@@ -262,7 +339,7 @@ export function DashboardView({ onStartJob }: Props) {
         </div>
       </div>
 
-      {/* ── Emergency call strip ─────────────────────────────────── */}
+      {/* ── Emergency strip ──────────────────────────────────────── */}
       <div className="px-4 pt-3 pb-2">
         <button className="w-full flex items-center justify-between bg-red-950/30 border border-red-900 rounded-2xl px-4 py-3.5">
           <div className="flex items-center gap-3">
@@ -278,19 +355,41 @@ export function DashboardView({ onStartJob }: Props) {
         </button>
       </div>
 
-      {/* ─── Full-screen calendar modal ──────────────────────────── */}
+      {/* ═══ Modals ════════════════════════════════════════════════ */}
+
       <AnimatePresence>
         {calFullScreen && (
           <FullScreenCalendar
-            events={JUNE_EVENTS}
-            today={TODAY_DAY}
+            events={JUNE_EVENTS} today={TODAY_DAY}
             onClose={() => setCalFullScreen(false)}
-            onDayTap={handleDayTap}
+            onDayTap={(d, e) => { setCalFullScreen(false); setSelectedDay({ day: d, events: e }); }}
           />
         )}
       </AnimatePresence>
 
-      {/* ─── Day schedule sheet ──────────────────────────────────── */}
+      <AnimatePresence>
+        {accountOpen && <AccountDashboard onClose={() => setAccountOpen(false)} />}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {overviewFilter && (
+          <OverviewFilterSheet
+            filterId={overviewFilter}
+            onClose={() => setOverviewFilter(null)}
+            onSelectJob={job => { setOverviewFilter(null); setSelectedJob(job); }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {equipmentDetail && (
+          <EquipmentDetailModal
+            eq={equipmentDetail}
+            onClose={() => setEquipmentDetail(null)}
+          />
+        )}
+      </AnimatePresence>
+
       <AnimatePresence>
         {selectedDay && (
           <Sheet onClose={() => setSelectedDay(null)}>
@@ -308,10 +407,10 @@ export function DashboardView({ onStartJob }: Props) {
                 <>
                   <p className="text-sm text-gray-400 mb-4">Nothing scheduled for this day.</p>
                   {[
-                    { icon: <Phone size={16} className="text-red-400" />,    label: 'Create Emergency Call',  bg: 'bg-red-950/40 border-red-900' },
-                    { icon: <Search size={16} className="text-blue-400" />,  label: 'Browse Equipment',       bg: 'bg-blue-950/40 border-blue-900' },
-                    { icon: <FileText size={16} className="text-gray-300" />,label: 'View Service Records',   bg: 'bg-gray-800 border-gray-700' },
-                    { icon: <Cpu size={16} className="text-purple-400" />,   label: 'AI Assistant',           bg: 'bg-purple-950/40 border-purple-900' },
+                    { icon: <Phone size={16} className="text-red-400" />,     label: 'Create Emergency Call',  bg: 'bg-red-950/40 border-red-900' },
+                    { icon: <Search size={16} className="text-blue-400" />,   label: 'Browse Equipment',       bg: 'bg-blue-950/40 border-blue-900' },
+                    { icon: <FileText size={16} className="text-gray-300" />, label: 'View Service Records',   bg: 'bg-gray-800 border-gray-700' },
+                    { icon: <Cpu size={16} className="text-purple-400" />,    label: 'AI Assistant',           bg: 'bg-purple-950/40 border-purple-900' },
                   ].map((a, i) => (
                     <button key={i} className={`w-full flex items-center gap-3 ${a.bg} border rounded-2xl px-4 py-3.5`}>
                       {a.icon}
@@ -336,7 +435,6 @@ export function DashboardView({ onStartJob }: Props) {
         )}
       </AnimatePresence>
 
-      {/* ─── Job detail sheet ────────────────────────────────────── */}
       <AnimatePresence>
         {selectedJob && (
           <Sheet onClose={() => setSelectedJob(null)}>
@@ -346,8 +444,10 @@ export function DashboardView({ onStartJob }: Props) {
                   {PRIORITY_STYLE[selectedJob.priority].label}
                 </div>
                 <div className="text-xs font-mono text-gray-500 mb-1">{selectedJob.id}</div>
-                <h2 className="text-lg font-bold text-white leading-tight">{selectedJob.equipment}</h2>
-                <div className="text-sm text-gray-400">{selectedJob.customer}</div>
+                {/* Location-first in detail too */}
+                <h2 className="text-lg font-bold text-white leading-tight">{selectedJob.customer}</h2>
+                <div className="text-sm text-blue-300/80">{selectedJob.unitTag}</div>
+                <div className="text-xs font-mono text-gray-600 mt-0.5">{selectedJob.model}</div>
               </div>
               <SheetClose onClose={() => setSelectedJob(null)} />
             </div>
@@ -390,77 +490,150 @@ export function DashboardView({ onStartJob }: Props) {
                   💡 {selectedJob.techNote}
                 </div>
               )}
+              {selectedJob.dispatchNotes && (
+                <div className="bg-blue-950/30 border border-blue-800/60 rounded-2xl p-3">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-blue-400 mb-2 flex items-center gap-1.5">
+                    <Lightbulb size={10} /> Dispatch Notes
+                  </div>
+                  <div className="space-y-1.5">
+                    {selectedJob.dispatchNotes.map((n, ni) => (
+                      <div key={ni} className="flex items-start gap-2 text-xs text-blue-200/80">
+                        <span className="text-blue-500 flex-shrink-0">•</span>
+                        <span>{n}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {selectedJob.isPrototype ? (
-                <button onClick={onStartJob}
+                <button onClick={() => handleStartJob(selectedJob)}
                   className="w-full bg-white text-gray-950 font-bold text-lg py-5 rounded-2xl flex items-center justify-center gap-2">
                   <span>Start Job</span><ChevronRight size={20} />
                 </button>
               ) : (
-                <div className="w-full bg-gray-800 text-gray-500 font-semibold py-5 rounded-2xl text-center text-sm">
-                  Full prototype workflow: JM-2026-0047 only
+                <div className="flex flex-col gap-2">
+                  <button onClick={() => handleStartJob(selectedJob)}
+                    className="w-full bg-blue-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2">
+                    Start Job <ChevronRight size={16} />
+                  </button>
+                  <div className="text-center text-[10px] text-gray-600">Full workflow prototype: JM-2026-0047 only</div>
                 </div>
               )}
             </div>
           </Sheet>
         )}
       </AnimatePresence>
+
+      {/* ── Job Brief Modal ──────────────────────────────────────── */}
+      <AnimatePresence>
+        {jobBriefFor && (
+          <JobBriefModal
+            job={jobBriefFor}
+            onContinue={handleBriefContinue}
+            onCancel={() => setJobBriefFor(null)}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
 
-// ─── Compact Calendar Card (always-visible month grid) ─────────────────────────
-const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
-const MONTH_NAME = 'June 2026';
+// ─── AI Morning Brief ──────────────────────────────────────────────────────────
+function AiMorningBrief() {
+  const [expanded, setExpanded] = useState(true);
 
-function buildCells(): (number | null)[] {
-  const cells: (number | null)[] = Array(CAL_FIRST_DAY).fill(null);
-  for (let d = 1; d <= CAL_DAYS; d++) cells.push(d);
-  while (cells.length % 7 !== 0) cells.push(null);
-  return cells;
+  const PARTS = ['Dual cap 35/5µF', 'Contactor', 'Coil cleaner', 'Pressure probes', 'R-410A'];
+
+  return (
+    <div className="bg-gradient-to-br from-blue-950/60 to-indigo-950/60 border border-blue-800/50 rounded-2xl overflow-hidden">
+      <button onClick={() => setExpanded(e => !e)}
+        className="w-full flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-lg bg-blue-600/40 flex items-center justify-center flex-shrink-0">
+            <Sparkles size={12} className="text-blue-300" />
+          </div>
+          <span className="text-xs font-bold text-blue-200 tracking-wide">AI Morning Brief</span>
+          <span className="text-[9px] bg-blue-700/50 text-blue-300 px-1.5 py-0.5 rounded-full font-semibold">3 Jobs</span>
+        </div>
+        <ChevronDown size={14} className={`text-blue-400 transition-transform ${expanded ? 'rotate-180' : ''}`} />
+      </button>
+
+      <AnimatePresence>
+        {expanded && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }} transition={{ duration: 0.2 }}>
+            <div className="px-4 pb-4 space-y-3 border-t border-blue-800/30 pt-3">
+              <div className="grid grid-cols-2 gap-2">
+                {[
+                  { label: 'Drive Time',       value: '1 hr 18 min', icon: '🚗' },
+                  { label: 'Est. Finish',       value: '4:40 PM',     icon: '🏁' },
+                  { label: 'Highest Risk',      value: 'RTU-3',       icon: '⚠️' },
+                  { label: 'Recurring Fault',   value: 'Code 82',     icon: '🔴' },
+                ].map(({ label, value, icon }) => (
+                  <div key={label} className="bg-blue-950/50 rounded-xl px-3 py-2">
+                    <div className="text-[9px] text-blue-400 uppercase tracking-wider mb-0.5">{icon} {label}</div>
+                    <div className="text-sm font-bold text-white">{value}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="bg-blue-950/50 rounded-xl px-3 py-2.5">
+                <div className="text-[9px] text-blue-400 uppercase tracking-wider mb-1.5">🔧 Suggested Parts for RTU-3</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {PARTS.map(p => (
+                    <div key={p} className="flex items-center gap-1 bg-blue-800/30 rounded-full px-2 py-0.5">
+                      <CheckCircle size={9} className="text-green-400 flex-shrink-0" />
+                      <span className="text-[10px] text-blue-100">{p}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <p className="text-[10px] text-blue-300/70 leading-relaxed">
+                Summit Medical RTU-3 has locked out on Code 82 three times in 12 months. Condenser cleaning alone hasn't resolved it — check fan RPM and look for refrigerant system issues today.
+              </p>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
 }
 
-interface CalendarCardProps {
-  events: CalendarEvent[];
-  today: number;
+// ─── Compact Calendar Card ─────────────────────────────────────────────────────
+const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
+
+function CalendarCard({ events, today, onDayTap, onExpand }: {
+  events: CalendarEvent[]; today: number;
   onDayTap: (day: number, events: CalendarEvent[]) => void;
   onExpand: () => void;
-}
-
-function CalendarCard({ events, today, onDayTap, onExpand }: CalendarCardProps) {
+}) {
   const eventMap = buildEventMap(events);
   const cells = buildCells();
   const rows: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
 
-  // Summary stats
-  const todayEvents = eventMap.get(today) ?? [];
   const jobsToday = TODAY_JOBS.length;
   const pmsThisWeek = events.filter(e => e.type === 'pm' && e.day >= today && e.day <= today + 7).length + 2;
   const followups = events.filter(e => e.type === 'followup').length;
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-      {/* Card header */}
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
         <div className="flex items-center gap-2">
           <CalIcon size={12} className="text-blue-400" />
-          <span className="text-xs font-bold text-white tracking-wide">{MONTH_NAME}</span>
+          <span className="text-xs font-bold text-white tracking-wide">June 2026</span>
         </div>
-        <button onClick={onExpand}
-          className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
-          <Maximize2 size={11} />
-          <span>Expand</span>
+        <button onClick={onExpand} className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
+          <Maximize2 size={11} /><span>Expand</span>
         </button>
       </div>
 
-      {/* Day-of-week labels */}
       <div className="grid grid-cols-7 px-2 pt-2 pb-0.5">
-        {DAY_LABELS.map(d => (
-          <div key={d} className="text-[9px] font-bold text-gray-600 text-center">{d}</div>
-        ))}
+        {DAY_LABELS.map(d => <div key={d} className="text-[9px] font-bold text-gray-600 text-center">{d}</div>)}
       </div>
 
-      {/* Day grid */}
       <div className="px-1 pb-2">
         {rows.map((row, ri) => (
           <div key={ri} className="grid grid-cols-7">
@@ -469,25 +642,13 @@ function CalendarCard({ events, today, onDayTap, onExpand }: CalendarCardProps) 
               const dayEvents = eventMap.get(day) ?? [];
               const isToday = day === today;
               const isPast = day < today;
-              const hasTap = dayEvents.length > 0;
-
               return (
-                <button
-                  key={ci}
+                <button key={ci}
                   onClick={() => onDayTap(day, dayEvents)}
-                  className={`flex flex-col items-center py-1 rounded-xl ${hasTap ? 'cursor-pointer active:bg-gray-800' : 'cursor-default'}`}
-                >
-                  {/* Day number */}
+                  className={`flex flex-col items-center py-1 rounded-xl ${dayEvents.length > 0 ? 'cursor-pointer active:bg-gray-800' : 'cursor-default'}`}>
                   <div className={`w-6 h-6 flex items-center justify-center rounded-full text-[11px] font-semibold ${
-                    isToday
-                      ? 'bg-blue-500 text-white font-bold'
-                      : isPast
-                        ? 'text-gray-600'
-                        : 'text-gray-300'
-                  }`}>
-                    {day}
-                  </div>
-                  {/* Event dots — up to 2 */}
+                    isToday ? 'bg-blue-500 text-white font-bold' : isPast ? 'text-gray-600' : 'text-gray-300'
+                  }`}>{day}</div>
                   <div className="flex gap-0.5 mt-0.5 h-1.5 items-center">
                     {dayEvents.slice(0, 2).map((e, i) => (
                       <div key={i} className={`w-1 h-1 rounded-full ${EVENT_COLORS[e.type]}`} />
@@ -500,40 +661,36 @@ function CalendarCard({ events, today, onDayTap, onExpand }: CalendarCardProps) 
         ))}
       </div>
 
-      {/* Color legend */}
       <div className="px-3 py-2 border-t border-gray-800 flex flex-wrap gap-x-3 gap-y-1">
-        {([['appointment','orange-500','Service Call'],['pm','blue-500','PM'],['emergency','red-500','Emergency'],['completed','green-500','Completed'],['followup','yellow-400','Follow-up']] as const).map(([type, _color, label]) => (
+        {(['appointment','pm','emergency','completed','followup'] as const).map(type => (
           <div key={type} className="flex items-center gap-1">
             <div className={`w-1.5 h-1.5 rounded-full ${EVENT_COLORS[type]}`} />
-            <span className="text-[9px] text-gray-600">{label}</span>
+            <span className="text-[9px] text-gray-600">{EVENT_LABELS[type]}</span>
           </div>
         ))}
       </div>
 
-      {/* Summary strip */}
       <div className="px-3 py-2.5 border-t border-gray-800 bg-gray-950/50 flex items-center justify-between">
-        <div className="flex items-center gap-2 text-[10px] flex-wrap">
-          <span className="text-amber-400 font-bold">{jobsToday} Job{jobsToday !== 1 ? 's' : ''} Today</span>
+        <div className="flex items-center gap-2 text-[10px]">
+          <span className="text-amber-400 font-bold">{jobsToday} Jobs Today</span>
           <span className="text-gray-700">·</span>
           <span className="text-blue-400 font-semibold">{pmsThisWeek} PMs This Week</span>
           <span className="text-gray-700">·</span>
           <span className="text-yellow-400 font-semibold">{followups} Follow-up{followups !== 1 ? 's' : ''}</span>
         </div>
-        {todayEvents.length > 0 && (
-          <button onClick={() => onDayTap(today, todayEvents)}
-            className="text-[9px] text-blue-400 font-semibold flex-shrink-0">
-            Today →
-          </button>
-        )}
+        <button onClick={() => onDayTap(today, eventMap.get(today) ?? [])}
+          className="text-[9px] text-blue-400 font-semibold flex-shrink-0">Today →</button>
       </div>
     </div>
   );
 }
 
 // ─── Full-Screen Calendar Modal ────────────────────────────────────────────────
-function FullScreenCalendar({
-  events, today, onClose, onDayTap,
-}: { events: CalendarEvent[]; today: number; onClose: () => void; onDayTap: (day: number, evts: CalendarEvent[]) => void }) {
+function FullScreenCalendar({ events, today, onClose, onDayTap }: {
+  events: CalendarEvent[]; today: number;
+  onClose: () => void;
+  onDayTap: (day: number, evts: CalendarEvent[]) => void;
+}) {
   const [activeDay, setActiveDay] = useState<number | null>(today);
   const eventMap = buildEventMap(events);
   const cells = buildCells();
@@ -542,43 +699,26 @@ function FullScreenCalendar({
   const activeDayEvents = activeDay ? (eventMap.get(activeDay) ?? []) : [];
 
   return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      exit={{ opacity: 0 }}
-      className="fixed inset-0 bg-gray-950 z-50 flex flex-col overflow-hidden"
-    >
-      {/* Header */}
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-gray-950 z-50 flex flex-col overflow-hidden">
       <div className="px-4 pt-12 pb-4 border-b border-gray-800 flex items-center justify-between flex-shrink-0">
         <div>
           <div className="text-xs text-gray-500 mb-0.5">Full Calendar</div>
-          <h2 className="text-xl font-bold">{MONTH_NAME}</h2>
+          <h2 className="text-xl font-bold">June 2026</h2>
         </div>
         <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center">
           <X size={18} className="text-gray-400" />
         </button>
       </div>
-
       <div className="flex-1 overflow-y-auto">
-        {/* Nav row */}
         <div className="flex items-center justify-between px-4 py-3">
-          <button className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center">
-            <ChevronLeft size={16} className="text-gray-400" />
-          </button>
-          <span className="text-sm font-bold text-white">{MONTH_NAME}</span>
-          <button className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center">
-            <ChevronRight size={16} className="text-gray-400" />
-          </button>
+          <button className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center"><ChevronLeft size={16} className="text-gray-400" /></button>
+          <span className="text-sm font-bold text-white">June 2026</span>
+          <button className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center"><ChevronRight size={16} className="text-gray-400" /></button>
         </div>
-
-        {/* Day labels */}
         <div className="grid grid-cols-7 px-3 mb-1">
-          {DAY_LABELS.map(d => (
-            <div key={d} className="text-[10px] font-bold text-gray-600 text-center">{d}</div>
-          ))}
+          {DAY_LABELS.map(d => <div key={d} className="text-[10px] font-bold text-gray-600 text-center">{d}</div>)}
         </div>
-
-        {/* Large grid */}
         <div className="px-2">
           {rows.map((row, ri) => (
             <div key={ri} className="grid grid-cols-7 mb-1">
@@ -589,15 +729,10 @@ function FullScreenCalendar({
                 const isActive = day === activeDay;
                 const isPast = day < today;
                 return (
-                  <button key={ci}
-                    onClick={() => { setActiveDay(day); }}
-                    className={`flex flex-col items-center py-2 rounded-2xl transition-colors ${isActive ? 'bg-gray-800' : ''}`}
-                  >
+                  <button key={ci} onClick={() => setActiveDay(day)}
+                    className={`flex flex-col items-center py-2 rounded-2xl transition-colors ${isActive ? 'bg-gray-800' : ''}`}>
                     <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-semibold ${
-                      isToday ? 'bg-blue-500 text-white font-bold'
-                      : isActive ? 'text-white'
-                      : isPast ? 'text-gray-600'
-                      : 'text-gray-200'
+                      isToday ? 'bg-blue-500 text-white' : isActive ? 'text-white' : isPast ? 'text-gray-600' : 'text-gray-200'
                     }`}>{day}</div>
                     <div className="flex gap-0.5 mt-1 h-2 items-center">
                       {dayEvents.slice(0, 2).map((e, i) => (
@@ -610,8 +745,6 @@ function FullScreenCalendar({
             </div>
           ))}
         </div>
-
-        {/* Legend */}
         <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-4 py-3 border-t border-gray-800 mt-2">
           {Object.entries(EVENT_LABELS).map(([type, label]) => (
             <div key={type} className="flex items-center gap-1.5">
@@ -620,21 +753,14 @@ function FullScreenCalendar({
             </div>
           ))}
         </div>
-
-        {/* Selected day events */}
         {activeDay !== null && (
           <div className="px-4 pb-8">
-            <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
-              June {activeDay}
-            </div>
+            <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">June {activeDay}</div>
             {activeDayEvents.length === 0 ? (
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 text-center">
                 <div className="text-gray-500 text-sm">No scheduled work</div>
-                <button
-                  onClick={() => { onClose(); onDayTap(activeDay, []); }}
-                  className="mt-3 text-xs text-blue-400 font-semibold">
-                  View options →
-                </button>
+                <button onClick={() => { onClose(); onDayTap(activeDay, []); }}
+                  className="mt-3 text-xs text-blue-400 font-semibold">View options →</button>
               </div>
             ) : (
               <div className="space-y-2">
@@ -647,8 +773,7 @@ function FullScreenCalendar({
                     </div>
                   </div>
                 ))}
-                <button
-                  onClick={() => { onClose(); onDayTap(activeDay, activeDayEvents); }}
+                <button onClick={() => { onClose(); onDayTap(activeDay, activeDayEvents); }}
                   className="w-full bg-blue-700 text-white font-bold py-3.5 rounded-2xl text-sm mt-1">
                   Open Day Schedule
                 </button>
@@ -657,6 +782,387 @@ function FullScreenCalendar({
           </div>
         )}
       </div>
+    </motion.div>
+  );
+}
+
+// ─── Account Dashboard ─────────────────────────────────────────────────────────
+function AccountDashboard({ onClose }: { onClose: () => void }) {
+  const MENU_SECTIONS = [
+    {
+      items: [
+        { icon: <User size={15} />,        label: 'Profile' },
+        { icon: <Settings size={15} />,    label: 'My Account' },
+        { icon: <CheckCircle size={15} />, label: 'Subscription', badge: 'Pro' },
+      ],
+    },
+    {
+      title: "Today's Performance",
+      items: [
+        { label: 'Hours Worked',        value: '6h 22min' },
+        { label: 'Completed Jobs',      value: '0 of 3' },
+        { label: 'Active Jobs',         value: '0' },
+        { label: 'PM Completion',       value: '—' },
+        { label: 'Follow-ups Pending',  value: '2' },
+      ],
+    },
+    {
+      title: 'Field Tools',
+      items: [
+        { icon: <Cpu size={15} />,      label: 'Saved Equipment' },
+        { icon: <Wrench size={15} />,   label: 'Inventory' },
+        { icon: <FileText size={15} />, label: 'Service Records' },
+      ],
+    },
+    {
+      title: 'System',
+      items: [
+        { icon: <Settings size={15} />,    label: 'Settings' },
+        { icon: <Zap size={15} />,         label: 'Offline Mode', badge: 'Ready' },
+        { icon: <Lightbulb size={15} />,   label: 'Help & Support' },
+      ],
+    },
+  ];
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/70 z-40 flex items-end" onClick={onClose}>
+      <motion.div
+        initial={{ y: '100%' }} animate={{ y: 0 }} exit={{ y: '100%' }}
+        transition={{ type: 'spring', stiffness: 300, damping: 35 }}
+        className="w-full bg-gray-900 rounded-t-3xl border-t border-gray-800 max-h-[92vh] overflow-y-auto"
+        onClick={e => e.stopPropagation()}>
+        {/* Profile header */}
+        <div className="px-5 pt-5 pb-4 border-b border-gray-800">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-2xl bg-blue-700 flex items-center justify-center font-bold text-white text-xl">MR</div>
+            <div>
+              <div className="font-bold text-white text-lg leading-tight">Marcus Rivera</div>
+              <div className="text-sm text-gray-400">Rivera HVAC Service</div>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-[9px] bg-blue-700/50 text-blue-300 px-1.5 py-0.5 rounded-full font-bold">PRO</span>
+                <span className="text-[10px] text-gray-600">Tech ID: MR-042</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Menu sections */}
+        <div className="px-4 py-4 space-y-5">
+          {MENU_SECTIONS.map((section, si) => (
+            <div key={si}>
+              {section.title && (
+                <div className="text-[9px] font-bold uppercase tracking-widest text-gray-600 mb-2 px-1">{section.title}</div>
+              )}
+              <div className="bg-gray-800 rounded-2xl overflow-hidden">
+                {section.items.map((item, ii) => (
+                  <div key={ii} className={`flex items-center justify-between px-4 py-3.5 ${ii < section.items.length - 1 ? 'border-b border-gray-700' : ''}`}>
+                    <div className="flex items-center gap-3">
+                      {'icon' in item && item.icon && <span className="text-gray-400">{item.icon}</span>}
+                      <span className={`text-sm ${'value' in item ? 'text-gray-400' : 'text-white'}`}>{item.label}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {'badge' in item && item.badge && (
+                        <span className="text-[9px] bg-blue-700/50 text-blue-300 px-1.5 py-0.5 rounded-full font-bold">{item.badge}</span>
+                      )}
+                      {'value' in item && item.value && (
+                        <span className="text-sm font-semibold text-white">{item.value}</span>
+                      )}
+                      {'icon' in item && <ChevronRight size={14} className="text-gray-600" />}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+
+          <button className="w-full flex items-center gap-3 bg-red-950/30 border border-red-900/50 rounded-2xl px-4 py-3.5">
+            <LogOut size={15} className="text-red-400" />
+            <span className="text-sm font-semibold text-red-400">Logout</span>
+          </button>
+        </div>
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ─── Overview Filter Sheet ─────────────────────────────────────────────────────
+function OverviewFilterSheet({ filterId, onClose, onSelectJob }: {
+  filterId: string;
+  onClose: () => void;
+  onSelectJob: (job: TodayJob) => void;
+}) {
+  const config: Record<string, { title: string; subtitle: string; content: React.ReactNode }> = {
+    jobs: {
+      title: "Today's Jobs",
+      subtitle: `${TODAY_JOBS.length} assigned`,
+      content: (
+        <div className="space-y-2">
+          {TODAY_JOBS.map(job => {
+            const style = PRIORITY_STYLE[job.priority];
+            return (
+              <button key={job.id} onClick={() => onSelectJob(job)}
+                className={`w-full text-left bg-gray-800 border-l-4 ${style.border} rounded-xl p-3`}>
+                <div className="flex items-center gap-2 mb-1">
+                  <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${style.badge}`}>{style.label}</span>
+                  <span className="text-[10px] text-gray-500 ml-auto">{job.scheduledTime}</span>
+                </div>
+                <div className="font-bold text-white text-sm">{job.customer}</div>
+                <div className="text-[10px] text-blue-300/70">{job.unitTag}</div>
+                <div className="text-xs text-gray-400 mt-0.5 leading-snug">{job.symptom}</div>
+              </button>
+            );
+          })}
+        </div>
+      ),
+    },
+    progress: {
+      title: 'In Progress',
+      subtitle: '0 active jobs',
+      content: (
+        <div className="text-center py-8">
+          <div className="text-3xl mb-3">▶</div>
+          <div className="font-semibold text-white mb-1">No jobs in progress</div>
+          <div className="text-xs text-gray-500">Start a job from Today's Jobs to see it here</div>
+        </div>
+      ),
+    },
+    pms: {
+      title: 'PMs Due This Week',
+      subtitle: '2 preventive maintenance calls',
+      content: (
+        <div className="space-y-2">
+          {TODAY_JOBS.filter(j => j.priority === 'pm').map(job => (
+            <button key={job.id} onClick={() => onSelectJob(job)}
+              className="w-full text-left bg-gray-800 border-l-4 border-l-blue-500 rounded-xl p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-gray-700 text-gray-300">PM DUE</span>
+                <span className="text-[10px] text-gray-500 ml-auto">{job.scheduledTime}</span>
+              </div>
+              <div className="font-bold text-white text-sm">{job.customer}</div>
+              <div className="text-[10px] text-blue-300/70">{job.unitTag}</div>
+              <div className="text-xs text-gray-400 mt-0.5">{job.symptom}</div>
+            </button>
+          ))}
+        </div>
+      ),
+    },
+    followups: {
+      title: 'Follow-Ups',
+      subtitle: '2 pending — callbacks, quoted repairs, approvals',
+      content: (
+        <div className="space-y-2">
+          {FOLLOW_UP_ITEMS.map((f, i) => (
+            <div key={i} className={`bg-gray-800 rounded-xl p-3 border-l-4 ${f.priority === 'high' ? 'border-l-amber-500' : 'border-l-gray-600'}`}>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${f.priority === 'high' ? 'bg-amber-900/50 text-amber-400' : 'bg-gray-700 text-gray-400'}`}>
+                  {f.priority === 'high' ? 'HIGH' : 'MEDIUM'}
+                </span>
+                <span className="text-[10px] text-gray-500 ml-auto">Due {f.dueDate}</span>
+              </div>
+              <div className="font-bold text-white text-sm">{f.customer}</div>
+              <div className="text-[10px] text-gray-500">{f.equipment}</div>
+              <div className="text-xs text-gray-400 mt-0.5 leading-snug">{f.issue}</div>
+              <div className="text-[10px] text-amber-400 mt-1">{f.daysDue} days until due</div>
+            </div>
+          ))}
+        </div>
+      ),
+    },
+  };
+
+  const c = config[filterId] ?? config['jobs'];
+
+  return (
+    <Sheet onClose={onClose}>
+      <div className="px-5 pt-5 pb-4 border-b border-gray-800 flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-white">{c.title}</h2>
+          <div className="text-xs text-gray-500 mt-0.5">{c.subtitle}</div>
+        </div>
+        <SheetClose onClose={onClose} />
+      </div>
+      <div className="px-5 py-4">{c.content}</div>
+    </Sheet>
+  );
+}
+
+// ─── Equipment Detail Modal ────────────────────────────────────────────────────
+function EquipmentDetailModal({ eq, onClose }: { eq: EquipmentAttention; onClose: () => void }) {
+  const sev = SEV_STYLE[eq.severity];
+  const TREND_ICON = { up: TrendingUp, down: TrendingDown, stable: Minus };
+  const TREND_COLOR = { up: 'text-red-400', down: 'text-green-400', stable: 'text-gray-400' };
+
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-gray-950 z-50 flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className={`px-4 pt-12 pb-4 border-b ${sev.ring} flex items-start justify-between flex-shrink-0 ${sev.bg}`}>
+        <div>
+          <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${sev.badgeBg} inline-block mb-2`}>{sev.badge}</span>
+          <h2 className="text-xl font-bold text-white leading-tight">{eq.unit}</h2>
+          <div className="text-sm text-blue-300/80">{eq.unitTag}</div>
+          <div className="text-xs font-mono text-gray-500 mt-0.5">{eq.model} · {eq.location}</div>
+        </div>
+        <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-800/80 flex items-center justify-center flex-shrink-0 mt-1">
+          <X size={18} className="text-gray-400" />
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto">
+        {/* AI Insight */}
+        <div className="px-4 pt-4">
+          <div className="bg-blue-950/40 border border-blue-800/50 rounded-2xl p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles size={14} className="text-blue-400" />
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-400">AI Insight</span>
+            </div>
+            <div className="text-sm font-bold text-white mb-1">{eq.aiInsight.pattern}</div>
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {eq.aiInsight.stats.map((s, i) => (
+                <span key={i} className="text-[10px] bg-blue-800/30 text-blue-200 px-2 py-0.5 rounded-full">{s}</span>
+              ))}
+            </div>
+            <p className="text-sm text-blue-100/80 leading-relaxed mb-3">{eq.aiInsight.analysis}</p>
+            <div className="space-y-1.5">
+              <div className="text-[10px] font-bold uppercase tracking-wider text-blue-400 mb-1">Possible Root Causes</div>
+              {eq.aiInsight.rootCauses.map((rc, i) => (
+                <div key={i} className="flex items-start gap-2 text-sm text-gray-200">
+                  <span className="text-blue-400 flex-shrink-0 mt-0.5">•</span>
+                  <span>{rc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Measurements */}
+        {eq.measurements && (
+          <div className="px-4 pt-4">
+            <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Measurements — Last Visit</div>
+            <div className="grid grid-cols-2 gap-2">
+              {eq.measurements.map((m, i) => {
+                const TrendIcon = m.trend ? TREND_ICON[m.trend] : Minus;
+                const trendColor = m.trend ? TREND_COLOR[m.trend] : 'text-gray-400';
+                return (
+                  <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl px-3 py-2.5">
+                    <div className="text-[9px] text-gray-500 uppercase tracking-wider mb-0.5">{m.label}</div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-bold text-white">{m.value}</span>
+                      <TrendIcon size={12} className={trendColor} />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Suggested Parts */}
+        <div className="px-4 pt-4">
+          <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Suggested Parts</div>
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-3 flex flex-wrap gap-1.5">
+            {eq.aiInsight.suggestedParts.map((p, i) => (
+              <div key={i} className="flex items-center gap-1 bg-gray-800 rounded-full px-2 py-1">
+                <Wrench size={9} className="text-gray-400" />
+                <span className="text-[10px] text-gray-300">{p}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Service History */}
+        <div className="px-4 pt-4">
+          <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">Service History</div>
+          <div className="relative">
+            <div className="absolute left-[11px] top-0 bottom-0 w-px bg-gray-800" />
+            <div className="space-y-0">
+              {eq.serviceHistory.map((h, i) => (
+                <div key={i} className="flex items-start gap-3 pl-1 pb-4">
+                  <div className={`w-5 h-5 rounded-full border flex items-center justify-center flex-shrink-0 mt-0.5 z-10 ${h.type === 'Emergency' ? 'bg-red-900 border-red-700' : h.type === 'PM' ? 'bg-blue-900 border-blue-700' : 'bg-gray-800 border-gray-700'}`}>
+                    <span className="text-[8px]">{h.type === 'Emergency' ? '🚨' : h.type === 'PM' ? '✅' : '🔧'}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-bold text-white">{h.type}</div>
+                        <div className="text-[10px] text-gray-500">{h.date} · {h.tech}</div>
+                        <div className="text-xs text-gray-300 mt-1 leading-relaxed">{h.summary}</div>
+                        {h.alarms && h.alarms.map((a, ai) => (
+                          <span key={ai} className="inline-block mt-1 text-[9px] bg-red-900/40 text-red-400 border border-red-800/50 px-1.5 py-0.5 rounded-full mr-1">{a}</span>
+                        ))}
+                        {h.parts && h.parts.map((p, pi) => (
+                          <span key={pi} className="inline-block mt-1 text-[9px] bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded-full mr-1">{p}</span>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Launch Diagnostic */}
+        <div className="px-4 pb-8 pt-2">
+          <button className="w-full bg-white text-gray-950 font-bold py-5 rounded-2xl text-base flex items-center justify-center gap-2">
+            <Zap size={18} />
+            Launch Diagnostic
+          </button>
+          <div className="text-center text-[10px] text-gray-600 mt-2">Opens full HVAC diagnostic workflow for {eq.unit}</div>
+        </div>
+      </div>
+    </motion.div>
+  );
+}
+
+// ─── Job Brief Modal ───────────────────────────────────────────────────────────
+function JobBriefModal({ job, onContinue, onCancel }: {
+  job: TodayJob;
+  onContinue: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
+      className="fixed inset-0 bg-black/80 z-50 flex items-center justify-center px-4">
+      <motion.div
+        initial={{ scale: 0.92, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} exit={{ scale: 0.92, opacity: 0 }}
+        transition={{ type: 'spring', stiffness: 350, damping: 30 }}
+        className="w-full max-w-sm bg-gray-900 border border-gray-700 rounded-3xl overflow-hidden shadow-2xl">
+        {/* Header */}
+        <div className="bg-gray-800 px-5 pt-6 pb-4 border-b border-gray-700">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-1">Before you leave...</div>
+          <h2 className="text-xl font-bold text-white">Dispatch Notes</h2>
+          <div className="text-sm text-blue-300/80 mt-0.5">{job.customer} · {job.unitTag}</div>
+        </div>
+
+        {/* Notes */}
+        <div className="px-5 py-4 space-y-2.5">
+          {job.dispatchNotes!.map((note, i) => (
+            <motion.div key={i}
+              initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 + i * 0.06 }}
+              className="flex items-start gap-3 bg-gray-800/60 rounded-xl px-3 py-2.5">
+              <div className="w-5 h-5 rounded-full bg-blue-700/50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-[10px] font-bold text-blue-300">{i + 1}</span>
+              </div>
+              <span className="text-sm text-gray-200 leading-snug">{note}</span>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Actions */}
+        <div className="px-5 pb-6 space-y-2">
+          <button onClick={onContinue}
+            className="w-full bg-white text-gray-950 font-bold py-4 rounded-2xl flex items-center justify-center gap-2 text-base">
+            <CheckCircle size={18} />
+            Got it — Continue
+          </button>
+          <button onClick={onCancel}
+            className="w-full text-gray-500 text-sm py-2">
+            Back to Dashboard
+          </button>
+        </div>
+      </motion.div>
     </motion.div>
   );
 }
