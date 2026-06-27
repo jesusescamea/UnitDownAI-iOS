@@ -6,12 +6,14 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useLocation } from "wouter";
 import {
-  Activity, AlertCircle, Bell, Brain, Building2, Calendar, Camera, CheckCircle2,
+  Activity, AlertCircle, Bell, Brain, Briefcase, Building2, Calendar, Camera, CheckCircle2,
   ChevronDown, ChevronRight, CircleDot,
-  Clock, Edit2, FileText, History, Info,
+  Clock, Edit2, FileText, History, Info, Loader2,
   Map as MapIcon, MapPin, Mic, Plus, Search, Settings, Star, Trash2, TrendingUp, Wrench, X, ZoomIn,
 } from "lucide-react";
+import { useJobMode } from "@/context/JobModeContext";
 import RtuIcon from "@/components/RtuIcon";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -655,13 +657,14 @@ const TYPE_CHIPS = [
 ];
 
 function CustomerGroupCard({
-  customer, units, expanded, onToggle, onSelectUnit, isHighlighted, cardRef,
+  customer, units, expanded, onToggle, onSelectUnit, onStartJob, isHighlighted, cardRef,
 }: {
   customer: string;
   units: MockUnit[];
   expanded: boolean;
   onToggle: () => void;
   onSelectUnit: (u: MockUnit) => void;
+  onStartJob: (customer: string) => void;
   isHighlighted?: boolean;
   cardRef?: (el: HTMLDivElement | null) => void;
 }) {
@@ -813,6 +816,17 @@ function CustomerGroupCard({
         </div>
       </div>
 
+      {/* ── Start Job action row ─────────────────────────────────────────────── */}
+      <div className="border-t border-slate-100 px-3 py-2">
+        <button
+          onClick={(e) => { e.stopPropagation(); onStartJob(customer); }}
+          className="w-full flex items-center justify-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg py-2 transition-colors"
+        >
+          <Briefcase className="w-3.5 h-3.5" />
+          Start Job — {customer}
+        </button>
+      </div>
+
       {/* ── Expanded: Equipment Locations ─────────────────────────────────────── */}
       {expanded && (
         <div className="border-t border-slate-100">
@@ -856,11 +870,13 @@ function EquipmentLibraryPreview({
   onOpenDrawer,
   jumpToCustomer,
   onJumpHandled,
+  onStartJob,
 }: {
   onSelectUnit: (unit: MockUnit) => void;
   onOpenDrawer: () => void;
   jumpToCustomer: string | null;
   onJumpHandled: () => void;
+  onStartJob: (customer: string) => void;
 }) {
   const [typeFilter, setTypeFilter] = useState("");
   const [q, setQ] = useState("");
@@ -1206,6 +1222,7 @@ function EquipmentLibraryPreview({
                   expanded={expandedCustomers.has(customer)}
                   onToggle={() => toggleCustomer(customer)}
                   onSelectUnit={onSelectUnit}
+                  onStartJob={onStartJob}
                   isHighlighted={highlightedCustomer === customer}
                   cardRef={(el) => {
                     if (el) customerCardRefs.current.set(customer, el);
@@ -1261,10 +1278,12 @@ function EquipmentDetailPreview({
   unit,
   onBack,
   onOpenDrawer,
+  onStartJob,
 }: {
   unit: MockUnit;
   onBack: () => void;
   onOpenDrawer: () => void;
+  onStartJob: () => void;
 }) {
   const [activeTab, setActiveTab] = useState<ActiveTab>("timeline");
   const [progressOpen, setProgressOpen] = useState(true);
@@ -1476,10 +1495,20 @@ function EquipmentDetailPreview({
                 "New Diagnostic";
               const CtaIcon = isFollowUp ? Wrench : Activity;
               return (
-                <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-10 text-sm">
-                  <CtaIcon className="w-4 h-4 mr-2" />
-                  {ctaLabel}
-                </Button>
+                <div className="space-y-2">
+                  <Button className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-10 text-sm">
+                    <CtaIcon className="w-4 h-4 mr-2" />
+                    {ctaLabel}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={onStartJob}
+                    className="w-full border-zinc-300 text-zinc-700 font-semibold rounded-xl h-10 text-sm hover:bg-zinc-50"
+                  >
+                    <Briefcase className="w-4 h-4 mr-2" />
+                    Start Job
+                  </Button>
+                </div>
               );
             })()}
           </div>
@@ -2217,6 +2246,29 @@ export default function DevEquipmentPreview() {
   const openDrawer  = () => { setDrawerQ(""); setDrawerOpen(true); };
   const closeDrawer = () => { setDrawerOpen(false); };
 
+  const { startJob } = useJobMode();
+  const [, navigate] = useLocation();
+  const [jobStarting, setJobStarting] = useState(false);
+
+  const handleStartJob = async (customer?: string, unitOverride?: MockUnit) => {
+    setJobStarting(true);
+    try {
+      const u = unitOverride ?? selectedUnit;
+      const job = await startJob({
+        title: u ? `${u.nickname ?? u.modelNumber ?? "Unit"} — Job` : `${customer ?? "Customer"} — Job`,
+        customer: customer ?? u?.siteCustomerName ?? undefined,
+        site: u?.location ?? undefined,
+        unitId: u?.id,
+        unitLabel: u?.nickname ?? u?.modelNumber ?? undefined,
+      });
+      navigate(`/job/${job.id}`);
+    } catch {
+      navigate("/job");
+    } finally {
+      setJobStarting(false);
+    }
+  };
+
   return (
     <div className="bg-[#EEF4FF] min-h-screen">
       {/* Dev banner — always on top */}
@@ -2247,6 +2299,7 @@ export default function DevEquipmentPreview() {
           unit={selectedUnit}
           onBack={handleBack}
           onOpenDrawer={openDrawer}
+          onStartJob={() => handleStartJob(undefined, selectedUnit)}
         />
       ) : (
         <EquipmentLibraryPreview
@@ -2254,6 +2307,7 @@ export default function DevEquipmentPreview() {
           onOpenDrawer={openDrawer}
           jumpToCustomer={jumpToCustomer}
           onJumpHandled={() => setJumpToCustomer(null)}
+          onStartJob={(customer) => handleStartJob(customer)}
         />
       )}
     </div>
