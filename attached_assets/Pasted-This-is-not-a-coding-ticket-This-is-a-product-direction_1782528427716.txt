@@ -1,0 +1,402 @@
+This is not a coding ticket. This is a product direction change.
+
+After reviewing the Job Preview and Service Record Preview, I believe we are optimizing the wrong thing.
+
+The current implementation feels like a report generator.
+
+I want UnitDown to become the technician's operating system while they are on the roof.
+
+The report is simply the result of everything captured naturally during the repair.
+
+====================================================================
+
+NEW DESIGN PHILOSOPHY
+
+The technician should almost never think:
+
+"I need to write a report."
+
+Instead they should think:
+
+"I'm simply documenting my work."
+
+Everything they capture should automatically build the final professional report.
+
+The timeline is the single source of truth.
+
+Every action becomes a timeline event.
+
+Voice.
+
+Photos.
+
+Measurements.
+
+Parts.
+
+Recommendations.
+
+Verification.
+
+Everything.
+
+====================================================================
+
+JOB MODE MUST BECOME THE PRIMARY EXPERIENCE
+
+Do NOT think of Job Mode as another page.
+
+Think of Job Mode as the active workspace that stays alive during the entire repair.
+
+Once a technician taps Start Job, they remain inside that workflow until the repair is complete.
+
+The report is generated AFTER the job.
+
+Not during it.
+
+====================================================================
+
+REDESIGN GOALS
+
+Instead of trying to make Job Mode look like paperwork...
+
+Make it feel like a digital field notebook.
+
+Fast.
+
+Visual.
+
+Minimal typing.
+
+Everything captured in chronological order.
+
+====================================================================
+
+THE TIMELINE IS THE PRODUCT
+
+The timeline should become the centerpiece of UnitDown.
+
+Example:
+
+Dispatch Received
+
+↓
+
+Arrived On Site
+
+↓
+
+Photo
+(Nameplate)
+
+↓
+
+Voice Note
+
+↓
+
+Alarm Found
+
+↓
+
+Photo
+(Alarm Screen)
+
+↓
+
+Measurement
+
+↓
+
+Part Replaced
+
+↓
+
+Verification
+
+↓
+
+Recommendation
+
+↓
+
+Complete Job
+
+This should feel almost like scrolling through the repair itself.
+
+====================================================================
+
+TIMELINE CARDS
+
+Not every card should have equal visual weight.
+
+Important milestones should stand out.
+
+Examples:
+
+Dispatch
+
+Root Cause
+
+Repair
+
+Verification
+
+Recommendation
+
+These should visually separate themselves from small notes.
+
+====================================================================
+
+PHOTO EVENTS
+
+Photos should NOT simply exist inside a gallery.
+
+Every photo belongs to the timeline.
+
+Each photo event should include:
+
+Thumbnail
+
+Category
+
+Timestamp
+
+Optional caption
+
+Examples:
+
+📷 Nameplate
+
+📷 Alarm Screen
+
+📷 Failed Belt
+
+📷 New Belt Installed
+
+📷 Final Repair
+
+Tapping opens full resolution.
+
+====================================================================
+
+VOICE EVENTS
+
+Voice should remain raw while working.
+
+Instead of immediately converting everything into paragraphs...
+
+Show:
+
+🎤 Voice Note
+
+00:21
+
+"Found alarm 8.
+
+Blower belt snapped.
+
+Installing truck stock."
+
+AI converts this into professional language ONLY when generating the final report.
+
+====================================================================
+
+MEASUREMENT EVENTS
+
+Measurements deserve dedicated cards.
+
+Example:
+
+📏 Measurements
+
+Suction
+
+Discharge
+
+Superheat
+
+Subcooling
+
+Voltage
+
+Amps
+
+Delta T
+
+These later populate the professional report automatically.
+
+====================================================================
+
+PART EVENTS
+
+Every replaced part becomes its own event.
+
+Example:
+
+🔧 Belt Installed
+
+3VX450
+
+Truck Stock
+
+Qty 1
+
+Photo attached
+
+Recommendation created:
+Order replacement truck stock.
+
+====================================================================
+
+JOB COMPLETENESS
+
+Instead of presenting an AI summary while the technician is still working...
+
+Show job completion.
+
+Example:
+
+Job Progress
+
+✔ Dispatch
+
+✔ Arrived
+
+✔ Investigation
+
+✔ Root Cause
+
+✔ Repair
+
+⬜ Verification
+
+⬜ Recommendation
+
+Completion
+
+84%
+
+When all required items are complete:
+
+100%
+
+Professional Report Ready
+
+This encourages complete documentation without annoying the technician.
+
+====================================================================
+
+THE "+" BUTTON
+
+The floating action button should open a large bottom sheet.
+
+Actions:
+
+🎤 Voice Note
+
+📷 Photo
+
+📏 Measurement
+
+🔧 Part
+
+📝 Note
+
+⭐ Recommendation
+
+These should require the fewest taps possible.
+
+====================================================================
+
+SERVICE RECORD PAGE
+
+The Service Record Preview is much closer.
+
+However the order should change.
+
+Current:
+
+AI Summary
+
+Timeline
+
+Evidence
+
+Instead:
+
+Timeline
+
+Measurements
+
+Parts
+
+Photos
+
+Voice Notes
+
+Recommendations
+
+Verification
+
+Equipment Memory Updates
+
+AI Professional Report
+
+Customer Summary
+
+Office Summary
+
+Invoice Summary
+
+Export
+
+The evidence should always come before the conclusions.
+
+====================================================================
+
+LONG TERM PRODUCT GOAL
+
+Job Mode is not another feature.
+
+Job Mode IS UnitDown.
+
+Everything else plugs into it.
+
+Voice Intelligence
+
+Photo Intelligence
+
+Equipment Memory
+
+Offline Queue
+
+Universal Service Summary
+
+AI Reports
+
+Customer Reports
+
+Parts Tracking
+
+Future Integrations
+
+All of these become timeline events first.
+
+The final report is simply a beautifully organized view of the completed timeline.
+
+====================================================================
+
+IMPORTANT
+
+Before writing additional backend features, I want to redesign this experience visually.
+
+Show me multiple UI mockups for the new Job Mode.
+
+Think like Apple Notes, Linear, Flight Logs, Electronic Medical Records, and premium field software.
+
+The technician should immediately understand what happened during a repair simply by scrolling the timeline.
+
+Optimize for real technicians working on rooftops wearing gloves in bright sunlight.
+
+Make this feel like the future of commercial HVAC service documentation.
