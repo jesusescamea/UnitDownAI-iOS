@@ -26,6 +26,8 @@ import UnitFormPage from "./pages/UnitFormPage";
 import UnitDetailPage from "./pages/UnitDetailPage";
 import DiagnosticLogDetailPage from "./pages/DiagnosticLogDetailPage";
 import DevEquipmentPreview from "./pages/DevEquipmentPreview";
+import DevJobPreview from "./pages/DevJobPreview";
+import DevJobRecordPreview from "./pages/DevJobRecordPreview";
 import { JobModePage } from "./pages/JobModePage";
 import { ServiceRecordPage } from "./pages/ServiceRecordPage";
 import { JobModeProvider } from "./context/JobModeContext";
@@ -3486,6 +3488,8 @@ function App() {
               <Route path="/records/:id" component={UnitDetailPage} />
               <Route path="/logs/:id" component={DiagnosticLogDetailPage} />
               <Route path="/dev/equipment-preview" component={DevEquipmentPreview} />
+              <Route path="/job-preview/record" component={DevJobRecordPreview} />
+              <Route path="/job-preview" component={DevJobPreview} />
               {/* ── Job Mode ── */}
               <Route path="/job">
                 <JobModePage />
