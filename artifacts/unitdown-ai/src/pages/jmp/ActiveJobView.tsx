@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Camera, Mic, Plus, X, ChevronDown, ChevronUp, Zap, FileText,
   Wrench, CheckSquare, User, Cpu, CheckCircle, Sparkles, Send, AlertTriangle,
-  Search, ArrowLeft, ChevronRight,
+  Search, ArrowLeft, ChevronRight, Thermometer,
 } from 'lucide-react';
 import {
   MOCK_JOB, MOCK_EQUIPMENT, INITIAL_MEASUREMENTS, SUGGESTED_RECOMMENDATIONS,
@@ -13,6 +13,7 @@ import { INITIAL_INVENTORY } from './vanData';
 import {
   PARTS_MASTER, searchParts, getEquipmentPartsContext, matchVanInventory,
 } from './partsIntelligence';
+import RefrigerantAssistant from './RefrigerantAssistant';
 import type { PrototypeState, PrototypeAction, JobState, Activity, MeasurementReading, ModalType, NameplateScanResult, NameplateFields } from './types';
 
 // ─── Color mapping ─────────────────────────────────────────────────────────────
@@ -437,6 +438,24 @@ export function ActiveJobView({ state, dispatch, onComplete }: Props) {
         {activeModal === 'ai-assist' && (
           <AiAssistModal onClose={closeModal} />
         )}
+        {activeModal === 'refrigerant-assistant' && (
+          <RefrigerantAssistant
+            onClose={closeModal}
+            onLogMeasurement={(readings) => {
+              addActivity({
+                id: `refrigerant-${Date.now()}`,
+                type: 'measurement',
+                timestamp: currentTime(),
+                title: 'Refrigerant Check',
+                subtitle: readings.map(r => `${r.label}: ${r.value} ${r.unit}`).join(' · '),
+                measurements: readings,
+              }, 'MEASUREMENTS_CAPTURED', 8);
+              toast('🌡️ Refrigerant readings logged');
+            }}
+            initialSuctionPressure="115"
+            initialHeadPressure="385"
+          />
+        )}
       </AnimatePresence>
     </div>
   );
@@ -574,8 +593,9 @@ function FabMenu({ jobState, onClose, onSelect, onRepairDone }: {
     { icon: <Wrench size={20} />,    label: 'Part / Material', modal: 'part' },
     { icon: <FileText size={20} />,  label: 'Measurements',   modal: verifyModal },
     { icon: <FileText size={20} />,  label: 'Note',           modal: 'note' },
-    { icon: <Cpu size={20} />,       label: 'AI Assist',      modal: 'ai-assist' },
-    { icon: <CheckSquare size={20} />,label: 'Recommendations', modal: 'recommendations' },
+    { icon: <Cpu size={20} />,         label: 'AI Assist',        modal: 'ai-assist' },
+    { icon: <Thermometer size={20} />, label: 'Refrigerant Check', modal: 'refrigerant-assistant' },
+    { icon: <CheckSquare size={20} />, label: 'Recommendations',   modal: 'recommendations' },
   ];
   return (
     <ModalShell title="Add Activity" onClose={onClose}>

@@ -75,7 +75,7 @@ export interface PartRecord {
 export type ModalType =
   | 'alarm' | 'voice' | 'measurements-initial' | 'measurements-verification'
   | 'part' | 'photo' | 'recommendations' | 'customer-summary' | 'fab-menu'
-  | 'nameplate' | 'note' | 'ai-assist';
+  | 'nameplate' | 'note' | 'ai-assist' | 'refrigerant-assistant';
 
 export interface PrototypeState {
   stage: PrototypeStage;
