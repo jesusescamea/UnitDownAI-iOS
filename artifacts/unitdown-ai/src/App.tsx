@@ -25,6 +25,7 @@ import RecordsPage from "./pages/RecordsPage";
 import UnitFormPage from "./pages/UnitFormPage";
 import UnitDetailPage from "./pages/UnitDetailPage";
 import DiagnosticLogDetailPage from "./pages/DiagnosticLogDetailPage";
+import NotFound from "./pages/not-found";
 import DevEquipmentPreview from "./pages/DevEquipmentPreview";
 import JobModePrototype from "./pages/JobModePrototype";
 import DevJobPreview from "./pages/DevJobPreview";
@@ -483,8 +484,8 @@ function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpg
       // Cancelled and all other failures: silent re-enable.
       // StoreKit / sandbox errors are surfaced by the OS natively — never
       // shown in our UI, so Apple reviewers never see an app-generated error.
-    } catch (err) {
-      console.log("[IAP] handleBuy threw:", err instanceof Error ? err.message : err);
+    } catch {
+      // IAP errors are surfaced natively by the OS — do not surface in app UI
     } finally {
       setBuying(false);
     }
@@ -2165,8 +2166,6 @@ function Home() {
     const trimmed = symptoms.trim();
     if (!trimmed) return;
 
-    console.log("[UnitDown] Diagnosis started:", { symptoms: trimmed, isPro, clientId });
-
     // Skip gate for pro users
     if (isPro) {
       runDiagnosis(trimmed);
@@ -2183,7 +2182,6 @@ function Home() {
         body: JSON.stringify({ fingerprint: fp, clientId, testerEmail }),
       });
       const gateData = await gateRes.json() as { allowed: boolean; status: string };
-      console.log("[UnitDown] Gate response:", gateData);
 
       if (gateData.allowed) {
         runDiagnosis(trimmed);
@@ -3501,7 +3499,7 @@ function App() {
                 {(params) => <JobModePage jobId={params.id} />}
               </Route>
               <Route path="*">
-                <div className="p-10 font-bold text-xl">404 Not Found</div>
+                <NotFound />
               </Route>
             </Switch>
             <ActiveJobBanner />

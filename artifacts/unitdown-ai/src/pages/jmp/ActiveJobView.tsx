@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import {
   MOCK_JOB, MOCK_EQUIPMENT, INITIAL_MEASUREMENTS, SUGGESTED_RECOMMENDATIONS,
-  FAULT_CODES, JOB_STATE_LABELS, randomVoiceNote, AI_ASSIST_PROMPTS,
+  FAULT_CODES, JOB_STATE_LABELS, randomVoiceNote, AI_ASSIST_PROMPTS, MOCK_HISTORY,
 } from './mockData';
 import { INITIAL_INVENTORY } from './vanData';
 import {
@@ -436,7 +436,7 @@ export function ActiveJobView({ state, dispatch, onComplete }: Props) {
           }} />
         )}
         {activeModal === 'ai-assist' && (
-          <AiAssistModal onClose={closeModal} />
+          <AiAssistModal onClose={closeModal} state={state} />
         )}
         {activeModal === 'refrigerant-assistant' && (
           <RefrigerantAssistant
@@ -1446,74 +1446,208 @@ function PhotoModal({ jobState: _j, onClose, onSave }: { jobState: JobState; onC
   );
 }
 
-// ─── Recommendations modal — rich entries ─────────────────────────────────────
-interface RecEntry { text: string; priority: 'low' | 'medium' | 'high'; notes: string; selected: boolean }
+// ─── Recommendations modal — production version (unlimited entries) ───────────
+type RecPriority = 'normal' | 'high' | 'safety' | 'follow-up';
+interface RecEntry {
+  id: string;
+  text: string;
+  priority: RecPriority;
+  dueDate: string;
+  notes: string;
+  isSuggested: boolean;
+  selected: boolean;
+}
+
+const REC_PRIORITY_CONFIG: Record<RecPriority, { label: string; activeCls: string }> = {
+  normal:      { label: 'Normal',     activeCls: 'bg-gray-700 border-gray-500 text-gray-200' },
+  high:        { label: 'High',       activeCls: 'bg-orange-900/60 border-orange-600 text-orange-300' },
+  safety:      { label: '⚠ Safety',   activeCls: 'bg-red-900/60 border-red-600 text-red-300' },
+  'follow-up': { label: 'Follow-up',  activeCls: 'bg-blue-900/60 border-blue-600 text-blue-300' },
+};
+
+let _recSeq = 0;
+function genRecId() { return `rec-${Date.now()}-${++_recSeq}`; }
 
 function RecommendationsModal({ onClose, onSave }: { onClose: () => void; onSave: (recs: string[]) => void }) {
-  const [entries, setEntries] = useState<RecEntry[]>(
-    SUGGESTED_RECOMMENDATIONS.map((text, i) => ({ text, priority: i === 2 ? 'high' : i === 1 ? 'medium' : 'low', notes: '', selected: i < 3 }))
+  const [entries, setEntries] = useState<RecEntry[]>(() =>
+    SUGGESTED_RECOMMENDATIONS.map((text, i) => ({
+      id: genRecId(),
+      text,
+      priority: i === 2 ? ('high' as RecPriority) : ('normal' as RecPriority),
+      dueDate: '',
+      notes: '',
+      isSuggested: true,
+      selected: i < 3,
+    }))
   );
-  const [custom, setCustom] = useState('');
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  function toggle(i: number) { setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, selected: !e.selected } : e)); }
-  function setPriority(i: number, p: RecEntry['priority']) { setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, priority: p } : e)); }
-  function setNotes(i: number, n: string) { setEntries(prev => prev.map((e, idx) => idx === i ? { ...e, notes: n } : e)); }
+  function toggle(id: string) {
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, selected: !e.selected } : e));
+  }
+  function setPriority(id: string, p: RecPriority) {
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, priority: p } : e));
+  }
+  function setEntryText(id: string, t: string) {
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, text: t } : e));
+  }
+  function setEntryNotes(id: string, n: string) {
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, notes: n } : e));
+  }
+  function setEntryDue(id: string, d: string) {
+    setEntries(prev => prev.map(e => e.id === id ? { ...e, dueDate: d } : e));
+  }
+  function deleteEntry(id: string) {
+    setEntries(prev => prev.filter(e => e.id !== id));
+    setExpandedId(prev => prev === id ? null : prev);
+  }
+  function addEntry() {
+    const id = genRecId();
+    setEntries(prev => [...prev, {
+      id, text: '', priority: 'normal', dueDate: '', notes: '',
+      isSuggested: false, selected: true,
+    }]);
+    setExpandedId(id);
+  }
 
   function save() {
-    const recs = entries.filter(e => e.selected).map(e => {
-      let s = e.text;
-      if (e.priority === 'high') s = `[HIGH PRIORITY] ${s}`;
-      if (e.notes.trim()) s = `${s} — Note: ${e.notes.trim()}`;
-      return s;
-    });
-    if (custom.trim()) recs.push(custom.trim());
+    const recs = entries
+      .filter(e => e.selected && e.text.trim())
+      .map(e => {
+        let s = e.text.trim();
+        if (e.priority === 'high')       s = `[HIGH PRIORITY] ${s}`;
+        if (e.priority === 'safety')     s = `[⚠ SAFETY] ${s}`;
+        if (e.priority === 'follow-up')  s = `[FOLLOW-UP] ${s}`;
+        if (e.notes.trim())  s = `${s} — Note: ${e.notes.trim()}`;
+        if (e.dueDate)       s = `${s} (Due: ${e.dueDate})`;
+        return s;
+      });
     onSave(recs);
   }
 
+  const selectedCount = entries.filter(e => e.selected && e.text.trim()).length;
+
   return (
     <ModalShell title="Recommendations" onClose={onClose}>
-      <div className="space-y-3">
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-gray-500">Prototype suggestions — not AI-generated from your findings</span>
-          <span className="text-[9px] font-bold bg-amber-950/30 text-amber-400 border border-amber-800/30 px-1.5 py-0.5 rounded flex-shrink-0">🧪 Mock</span>
+      <div className="space-y-2.5">
+
+        {/* Suggestion badge */}
+        <div className="flex items-center gap-2 pb-1">
+          <span className="text-xs text-gray-500 flex-1">Select, edit, or add recommendations below</span>
+          <span className="text-[9px] font-bold bg-amber-950/30 text-amber-400 border border-amber-800/30 px-1.5 py-0.5 rounded flex-shrink-0">🧪 Suggestions</span>
         </div>
-        {entries.map((entry, i) => (
-          <div key={i} className={`rounded-2xl border ${entry.selected ? 'bg-amber-950/30 border-amber-800' : 'bg-gray-800 border-gray-700'}`}>
-            <button onClick={() => toggle(i)} className="w-full flex items-start gap-3 p-4 text-left">
-              <div className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 ${entry.selected ? 'bg-amber-500' : 'bg-gray-700'}`}>
-                {entry.selected && <span className="text-[10px] font-bold text-white">✓</span>}
+
+        {/* Entry list */}
+        {entries.map(entry => {
+          const isExpanded = expandedId === entry.id || (!entry.isSuggested && !entry.text);
+          const cfg = REC_PRIORITY_CONFIG[entry.priority];
+          return (
+            <div key={entry.id}
+              className={`rounded-2xl border transition-colors ${
+                entry.selected
+                  ? 'bg-amber-950/20 border-amber-800/60'
+                  : 'bg-gray-800/60 border-gray-700/50'
+              }`}>
+
+              {/* Row: checkbox + text + expand + delete */}
+              <div className="flex items-start gap-2.5 p-3.5">
+                <button onClick={() => toggle(entry.id)}
+                  className={`w-5 h-5 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5 border transition-colors ${
+                    entry.selected ? 'bg-amber-500 border-amber-500' : 'border-gray-600 bg-gray-800'
+                  }`}>
+                  {entry.selected && <span className="text-[10px] font-bold text-white">✓</span>}
+                </button>
+
+                <div className="flex-1 min-w-0">
+                  {entry.isSuggested && entry.text && !isExpanded ? (
+                    <button onClick={() => setExpandedId(prev => prev === entry.id ? null : entry.id)}
+                      className="text-sm text-gray-200 leading-relaxed text-left w-full">
+                      {entry.text}
+                    </button>
+                  ) : (
+                    <textarea
+                      value={entry.text}
+                      onChange={e => setEntryText(entry.id, e.target.value)}
+                      placeholder="Describe the recommendation…"
+                      rows={2}
+                      autoFocus={!entry.isSuggested}
+                      className="w-full bg-gray-900 text-white text-sm rounded-xl px-3 py-2 border border-gray-700 focus:border-amber-600 outline-none resize-none"
+                    />
+                  )}
+                  {/* Priority badge (when collapsed & selected) */}
+                  {entry.selected && !isExpanded && entry.priority !== 'normal' && (
+                    <span className={`inline-flex mt-1 text-[9px] font-bold border px-1.5 py-0.5 rounded ${cfg.activeCls}`}>
+                      {cfg.label}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-1 flex-shrink-0 mt-0.5">
+                  <button onClick={() => setExpandedId(prev => prev === entry.id ? null : entry.id)}
+                    className="text-gray-600 hover:text-gray-300 transition-colors p-1">
+                    {isExpanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  </button>
+                  <button onClick={() => deleteEntry(entry.id)}
+                    className="text-gray-600 hover:text-red-400 transition-colors p-1">
+                    <X size={14} />
+                  </button>
+                </div>
               </div>
-              <p className="text-sm text-gray-300 leading-relaxed flex-1">{entry.text}</p>
-            </button>
-            {entry.selected && (
-              <div className="px-4 pb-4 space-y-2.5 border-t border-amber-900/30 pt-3">
-                <div>
-                  <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Priority</div>
-                  <div className="flex gap-2">
-                    {(['low','medium','high'] as const).map(p => (
-                      <button key={p} onClick={() => setPriority(i, p)}
-                        className={`flex-1 py-1.5 rounded-lg text-xs font-semibold capitalize border ${entry.priority === p ? (p === 'high' ? 'bg-red-700 border-red-600 text-white' : p === 'medium' ? 'bg-amber-700 border-amber-600 text-white' : 'bg-gray-700 border-gray-600 text-white') : 'border-gray-700 text-gray-500'}`}>
-                        {p}
-                      </button>
-                    ))}
+
+              {/* Expanded: priority + due date + notes */}
+              {isExpanded && (
+                <div className="px-3.5 pb-3.5 border-t border-gray-700/50 pt-3 space-y-3">
+                  {/* Priority */}
+                  <div>
+                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1.5">Priority</div>
+                    <div className="grid grid-cols-4 gap-1.5">
+                      {(Object.keys(REC_PRIORITY_CONFIG) as RecPriority[]).map(p => {
+                        const pcfg = REC_PRIORITY_CONFIG[p];
+                        const active = entry.priority === p;
+                        return (
+                          <button key={p} onClick={() => setPriority(entry.id, p)}
+                            className={`py-1.5 rounded-lg text-[10px] font-bold border transition-colors ${
+                              active ? pcfg.activeCls : 'border-gray-700 bg-gray-800 text-gray-600'
+                            }`}>
+                            {pcfg.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Due date */}
+                  <div>
+                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Due Date (optional)</div>
+                    <input type="date" value={entry.dueDate}
+                      onChange={e => setEntryDue(entry.id, e.target.value)}
+                      className="w-full bg-gray-800 text-white text-xs rounded-lg px-3 py-2 border border-gray-700 focus:border-amber-600 outline-none" />
+                  </div>
+
+                  {/* Notes */}
+                  <div>
+                    <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Notes (optional)</div>
+                    <input value={entry.notes}
+                      onChange={e => setEntryNotes(entry.id, e.target.value)}
+                      placeholder="Add context, urgency, or timing…"
+                      className="w-full bg-gray-800 text-white text-xs rounded-lg px-3 py-2 border border-gray-700 focus:border-amber-600 outline-none" />
                   </div>
                 </div>
-                <div>
-                  <div className="text-[10px] text-gray-500 uppercase tracking-wider mb-1">Tech Notes</div>
-                  <input value={entry.notes} onChange={e => setNotes(i, e.target.value)} placeholder="Add context or timing..."
-                    className="w-full bg-gray-800 text-white text-xs rounded-lg px-3 py-2 border border-gray-700" />
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
-        <div>
-          <input value={custom} onChange={e => setCustom(e.target.value)} placeholder="Add custom recommendation..."
-            className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 border border-gray-700 text-sm" />
-        </div>
-        <button onClick={save}
-          className="w-full bg-amber-600 text-white font-bold py-4 rounded-2xl">
-          Save {entries.filter(e => e.selected).length + (custom.trim() ? 1 : 0)} Recommendation{entries.filter(e => e.selected).length + (custom.trim() ? 1 : 0) !== 1 ? 's' : ''}
+              )}
+            </div>
+          );
+        })}
+
+        {/* Add Recommendation */}
+        <button onClick={addEntry}
+          className="w-full flex items-center justify-center gap-2 py-3 border border-dashed border-gray-700 rounded-2xl text-sm text-gray-500 hover:border-amber-700 hover:text-amber-400 transition-colors">
+          <Plus size={15} /> Add Recommendation
+        </button>
+
+        {/* Save */}
+        <button onClick={save} disabled={selectedCount === 0}
+          className="w-full bg-amber-600 disabled:opacity-40 text-white font-bold py-4 rounded-2xl transition-opacity">
+          Save {selectedCount} Recommendation{selectedCount !== 1 ? 's' : ''}
         </button>
       </div>
     </ModalShell>
@@ -1562,28 +1696,95 @@ function NoteModal({ onClose, onSave }: { onClose: () => void; onSave: (text: st
   );
 }
 
-// ─── AI Assist modal ──────────────────────────────────────────────────────────
-function AiAssistModal({ onClose }: { onClose: () => void }) {
-  const [selected, setSelected] = useState<number | null>(null);
-  const [customQ, setCustomQ] = useState('');
-  const [showCustom, setShowCustom] = useState(false);
-  const [typing, setTyping] = useState(false);
-  const [displayedResponse, setDisplayedResponse] = useState('');
+// ─── AI Assist modal — real OpenAI call with equipment context ────────────────
 
-  function selectPrompt(i: number) {
-    setSelected(i);
-    setTyping(true);
-    setDisplayedResponse('');
-    const full = AI_ASSIST_PROMPTS[i].response;
-    let idx = 0;
-    const iv = setInterval(() => {
-      idx += 4;
-      setDisplayedResponse(full.slice(0, idx));
-      if (idx >= full.length) { clearInterval(iv); setTyping(false); }
-    }, 12);
+function fmtBold(text: string) {
+  return text.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    part.startsWith('**') && part.endsWith('**')
+      ? <strong key={i} className="font-semibold text-white">{part.slice(2, -2)}</strong>
+      : <span key={i}>{part}</span>
+  );
+}
+
+function AiAssistModal({ onClose, state }: { onClose: () => void; state: PrototypeState }) {
+  const [showAnswer, setShowAnswer] = useState(false);
+  const [activeLabel, setActiveLabel] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [answer, setAnswer] = useState('');
+  const [error, setError] = useState('');
+  const [customQ, setCustomQ] = useState('');
+
+  // Extract alarm codes from activities
+  const alarmCodes = state.activities
+    .filter(a => a.type === 'alarm')
+    .map(a => a.badge ?? a.title)
+    .filter(Boolean);
+
+  // Build measurement list from captured readings
+  const measurementItems = (state.initialMeasurements ?? []).map(m => ({
+    label: m.label,
+    value: m.value,
+    unit: m.unit,
+    status: m.status,
+  }));
+
+  const serviceHistoryText = MOCK_HISTORY
+    .map(h => `${h.date} (${h.tech}): ${h.summary}`)
+    .join('\n');
+
+  async function ask(question: string, label: string) {
+    if (!question.trim() || loading) return;
+    setLoading(true);
+    setAnswer('');
+    setError('');
+    setActiveLabel(label);
+    setShowAnswer(true);
+
+    try {
+      const resp = await fetch('/api/hvac/assist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question,
+          equipmentContext: {
+            make: MOCK_EQUIPMENT.make,
+            model: MOCK_EQUIPMENT.model,
+            refrigerant: MOCK_EQUIPMENT.refrigerant,
+            capacity: MOCK_EQUIPMENT.capacity,
+            voltage: MOCK_EQUIPMENT.voltage,
+            unitTag: MOCK_JOB.equipmentShort,
+            customer: MOCK_JOB.customer,
+            site: MOCK_JOB.address,
+            faultCodes: alarmCodes.length ? alarmCodes : ['82'],
+            measurements: measurementItems.length ? measurementItems : [
+              { label: 'Head Pressure', value: '385', unit: 'psi', status: 'alert' },
+              { label: 'Suction Pressure', value: '115', unit: 'psi', status: 'ok' },
+              { label: 'Superheat', value: '24', unit: '°F', status: 'alert' },
+              { label: 'Subcooling', value: '8', unit: '°F', status: 'warn' },
+            ],
+          },
+          sessionContext: {
+            serviceHistory: serviceHistoryText,
+            weather: MOCK_JOB.weather,
+          },
+        }),
+      });
+      const data = await resp.json() as { answer?: string; error?: string };
+      if (!resp.ok) throw new Error(data.error ?? 'Request failed');
+      setAnswer(data.answer ?? '');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unable to reach AI assistant. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
-  const prompt = selected !== null ? AI_ASSIST_PROMPTS[selected] : null;
+  function goBack() {
+    setShowAnswer(false);
+    setAnswer('');
+    setError('');
+    setLoading(false);
+  }
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
@@ -1603,7 +1804,10 @@ function AiAssistModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <div className="font-bold text-white text-sm">AI Field Assistant</div>
-              <div className="text-[9px] text-amber-400/80">🧪 Prototype · Hardcoded responses</div>
+              <div className="text-[9px] text-gray-500">
+                {MOCK_EQUIPMENT.make} {MOCK_EQUIPMENT.model} · {MOCK_JOB.equipmentShort}
+                {alarmCodes.length > 0 ? ` · Code ${alarmCodes[0]}` : ' · Code 82'}
+              </div>
             </div>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">
@@ -1612,53 +1816,81 @@ function AiAssistModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="overflow-y-auto" style={{ maxHeight: 'calc(88vh - 80px)' }}>
-          {!prompt ? (
+          {!showAnswer ? (
+            /* ── Prompt list ── */
             <div className="px-5 py-4 space-y-3">
-              <div className="text-xs text-gray-500 mb-1">What do you need?</div>
+              <div className="text-xs text-gray-500">What do you need help with?</div>
               {AI_ASSIST_PROMPTS.map((p, i) => (
-                <button key={i} onClick={() => selectPrompt(i)}
-                  className="w-full flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-2xl p-4 text-left">
+                <button key={i} onClick={() => ask(p.label, p.label)}
+                  className="w-full flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-2xl p-4 text-left hover:border-blue-700 transition-colors">
                   <span className="text-xl flex-shrink-0">{p.icon}</span>
                   <span className="font-semibold text-white text-sm">{p.label}</span>
                 </button>
               ))}
-              <button onClick={() => setShowCustom(true)}
-                className="w-full py-3 text-sm text-gray-500 border border-gray-800 rounded-2xl">
-                Ask something else...
-              </button>
-              {showCustom && (
-                <div className="flex gap-2">
-                  <input value={customQ} onChange={e => setCustomQ(e.target.value)} placeholder="Type your question..."
-                    className="flex-1 bg-gray-800 text-white rounded-xl px-3 py-2.5 border border-gray-700 text-sm" autoFocus />
-                  <button onClick={() => { setSelected(-1); }} className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0">
-                    <Send size={16} className="text-white" />
-                  </button>
-                </div>
-              )}
+              {/* Custom question */}
+              <div className="flex gap-2 pt-1">
+                <input
+                  value={customQ}
+                  onChange={e => setCustomQ(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && customQ.trim() && ask(customQ, customQ)}
+                  placeholder="Ask something specific…"
+                  className="flex-1 bg-gray-800 text-white rounded-xl px-3 py-2.5 border border-gray-700 text-sm focus:border-blue-600 outline-none"
+                />
+                <button
+                  onClick={() => ask(customQ, customQ)}
+                  disabled={!customQ.trim()}
+                  className="w-10 h-10 bg-blue-600 rounded-xl flex items-center justify-center flex-shrink-0 disabled:opacity-40 transition-opacity">
+                  <Send size={16} className="text-white" />
+                </button>
+              </div>
             </div>
           ) : (
+            /* ── Answer view ── */
             <div className="px-5 py-4">
-              <button onClick={() => { setSelected(null); setDisplayedResponse(''); }} className="text-xs text-gray-500 mb-4 flex items-center gap-1">
+              <button onClick={goBack}
+                className="text-xs text-gray-500 mb-4 flex items-center gap-1 hover:text-gray-300 transition-colors">
                 ← Back to questions
               </button>
-              <div className="flex items-center gap-2 mb-3">
-                <span className="text-lg">{prompt.icon}</span>
-                <span className="font-bold text-white text-sm">{prompt.label}</span>
-              </div>
-              <div className="bg-blue-950/30 border border-blue-800/50 rounded-2xl p-4">
-                <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-line">
-                  {displayedResponse || prompt.response}
-                  {typing && <span className="inline-block w-1 h-4 bg-blue-400 animate-pulse ml-0.5 align-middle" />}
+              <div className="font-bold text-white text-sm mb-3">{activeLabel}</div>
+
+              {loading && (
+                <div className="flex items-center gap-3 py-6 text-gray-400">
+                  <div className="w-5 h-5 rounded-full border-2 border-blue-500 border-t-transparent animate-spin flex-shrink-0" />
+                  <span className="text-sm">Analyzing equipment context…</span>
                 </div>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-2">
-                {AI_ASSIST_PROMPTS.filter((_, i) => i !== selected).slice(0, 2).map((p, i) => (
-                  <button key={i} onClick={() => selectPrompt(AI_ASSIST_PROMPTS.indexOf(p))}
-                    className="py-2.5 px-3 bg-gray-800 rounded-xl text-xs text-gray-300 font-medium text-left border border-gray-700">
-                    {p.icon} {p.label}
-                  </button>
-                ))}
-              </div>
+              )}
+
+              {error && !loading && (
+                <div className="bg-red-950/40 border border-red-800/60 rounded-2xl p-4 space-y-2">
+                  <div className="text-red-400 text-sm font-semibold">Connection error</div>
+                  <div className="text-red-300/70 text-xs leading-relaxed">{error}</div>
+                  <button onClick={() => ask(activeLabel, activeLabel)}
+                    className="text-xs text-red-400 underline">Try again</button>
+                </div>
+              )}
+
+              {answer && !loading && (
+                <div className="bg-blue-950/30 border border-blue-800/50 rounded-2xl p-4">
+                  <div className="text-sm text-gray-200 leading-relaxed whitespace-pre-line">
+                    {fmtBold(answer)}
+                  </div>
+                </div>
+              )}
+
+              {/* Related prompts */}
+              {(answer || error) && !loading && (
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  {AI_ASSIST_PROMPTS
+                    .filter(p => p.label !== activeLabel)
+                    .slice(0, 2)
+                    .map((p, i) => (
+                      <button key={i} onClick={() => ask(p.label, p.label)}
+                        className="py-2.5 px-3 bg-gray-800 rounded-xl text-xs text-gray-300 font-medium text-left border border-gray-700 hover:border-blue-700 transition-colors">
+                        {p.icon} {p.label}
+                      </button>
+                    ))}
+                </div>
+              )}
             </div>
           )}
         </div>

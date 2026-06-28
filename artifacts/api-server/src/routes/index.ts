@@ -21,6 +21,7 @@ import voiceInterpretRouter from "./voiceInterpret";
 import voiceReportRouter from "./voiceReport";
 import jobsRouter from "./jobs";
 import vanRouter from "./van";
+import assistRouter from "./assist";
 
 const router: IRouter = Router();
 
@@ -46,5 +47,6 @@ router.use(voiceInterpretRouter);
 router.use(voiceReportRouter);
 router.use(jobsRouter);
 router.use(vanRouter);
+router.use(assistRouter);
 
 export default router;
