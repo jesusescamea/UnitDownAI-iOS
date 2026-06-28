@@ -364,8 +364,11 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
             <VanIcon size={20} className="text-teal-300" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">My Van — Parts</h2>
-            <div className="text-[10px] text-gray-500">Marcus Rivera · Unit #47 · {inventory.length} parts</div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-white">My Van — Parts</h2>
+              <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-amber-800/60 border border-amber-600/50 text-amber-300 rounded-full">Beta</span>
+            </div>
+            <div className="text-[10px] text-gray-500">Inventory resets on refresh · Persistence coming soon</div>
           </div>
         </div>
         <div className="flex items-center gap-2">

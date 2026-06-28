@@ -111,8 +111,11 @@ export function ToolChecklistModal({ onClose }: Props) {
             🔧
           </div>
           <div>
-            <h2 className="text-lg font-bold text-white">Tool Checklist</h2>
-            <div className="text-[10px] text-gray-500">Marcus Rivera · {tools.length} tools · {loadedCount} loaded</div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold text-white">Tool Checklist</h2>
+              <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-amber-800/60 border border-amber-600/50 text-amber-300 rounded-full">Beta</span>
+            </div>
+            <div className="text-[10px] text-gray-500">Checklist resets on refresh · Persistence coming soon</div>
           </div>
         </div>
         <div className="flex items-center gap-2">

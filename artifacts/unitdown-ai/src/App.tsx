@@ -1031,9 +1031,20 @@ function LeadFormModal({ open, onClose, prefillIssue = "", diagnosisCategory, pr
 
 // ─── AdminView ──────────────────────────────────────────────────────────────────
 
+const ADMIN_EMAILS = new Set(["unitdownsupport@gmail.com"]);
+
 function AdminView() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [, navigate] = useLocation();
+  const { user, isLoaded } = useUser();
+
+  useEffect(() => {
+    if (!isLoaded) return;
+    const email = user?.primaryEmailAddress?.emailAddress?.trim().toLowerCase() ?? "";
+    if (!ADMIN_EMAILS.has(email)) {
+      navigate("/");
+    }
+  }, [isLoaded, user, navigate]);
 
   useEffect(() => {
     setLeads(loadLeads());
@@ -3484,10 +3495,11 @@ function App() {
               <Route path="/records/:id/edit" component={UnitFormPage} />
               <Route path="/records/:id" component={UnitDetailPage} />
               <Route path="/logs/:id" component={DiagnosticLogDetailPage} />
-              <Route path="/dev/equipment-preview" component={DevEquipmentPreview} />
-              <Route path="/jobmode-prototype" component={JobModePrototype} />
-              <Route path="/job-preview/record" component={DevJobRecordPreview} />
-              <Route path="/job-preview" component={DevJobPreview} />
+              {/* Dev-only routes — excluded from production builds */}
+              {import.meta.env.DEV && <Route path="/dev/equipment-preview" component={DevEquipmentPreview} />}
+              {import.meta.env.DEV && <Route path="/jobmode-prototype" component={JobModePrototype} />}
+              {import.meta.env.DEV && <Route path="/job-preview/record" component={DevJobRecordPreview} />}
+              {import.meta.env.DEV && <Route path="/job-preview" component={DevJobPreview} />}
               {/* ── Job Mode ── */}
               <Route path="/job">
                 <JobModePage />
