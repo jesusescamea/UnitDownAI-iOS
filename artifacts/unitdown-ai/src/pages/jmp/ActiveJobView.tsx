@@ -3,11 +3,16 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   Camera, Mic, Plus, X, ChevronDown, ChevronUp, Zap, FileText,
   Wrench, CheckSquare, User, Cpu, CheckCircle, Sparkles, Send, AlertTriangle,
+  Search, ArrowLeft, ChevronRight,
 } from 'lucide-react';
 import {
   MOCK_JOB, MOCK_EQUIPMENT, INITIAL_MEASUREMENTS, SUGGESTED_RECOMMENDATIONS,
   FAULT_CODES, JOB_STATE_LABELS, randomVoiceNote, AI_ASSIST_PROMPTS,
 } from './mockData';
+import { INITIAL_INVENTORY } from './vanData';
+import {
+  PARTS_MASTER, searchParts, getEquipmentPartsContext, matchVanInventory,
+} from './partsIntelligence';
 import type { PrototypeState, PrototypeAction, JobState, Activity, MeasurementReading, ModalType, NameplateScanResult, NameplateFields } from './types';
 
 // ─── Color mapping ─────────────────────────────────────────────────────────────
@@ -1032,57 +1037,334 @@ function MeasurementModal({ mode, onClose, onSave }: { mode: 'initial' | 'verifi
   );
 }
 
-// ─── Part modal ───────────────────────────────────────────────────────────────
-const SUGGESTED_PARTS = [
-  { name: 'Condenser Coil Cleaning', detail: 'Nu-Brite chemical rinse — heavy fouling removed', qty: 1 },
-  { name: 'R-410A Refrigerant', detail: '0.75 lbs added — system was undercharged', qty: 1 },
-  { name: 'Dual Run Capacitor 35/5 µF 440V', detail: 'Replaced — tested at 31 µF (spec: 35 µF)', qty: 1 },
-];
+// ─── Part modal ── Parts Intelligence 2-step flow ─────────────────────────────
 
-function PartModal({ jobState: _j, onClose, onSave }: { jobState: JobState; onClose: () => void; onSave: (name: string, detail: string, qty: number) => void }) {
-  const [custom, setCustom] = useState(false);
-  const [name, setName] = useState('');
-  const [detail, setDetail] = useState('');
-  return (
-    <ModalShell title="Log Part / Repair" onClose={onClose}>
-      <div className="space-y-3">
-        {!custom ? (
-          <>
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-xs text-gray-500 font-semibold">Suggested for this job</span>
-              <span className="text-[9px] font-bold bg-amber-950/30 text-amber-400 border border-amber-800/30 px-1.5 py-0.5 rounded">🧪 Mock data</span>
-            </div>
-            {SUGGESTED_PARTS.map((p, i) => (
-              <button key={i} onClick={() => onSave(p.name, p.detail, p.qty)}
-                className="w-full flex items-start gap-3 bg-gray-800 border border-gray-700 rounded-2xl p-4 text-left">
-                <div className="w-8 h-8 bg-orange-900/50 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <Wrench size={14} className="text-orange-400" />
-                </div>
-                <div className="flex-1">
-                  <div className="font-semibold text-white text-sm">{p.name}</div>
-                  <div className="text-xs text-gray-400 mt-0.5">{p.detail}</div>
-                </div>
-              </button>
-            ))}
-            <button onClick={() => setCustom(true)} className="w-full py-3 text-sm text-gray-500 border border-gray-800 rounded-2xl">+ Custom Part or Material</button>
-          </>
-        ) : (
-          <div className="space-y-3">
-            <button onClick={() => setCustom(false)} className="text-xs text-gray-500">← Back to suggestions</button>
-            <div>
-              <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Part Name</label>
-              <input value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Belt 3VX450"
-                className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 border border-gray-700 text-sm" />
-            </div>
-            <div>
-              <label className="text-xs text-gray-400 uppercase tracking-wider block mb-1">Detail / Notes</label>
-              <input value={detail} onChange={e => setDetail(e.target.value)} placeholder="e.g. Replaced worn belt"
-                className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 border border-gray-700 text-sm" />
-            </div>
-            <button onClick={() => name && onSave(name, detail, 1)} disabled={!name}
-              className="w-full bg-orange-600 text-white font-bold py-4 rounded-2xl disabled:opacity-50">Save Part</button>
+const EQUIPMENT_CONTEXT = getEquipmentPartsContext({
+  equipmentType: MOCK_EQUIPMENT.type,
+  make:          MOCK_EQUIPMENT.make,
+  model:         MOCK_EQUIPMENT.model,
+  serial:        MOCK_EQUIPMENT.serial,
+  voltage:       MOCK_EQUIPMENT.voltage,
+  refrigerant:   MOCK_EQUIPMENT.refrigerant,
+});
+
+const VAN_MATCH_COLORS: Record<string, string> = {
+  'in-stock':            'bg-green-950/40 border-green-700/40 text-green-400',
+  'low-stock':           'bg-amber-950/40 border-amber-700/40 text-amber-400',
+  'out-of-stock':        'bg-red-950/40 border-red-700/40 text-red-400',
+  'possible-substitute': 'bg-blue-950/40 border-blue-700/40 text-blue-400',
+  'not-stocked':         'bg-gray-800 border-gray-700 text-gray-400',
+  'verify-before-install':'bg-amber-950/40 border-amber-700/40 text-amber-400',
+};
+const VAN_MATCH_LABELS: Record<string, string> = {
+  'in-stock':            '✓ In Van',
+  'low-stock':           '⚠ Low Stock in Van',
+  'out-of-stock':        '✕ Out of Stock',
+  'possible-substitute': '~ Possible Substitute',
+  'not-stocked':         '— Not Stocked in Van',
+  'verify-before-install':'⚠ Verify Before Install',
+};
+
+function PartModal({ jobState: _j, onClose, onSave }: {
+  jobState: JobState;
+  onClose:  () => void;
+  onSave:   (name: string, detail: string, qty: number) => void;
+}) {
+  const [step, setStep]         = useState<'select' | 'form' | 'manual'>('select');
+  const [search, setSearch]     = useState('');
+  const [selected, setSelected] = useState<string | null>(null);
+  const [specs, setSpecs]       = useState<Record<string, string>>({});
+  const [notes, setNotes]       = useState('');
+  const [qty, setQty]           = useState(1);
+  const [manualName, setManualName]     = useState('');
+  const [manualSource, setManualSource] = useState('Van stock');
+
+  const partDef  = selected ? PARTS_MASTER[selected] : null;
+  const vanMatch = partDef ? matchVanInventory(partDef, INITIAL_INVENTORY) : null;
+  const results  = searchParts(search);
+
+  function selectType(type: string) {
+    setSelected(type);
+    setSpecs({});
+    setNotes('');
+    setQty(1);
+    setStep('form');
+  }
+
+  function handleSave() {
+    if (!partDef) return;
+    const allFields = [...partDef.requiredSpecs, ...partDef.optionalSpecs];
+    const specStr = Object.entries(specs)
+      .filter(([, v]) => v.trim())
+      .map(([k, v]) => {
+        const f = allFields.find(x => x.key === k);
+        return `${f?.label ?? k}: ${v}${f?.unit ? ' ' + f.unit : ''}`;
+      })
+      .join(' · ');
+    const full = [specStr, notes].filter(Boolean).join(' — ');
+    onSave(partDef.partType, full || 'Part logged', qty);
+  }
+
+  function handleSaveManual() {
+    if (!manualName.trim()) return;
+    const full = [`Source: ${manualSource}`, notes].filter(Boolean).join(' — ');
+    onSave(manualName.trim(), full, qty);
+  }
+
+  // ── Step 1: Part type selector ──────────────────────────────────────────────
+  if (step === 'select') {
+    return (
+      <ModalShell title="Log Part / Repair" onClose={onClose}>
+        <div className="space-y-3">
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+            <input
+              value={search} onChange={e => setSearch(e.target.value)}
+              placeholder="Search part type…"
+              autoFocus
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl pl-9 pr-4 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500"
+            />
           </div>
-        )}
+
+          <div className="space-y-1 max-h-64 overflow-y-auto pr-0.5">
+            {results.slice(0, 22).map(type => {
+              const def = PARTS_MASTER[type];
+              return (
+                <button key={type} onClick={() => selectType(type)}
+                  className="w-full flex items-center gap-3 bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-left hover:border-orange-600/50 transition-colors">
+                  <div className="w-7 h-7 bg-orange-900/40 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <Wrench size={12} className="text-orange-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-white truncate">{type}</div>
+                    <div className="text-[10px] text-gray-500">{def.category}</div>
+                  </div>
+                  <ChevronRight size={13} className="text-gray-600 flex-shrink-0" />
+                </button>
+              );
+            })}
+            {results.length === 0 && (
+              <div className="text-sm text-gray-500 text-center py-6">No parts match "{search}"</div>
+            )}
+          </div>
+
+          <button onClick={() => setStep('manual')}
+            className="w-full py-3 text-sm text-gray-500 border border-gray-800 rounded-2xl hover:text-gray-400 transition-colors">
+            + Manual Entry
+          </button>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  // ── Step 2: Smart part form ─────────────────────────────────────────────────
+  if (step === 'form' && partDef) {
+    const criticalMissing = partDef.requiredSpecs.filter(s => s.critical && !specs[s.key]?.trim());
+
+    return (
+      <ModalShell title={partDef.partType} onClose={onClose}>
+        <div className="space-y-4">
+
+          {/* Back */}
+          <button onClick={() => setStep('select')}
+            className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-400 transition-colors">
+            <ArrowLeft size={11} /> Back to part types
+          </button>
+
+          {/* Equipment context card */}
+          <div className="bg-gray-900 border border-gray-800 rounded-xl px-3 py-2.5">
+            <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1">Current Equipment</div>
+            <div className="text-xs font-semibold text-white">{MOCK_EQUIPMENT.make} {MOCK_EQUIPMENT.model}</div>
+            <div className="text-[10px] text-gray-500 mt-0.5">
+              {MOCK_EQUIPMENT.type} · {MOCK_EQUIPMENT.refrigerant} · {MOCK_EQUIPMENT.voltage}
+            </div>
+            {EQUIPMENT_CONTEXT.likelyFailureParts.length > 0 && (
+              <div className="text-[9px] text-blue-400 mt-1">
+                Common for this unit: {EQUIPMENT_CONTEXT.likelyFailureParts.slice(0, 3).join(', ')}
+              </div>
+            )}
+          </div>
+
+          {/* Van inventory match */}
+          {vanMatch && (
+            <div className={`rounded-xl border px-3 py-2.5 ${VAN_MATCH_COLORS[vanMatch.status]}`}>
+              <div className="text-[9px] font-bold uppercase tracking-wider mb-0.5 opacity-70">Van Stock</div>
+              <div className="text-xs font-bold">{VAN_MATCH_LABELS[vanMatch.status]}</div>
+              {vanMatch.itemName && (
+                <div className="text-[10px] mt-0.5 opacity-80 font-medium">{vanMatch.itemName}{vanMatch.qty !== undefined ? ` — ${vanMatch.qty} on hand` : ''}</div>
+              )}
+              <div className="text-[10px] mt-0.5 opacity-70">{vanMatch.note}</div>
+              {vanMatch.missingVerifications.length > 0 && (
+                <div className="text-[10px] mt-1.5 font-semibold">
+                  Verify before install: {vanMatch.missingVerifications.join(', ')}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Required specs */}
+          {partDef.requiredSpecs.length > 0 && (
+            <div className="space-y-2.5">
+              <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider">Required Specs</div>
+              {partDef.requiredSpecs.map(field => (
+                <div key={field.key}>
+                  <label className="flex items-center gap-1 text-[10px] text-gray-400 mb-1">
+                    {field.label}
+                    {field.critical && <span className="text-red-400 text-[9px]">*</span>}
+                    {field.unit && <span className="text-gray-600">({field.unit})</span>}
+                  </label>
+                  {field.type === 'select' ? (
+                    <select
+                      value={specs[field.key] ?? ''}
+                      onChange={e => setSpecs(p => ({ ...p, [field.key]: e.target.value }))}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-orange-500">
+                      <option value="">Select…</option>
+                      {field.options?.map(o => <option key={o} value={o}>{o}</option>)}
+                    </select>
+                  ) : (
+                    <input
+                      type={field.type === 'number' ? 'number' : 'text'}
+                      value={specs[field.key] ?? ''}
+                      onChange={e => setSpecs(p => ({ ...p, [field.key]: e.target.value }))}
+                      placeholder={field.placeholder ?? ''}
+                      className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500"
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Required photos */}
+          {partDef.requiredPhotos.filter(p => p.required).length > 0 && (
+            <div>
+              <div className="text-[9px] text-gray-500 font-bold uppercase tracking-wider mb-1.5">Photos Required</div>
+              <div className="space-y-1">
+                {partDef.requiredPhotos.filter(p => p.required).map((p, i) => (
+                  <div key={i} className="flex items-start gap-2 text-[11px] text-gray-400">
+                    <span className="text-amber-500 mt-0.5 flex-shrink-0 text-xs">📷</span>
+                    <span>
+                      <span className="font-semibold">{p.label}</span>
+                      {' — '}{p.timing === 'before' ? 'Before removal' : p.timing === 'after' ? 'After install' : 'Any time'}
+                      {p.note ? `: ${p.note}` : ''}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Safety notes */}
+          {partDef.safetyNotes.length > 0 && (
+            <div className="bg-amber-950/25 border border-amber-800/40 rounded-xl px-3 py-2.5">
+              <div className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mb-1">Safety</div>
+              {partDef.safetyNotes.slice(0, 2).map((n, i) => (
+                <div key={i} className="text-[10px] text-amber-300 flex items-start gap-1.5 mt-0.5">
+                  <AlertTriangle size={10} className="flex-shrink-0 mt-0.5" />{n}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Online lookup placeholder */}
+          <div className="flex items-center justify-between bg-gray-900 border border-gray-800 rounded-xl px-3 py-2.5">
+            <div>
+              <div className="text-[10px] text-gray-400 font-semibold">Search Replacement Online</div>
+              <div className="text-[9px] text-gray-600">Grainger · Johnstone · Ferguson · OEM lookup</div>
+            </div>
+            <span className="text-[9px] bg-gray-800 text-gray-500 border border-gray-700 px-2 py-1 rounded-lg font-semibold whitespace-nowrap">Coming Soon</span>
+          </div>
+
+          {/* Notes */}
+          <div>
+            <label className="block text-[10px] text-gray-400 uppercase tracking-wider mb-1">Notes / Detail</label>
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="e.g. Replaced failed unit — confirmed from nameplate. Amp draw 3.2A after install."
+              rows={2}
+              className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-orange-500 resize-none"
+            />
+          </div>
+
+          {/* Qty stepper */}
+          <div className="flex items-center justify-between">
+            <span className="text-xs text-gray-400">Quantity</span>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setQty(q => Math.max(1, q - 1))}
+                className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-white font-bold">−</button>
+              <span className="text-white font-bold w-6 text-center">{qty}</span>
+              <button onClick={() => setQty(q => q + 1)}
+                className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-white font-bold">+</button>
+            </div>
+          </div>
+
+          {/* Missing specs warning */}
+          {criticalMissing.length > 0 && (
+            <div className="text-[10px] text-amber-400 bg-amber-950/20 border border-amber-800/30 rounded-xl px-3 py-2">
+              Missing required specs: {criticalMissing.map(s => s.label).join(', ')}. You can still save — these improve the service record.
+            </div>
+          )}
+
+          <button onClick={handleSave}
+            className="w-full bg-orange-600 text-white font-bold py-4 rounded-2xl">
+            Log Part / Repair
+          </button>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  // ── Manual entry ────────────────────────────────────────────────────────────
+  return (
+    <ModalShell title="Manual Part Entry" onClose={onClose}>
+      <div className="space-y-3">
+        <button onClick={() => setStep('select')}
+          className="flex items-center gap-1.5 text-xs text-gray-500 hover:text-gray-400 transition-colors">
+          <ArrowLeft size={11} /> Back to part types
+        </button>
+
+        <div>
+          <label className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">
+            Part Name / Description <span className="text-red-400">*</span>
+          </label>
+          <input value={manualName} onChange={e => setManualName(e.target.value)}
+            placeholder="e.g. Belt 3VX450, 35/5 µF Dual Run Cap, Nu-Brite cleaning"
+            className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 border border-gray-700 text-sm placeholder-gray-600" />
+        </div>
+
+        <div>
+          <label className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Source</label>
+          <select value={manualSource} onChange={e => setManualSource(e.target.value)}
+            className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white">
+            {['Van stock', 'Shop stock', 'Supply house', 'Customer supplied', 'Unknown'].map(s => (
+              <option key={s}>{s}</option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label className="text-[10px] text-gray-400 uppercase tracking-wider block mb-1">Notes</label>
+          <input value={notes} onChange={e => setNotes(e.target.value)}
+            placeholder="e.g. Replaced worn belt, 0.75 lbs R-410A added, confirmed from nameplate"
+            className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 border border-gray-700 text-sm placeholder-gray-600" />
+        </div>
+
+        <div className="flex items-center justify-between">
+          <span className="text-xs text-gray-400">Quantity</span>
+          <div className="flex items-center gap-3">
+            <button onClick={() => setQty(q => Math.max(1, q - 1))}
+              className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-white font-bold">−</button>
+            <span className="text-white font-bold w-6 text-center">{qty}</span>
+            <button onClick={() => setQty(q => q + 1)}
+              className="w-8 h-8 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center text-white font-bold">+</button>
+          </div>
+        </div>
+
+        <button onClick={handleSaveManual} disabled={!manualName.trim()}
+          className="w-full bg-orange-600 text-white font-bold py-4 rounded-2xl disabled:opacity-50">
+          Save Part
+        </button>
       </div>
     </ModalShell>
   );
