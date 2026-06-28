@@ -367,11 +367,11 @@ All "Soon" buttons are disabled with a visible "Soon" badge and a note: "Export 
 | `/job-preview` | 🧪 Dev | Dev preview — publicly accessible |
 | `/job-preview/record` | 🧪 Dev | Dev preview — publicly accessible |
 | `/dev/equipment-preview` | 🧪 Dev | Dev preview — publicly accessible |
-| `*` (unmatched) | ⚠ Unknown | No explicit 404 route visible in App.tsx |
+| `*` (unmatched) | ✅ NotFound | `<NotFound />` catch-all — custom dark-theme 404 page with back navigation |
 
 ### Concerns
 - **Dev routes in production**: `/jobmode-prototype`, `/job-preview`, `/job-preview/record`, `/dev/equipment-preview` are all publicly accessible via direct URL. They contain prototype/mock data and no auth guard. Users who find these routes might be confused by the prototype behaviors.
-- **No explicit 404 route**: Unmatched routes fall through. Users navigating to non-existent paths may see a blank page. A `<Route>` catch-all with a "Page Not Found" component should be added.
+- ~~**No explicit 404 route**~~ ✅ Fixed — `<NotFound />` catch-all with custom dark-theme 404 page now handles all unmatched paths.
 - **`/admin` route**: Present in routes but no auth guard shown in the route definition. If not guarded, any user can access the admin view.
 
 ### Tab and modal audit
@@ -394,7 +394,7 @@ All "Soon" buttons are disabled with a visible "Soon" badge and a note: "Export 
 | Export: PDF / Email / Share / etc. | ⚠ Disabled | Labeled "Soon" |
 
 ### Production blockers
-- Add a 404 catch-all route.
+- ~~Add a 404 catch-all route.~~ ✅ Done
 - Verify `/admin` has a proper auth guard.
 - Consider restricting or removing dev routes (`/jobmode-prototype`, `/job-preview`, `/dev/equipment-preview`) from the production build, or requiring internal auth.
 
@@ -465,7 +465,7 @@ The following were identified and fixed during this audit:
 2. **AI report generation** — No GPT call is wired to generate the Professional Report, Customer Summary, or Invoice Summary in completed job records. Sections exist but are always empty.
 
 ### High
-3. **404 catch-all route** — No fallback route for unmatched paths. Add a "Page Not Found" component.
+3. ~~**404 catch-all route**~~ ✅ Done — `<NotFound />` catch-all added with dark-theme 404 page and back navigation.
 4. **Van inventory persistence** — All inventory data lost on refresh. Blocks My Van from being production-useful.
 5. **PDF export** — Only "Print" works. PDF, email, share, USS Archive are all labeled "Soon" but not built.
 
@@ -487,9 +487,9 @@ The following were identified and fixed during this audit:
 ### Phase 1 — Security and correctness (do now)
 - [ ] Verify `/admin` route has a proper auth guard
 - [ ] Confirm dev routes require internal auth or remove from production
-- [ ] Add 404 catch-all route
-- [ ] ~~Remove symptom `console.log`~~ ✅ Done
-- [ ] ~~Fix server `console.log` → `req.log`~~ ✅ Done
+- [x] ~~Add 404 catch-all route~~ ✅ Done
+- [x] ~~Remove symptom `console.log`~~ ✅ Done
+- [x] ~~Fix server `console.log` → `req.log`~~ ✅ Done
 
 ### Phase 2 — Missing core features
 - [ ] Wire AI report generation (GPT over `job_timeline_events`)
@@ -498,7 +498,7 @@ The following were identified and fixed during this audit:
 - [ ] USR ID permanent format finalization
 
 ### Phase 3 — Polish and completeness
-- [ ] 404 page with navigation back to home
+- [x] ~~404 page with navigation back to home~~ ✅ Done
 - [ ] Subscription management portal link (Stripe billing portal)
 - [ ] Push notification infrastructure (APNs/FCM)
 - [ ] Per-item "syncing" badge on offline timeline events
@@ -517,5 +517,128 @@ The following were identified and fixed during this audit:
 
 ---
 
-*Last updated: June 2026*
+---
+
+## Sprint Changes Applied — June 2026 Production Sprint
+
+The following changes were completed in the June 2026 production sprint prior to Hermes migration handoff.
+
+### Phase 2 — RecommendationsModal Rewrite
+
+| File | Change |
+|---|---|
+| `artifacts/unitdown-ai/src/pages/jmp/ActiveJobView.tsx` | Fully rewrote `RecommendationsModal` — unlimited entries (was capped), real priority levels (Normal / High / Safety / Follow-up), due date field, notes field, expand/collapse per entry, add/delete. Was a static list of 3 hardcoded items. |
+
+### Phase 3 — ScheduleJobWizard UX Polish
+
+| File | Change |
+|---|---|
+| `artifacts/unitdown-ai/src/pages/jmp/ScheduleJobWizard.tsx` | Site step: manual fields now collapsed behind explicit "+ Add New Site" dashed button. When existing customer has saved sites, only site cards are shown. Clicking "+ Add New Site" clears form and reveals manual fields with "← Back to saved sites" escape hatch. |
+| `artifacts/unitdown-ai/src/pages/jmp/ScheduleJobWizard.tsx` | Equipment step: added "Import Equipment" full-width button (purple, prototype note) alongside Scan Nameplate and Enter Manually. |
+| `artifacts/unitdown-ai/src/pages/jmp/ScheduleJobWizard.tsx` | `handleCreate`: `job.customer` is now just `data.businessName` (was `"BusinessName — SiteName"`). `job.unitTag` is now `"SiteName · EquipType · UnitLabel"` format matching mock data convention. |
+| `artifacts/unitdown-ai/src/pages/jmp/DashboardView.tsx` | Added `job.type` as a third display line in all three job card locations (main Today's Jobs list, scrollable panel cards, PMs list). Applies to mock jobs and wizard-created `userJobs` via `allJobs` merge. |
+
+### Phase 5 — Real AI Field Assistant
+
+| File | Change |
+|---|---|
+| `artifacts/api-server/src/routes/assist.ts` | New route `POST /api/hvac/assist`. Accepts equipment context, measurements from session, alarm codes from activities, and service history. Calls GPT (OpenAI via Replit AI Integrations) and returns structured field assistant response. |
+| `artifacts/api-server/src/routes/index.ts` | Registered `/api/hvac/assist` route. |
+| `artifacts/unitdown-ai/src/pages/jmp/ActiveJobView.tsx` | Rewrote `AiAssistModal` to call real `POST /api/hvac/assist` API with live equipment context. Removed hardcoded typewriter responses. |
+
+### Phase 7 — Housekeeping and 404
+
+| File | Change |
+|---|---|
+| `artifacts/unitdown-ai/src/App.tsx` | Removed 3 remaining `console.log` calls (symptoms + clientId, two job mode logs). |
+| `artifacts/unitdown-ai/src/App.tsx` | 404 catch-all now renders `<NotFound />` component instead of blank fallthrough. |
+| `artifacts/unitdown-ai/src/pages/not-found.tsx` | Rewrote as dark-theme production 404 page with back navigation link. |
+
+---
+
+## Hermes Migration Readiness — June 28, 2026
+
+### What "Hermes migration" means
+This branch (`hermes-migration-test`) is the handoff point for environment migration. The production app at `unitdown.org` will be migrated to the Hermes infrastructure. This audit documents the exact state of code being handed off.
+
+### Branch created
+- `hermes-migration-test` branched from `feature/unitdown-workspace` at commit `26ba502` + audit doc update.
+
+### Build status at handoff
+
+| Check | Result |
+|---|---|
+| Frontend typecheck (`tsc --noEmit`) | ✅ Clean — 0 errors |
+| Backend typecheck (`tsc --noEmit`) | ✅ Clean — 0 errors |
+| Shared lib typecheck (`tsc --build`) | ✅ Clean — 0 errors |
+| Frontend build (Vite + PWA + SSR pre-render) | ✅ Success — 26 routes pre-rendered, SW generated |
+| Backend build (esbuild CJS bundle) | ✅ Success — 3.6 MB bundle |
+
+### Route smoke test at handoff
+
+| Route | HTTP | Expected |
+|---|---|---|
+| `GET /` | 200 | ✅ Home / SPA shell |
+| `GET /jobmode-prototype` | 200 | ✅ Prototype (SPA) |
+| `GET /job` | 200 | ✅ Job list (SPA) |
+| `GET /logs` | 200 | ✅ SPA (invalid job, shows error gracefully) |
+| `GET /this-does-not-exist` | 200 | ✅ SPA shell → `<NotFound />` rendered in browser |
+| `GET /api/healthz` | 200 | ✅ API alive |
+| `POST /api/hvac/assist` (no body) | 400 | ✅ Route exists, validation rejects empty body |
+
+### Known remaining blockers at handoff
+
+#### Critical (must fix before production traffic)
+1. **`/admin` route auth guard** — Not verified. If unguarded, any user has admin access. Check before directing any traffic.
+2. **AI report generation** — `ServiceRecordPage` sections (Professional Report, Customer Summary, Invoice Summary) still show placeholders. No GPT call wired to generate them.
+
+#### High (blocks feature completeness)
+3. **Van inventory persistence** — All My Van inventory and tool checklist data lost on page refresh. No `van_inventory` table.
+4. **PDF export** — Print works. PDF, email, share, USS Archive all labeled "Soon."
+
+#### Medium
+5. **Dev routes publicly accessible** — `/jobmode-prototype`, `/job-preview`, `/dev/equipment-preview` are open without auth. Consider gating or removing from production build.
+6. **Team plan not implemented** — Referenced in product but has no seat management, invitation flow, or team billing. Ensure all pricing UI labels it "Coming Soon."
+7. **USR ID format** — Not yet the permanent `USR-YYYY-NNNNNN` global format described in USS spec.
+
+#### Low
+8. **Push notifications** — Not implemented (APNs/FCM registration not built).
+9. **Subscription management portal** — No in-app Stripe portal link for users to cancel.
+10. **Per-item offline pending badges** — Timeline events don't show individual sync state.
+
+### Release readiness score
+
+| Area | Score | Notes |
+|---|---|---|
+| Authentication | 18/20 | Real Clerk, Apple, Google, iOS payment guard. Missing MFA. |
+| Diagnostic engine | 19/20 | Real KB + GPT hybrid. Missing OEM fault code DB. |
+| Saved equipment | 17/20 | Full CRUD, OCR, photos. Missing warranty, QR codes. |
+| Real Job Mode (`/job`) | 14/20 | Core real. AI reports not generated, PDF not built. |
+| Subscription / payments | 15/20 | Stripe + Apple IAP real. Team plan missing. |
+| Offline behavior | 16/20 | Solid IndexedDB sync. No per-item pending badge. |
+| My Van | 6/20 | Session-only. No persistence. |
+| Public website / SEO | 16/20 | Real. Missing pricing page, meta tag audit. |
+| 404 / routing | 18/20 | Catch-all added. `/admin` guard unverified. |
+| JMP Prototype | 12/20 | Useful demo. Not production. localStorage only. |
+| **Total** | **151/200 (75.5%)** | |
+
+### Overall release readiness: **75 / 100**
+
+**Is this ready to hand to Hermes?** Yes, with conditions:
+
+- ✅ Core diagnostic product is production-ready.
+- ✅ Authentication, payments (web + iOS), and equipment management are production-ready.
+- ✅ Real Job Mode and Service Records are functional, with expected placeholders labeled "Soon."
+- ✅ All typechecks and builds are clean.
+- ⚠ Verify `/admin` auth guard before migration.
+- ⚠ Van inventory persistence must be addressed before My Van is promoted as a feature.
+- ⚠ AI report generation should be wired before marketing service record exports.
+
+The app is safe to migrate. The blockers above do not cause data loss or security exposure (except the `/admin` guard, which must be verified). They represent missing features with appropriate "Coming Soon" labeling.
+
+---
+
+*Last updated: June 28, 2026*
 *Owner: UnitDown Engineering*
+*Sprint: June 2026 Production Sprint (Phases 2, 3, 5, 7)*
+*Hermes migration branch: `hermes-migration-test`*
