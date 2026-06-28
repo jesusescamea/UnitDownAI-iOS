@@ -161,8 +161,8 @@ export function CompletionFlow({ state, dispatch, onShowRecord }: Props) {
             <Sparkles size={20} />
             <span>Generate Service Record</span>
           </motion.button>
-          <div className="text-center text-xs text-gray-600">
-            Permanent USR · Equipment memory updated · Office notified
+          <div className="text-center text-xs text-amber-700/70">
+            🧪 Prototype — no real USR generated · not saved · not transmitted
           </div>
         </div>
       </div>
@@ -243,10 +243,10 @@ export function CompletionFlow({ state, dispatch, onShowRecord }: Props) {
             </motion.div>
 
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-              <div className="text-xs font-bold uppercase tracking-widest text-green-400 mb-2">Office Ready</div>
-              <h2 className="text-3xl font-bold mb-1">Job Complete</h2>
+              <div className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-2">🧪 Prototype Complete</div>
+              <h2 className="text-3xl font-bold mb-1">Session Finished</h2>
               <div className="font-mono text-xl font-bold text-orange-400 mb-2">{MOCK_JOB.usrId}</div>
-              <p className="text-gray-400 text-sm mb-8">Permanent service record generated · Equipment memory updated</p>
+              <p className="text-amber-700/70 text-xs mb-8">Prototype only — no real record generated · not saved · not transmitted</p>
             </motion.div>
 
             {/* Stats */}
@@ -258,8 +258,8 @@ export function CompletionFlow({ state, dispatch, onShowRecord }: Props) {
             >
               {[
                 { label: 'Activities', value: String(state.activities.length) },
-                { label: 'Parts', value: String(state.parts.length || 3) },
-                { label: 'Record', value: '97%' },
+                { label: 'Parts', value: String(state.parts.length) },
+                { label: 'Record', value: `${score}%` },
               ].map((s, i) => (
                 <div key={i} className="bg-gray-900 rounded-2xl p-3 border border-gray-800">
                   <div className="text-2xl font-bold text-white">{s.value}</div>

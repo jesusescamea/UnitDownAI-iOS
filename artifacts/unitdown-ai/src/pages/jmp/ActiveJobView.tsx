@@ -789,6 +789,27 @@ function NameplateModal({ onClose, onConfirm }: { onClose: () => void; onConfirm
               Skip Equipment ID
             </button>
           </div>
+          <button onClick={() => {
+            const r: NameplateScanResult = {
+              detected: true, confidence: 0,
+              fields: {
+                make: MOCK_EQUIPMENT.make, model: MOCK_EQUIPMENT.model,
+                serial: MOCK_EQUIPMENT.serial, capacity: MOCK_EQUIPMENT.capacity,
+                refrigerant: MOCK_EQUIPMENT.refrigerant, voltage: MOCK_EQUIPMENT.voltage, phase: null,
+              },
+              fieldConfidence: {},
+              warnings: [
+                'SAMPLE DATA — not from the scanned image.',
+                'For prototype demonstration only. Do not use in real service records.',
+              ],
+              needsManualReview: true,
+              source: 'prototype',
+            };
+            setConfirmResult(r);
+            setPhase('confirm');
+          }} className="w-full py-2 text-[10px] text-gray-600 border border-gray-800 rounded-xl">
+            Use Sample Nameplate (demo only)
+          </button>
         </motion.div>
       )}
 
@@ -980,6 +1001,10 @@ function MeasurementModal({ mode, onClose, onSave }: { mode: 'initial' | 'verifi
   return (
     <ModalShell title={mode === 'initial' ? 'Initial Measurements' : 'Verification Measurements'} onClose={onClose}>
       <div className="space-y-3">
+        <div className="flex items-center gap-2 bg-amber-950/20 border border-amber-800/30 rounded-xl px-3 py-2">
+          <span className="text-amber-400 text-[10px] font-black uppercase tracking-wider">🧪 Prototype</span>
+          <span className="text-amber-300/60 text-[10px]">Values pre-filled from mock data · Edit before saving</span>
+        </div>
         {mode === 'verification' && (
           <div className="bg-blue-950/40 border border-blue-800 rounded-xl p-3 text-xs text-blue-300">
             Post-repair readings — will be compared to initial measurements
@@ -1023,7 +1048,10 @@ function PartModal({ jobState: _j, onClose, onSave }: { jobState: JobState; onCl
       <div className="space-y-3">
         {!custom ? (
           <>
-            <div className="text-xs text-gray-500 font-semibold mb-2">Suggested for this job</div>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-xs text-gray-500 font-semibold">Suggested for this job</span>
+              <span className="text-[9px] font-bold bg-amber-950/30 text-amber-400 border border-amber-800/30 px-1.5 py-0.5 rounded">🧪 Mock data</span>
+            </div>
             {SUGGESTED_PARTS.map((p, i) => (
               <button key={i} onClick={() => onSave(p.name, p.detail, p.qty)}
                 className="w-full flex items-start gap-3 bg-gray-800 border border-gray-700 rounded-2xl p-4 text-left">
@@ -1143,7 +1171,10 @@ function RecommendationsModal({ onClose, onSave }: { onClose: () => void; onSave
   return (
     <ModalShell title="Recommendations" onClose={onClose}>
       <div className="space-y-3">
-        <div className="text-xs text-gray-500">AI-suggested based on findings — select and customize</div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-gray-500">Prototype suggestions — not AI-generated from your findings</span>
+          <span className="text-[9px] font-bold bg-amber-950/30 text-amber-400 border border-amber-800/30 px-1.5 py-0.5 rounded flex-shrink-0">🧪 Mock</span>
+        </div>
         {entries.map((entry, i) => (
           <div key={i} className={`rounded-2xl border ${entry.selected ? 'bg-amber-950/30 border-amber-800' : 'bg-gray-800 border-gray-700'}`}>
             <button onClick={() => toggle(i)} className="w-full flex items-start gap-3 p-4 text-left">

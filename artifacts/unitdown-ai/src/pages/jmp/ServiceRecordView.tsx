@@ -33,6 +33,12 @@ export function ServiceRecordView({ state, onDone }: Props) {
         <div className="mt-3 text-xs text-gray-400">Generated {MOCK_JOB.date} · Permanent record</div>
       </div>
 
+      <div className="px-4 pt-3 pb-0">
+        <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+          <span className="text-amber-700 text-[10px] font-black uppercase tracking-wider">🧪 Prototype Record</span>
+          <span className="text-amber-600/80 text-[10px]">Sample data only · Not compiled from your session · Not saved to any server</span>
+        </div>
+      </div>
       <div className="px-4 py-5 space-y-5">
         {/* Job Summary */}
         <Section title="Job Summary" icon="📋">
