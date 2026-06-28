@@ -45,6 +45,7 @@ interface WizardData {
   voltage:           string;
   // Step 4 — Schedule
   jobType:           string;
+  customJobTitle:    string;
   date:              string;
   timeWindow:        string;
   priority:          'emergency' | 'high' | 'normal' | 'pm';
@@ -58,7 +59,7 @@ const EMPTY: WizardData = {
   siteName: '', serviceAddress: '', cityState: '', accessNotes: '', specialNotes: '',
   equipmentType: 'RTU (Packaged Rooftop Unit)', unitLabel: '', manufacturer: '',
   modelNumber: '', serialNumber: '', locationOnSite: '', refrigerant: '', voltage: '',
-  jobType: 'Service Call', date: new Date().toISOString().split('T')[0],
+  jobType: 'Service Call', customJobTitle: '', date: new Date().toISOString().split('T')[0],
   timeWindow: '8:00 – 10:00 AM', priority: 'normal',
   assignedTech: 'Marcus Rivera', complaint: '', notes: '',
 };
@@ -69,7 +70,7 @@ const EQUIPMENT_TYPES = [
   'Fan Coil Unit', 'Other',
 ];
 
-const JOB_TYPES = ['Service Call', 'Preventive Maintenance (PM)', 'Follow-up', 'Emergency'];
+const JOB_TYPES = ['Service Call', 'Preventive Maintenance (PM)', 'Follow-up', 'Emergency', 'Other'];
 
 const TIME_WINDOWS = [
   '7:00 – 9:00 AM', '8:00 – 10:00 AM', '9:00 AM – 12:00 PM',
@@ -221,15 +222,25 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
     if (!data.businessName.trim()) e.businessName = 'Business name is required';
     if (!data.complaint.trim())    e.complaint    = 'Complaint / task is required';
     if (!data.date)                e.date         = 'Date is required';
+    if (data.jobType === 'Other' && !data.customJobTitle.trim())
+      e.customJobTitle = 'Custom job title is required';
     setErrors(e);
     return Object.keys(e).length === 0;
   }
 
   function canAdvance(): boolean {
     if (step === 0) return data.businessName.trim().length > 0;
-    if (step === 3) return data.complaint.trim().length > 0 && !!data.date;
+    if (step === 3) {
+      const baseOk = data.complaint.trim().length > 0 && !!data.date;
+      const customOk = data.jobType !== 'Other' || data.customJobTitle.trim().length > 0;
+      return baseOk && customOk;
+    }
     return true;
   }
+
+  const effectiveJobType = data.jobType === 'Other' && data.customJobTitle.trim()
+    ? data.customJobTitle.trim()
+    : data.jobType;
 
   function handleCreate() {
     if (!validate()) { setStep(3); return; } // jump back to schedule step if invalid
@@ -256,7 +267,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
       id,
       priority:      resolvedPriority,
       status:        'open',
-      type:          data.jobType,
+      type:          effectiveJobType,
       customer:      [data.businessName, data.siteName].filter(Boolean).join(' — '),
       unitTag:       equipShort + (data.locationOnSite ? ` · ${data.locationOnSite}` : ''),
       model:         [data.manufacturer, data.modelNumber].filter(Boolean).join(' ') || '—',
@@ -284,7 +295,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
     const calEvent: CalendarEvent = {
       day:   dayNum,
       type:  calEventType,
-      label: `${job.customer} — ${data.jobType}`,
+      label: `${job.customer} — ${effectiveJobType}`,
     };
 
     onCreate({ job, calEvent, isToday });
@@ -587,7 +598,15 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Job type">
-                    <select className={selectCls} value={data.jobType} onChange={e => set('jobType', e.target.value)}>
+                    <select
+                      className={selectCls}
+                      value={data.jobType}
+                      onChange={e => {
+                        const v = e.target.value;
+                        set('jobType', v);
+                        if (v !== 'Other') set('customJobTitle', '');
+                      }}
+                    >
                       {JOB_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
                     </select>
                   </Field>
@@ -597,6 +616,20 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                     </select>
                   </Field>
                 </div>
+                {data.jobType === 'Other' && (
+                  <Field label="Custom job title" required>
+                    <input
+                      className={`${inputCls} ${errors.customJobTitle ? 'border-red-500' : ''}`}
+                      placeholder="e.g. Start-up, warranty inspection, quote visit, controls check"
+                      value={data.customJobTitle}
+                      onChange={e => set('customJobTitle', e.target.value)}
+                      autoFocus
+                    />
+                    {errors.customJobTitle && (
+                      <p className="text-[10px] text-red-400 mt-1">{errors.customJobTitle}</p>
+                    )}
+                  </Field>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <Field label="Date" required>
                     <input
@@ -678,7 +711,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                 </ReviewSection>
 
                 <ReviewSection title="Schedule">
-                  <ReviewRow label="Type"        value={data.jobType} />
+                  <ReviewRow label="Type"        value={effectiveJobType} />
                   <ReviewRow label="Date"        value={data.date ? new Date(data.date + 'T00:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '—'} />
                   <ReviewRow label="Time"        value={data.timeWindow} />
                   <ReviewRow label="Priority"    value={data.priority.charAt(0).toUpperCase() + data.priority.slice(1)} />
