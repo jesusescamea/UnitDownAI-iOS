@@ -157,6 +157,58 @@ function getSavedEquipment(businessName: string): SavedEquipmentRecord[] {
   return [];
 }
 
+// ─── Saved customer & site mock data (prototype) ──────────────────────────────
+// In production these would come from a real customer/site database.
+
+interface SavedCustomerRecord {
+  id:           string;
+  businessName: string;
+  contactName:  string;
+  phone:        string;
+  email:        string;
+}
+
+const SAVED_CUSTOMERS: SavedCustomerRecord[] = [
+  { id: 'cust-SMP', businessName: 'Summit Medical Plaza',  contactName: 'Sarah Johnson', phone: '(214) 555-0100', email: 'sarah@summitmedical.com' },
+  { id: 'cust-NDC', businessName: 'Northgate Data Center', contactName: 'Mike Torres',   phone: '(972) 555-0233', email: 'mtorres@northgatedc.com' },
+  { id: 'cust-ROP', businessName: 'Ridgeline Office Park',  contactName: 'Dana Williams', phone: '(469) 555-0181', email: 'dwilliams@ridgelineop.com' },
+  { id: 'cust-PMC', businessName: 'Parkway Medical Center', contactName: 'James Lee',     phone: '(214) 555-0340', email: 'jlee@parkwaymed.com' },
+  { id: 'cust-LT',  businessName: 'Lakeside Tower',         contactName: 'Rachel Burns',  phone: '(972) 555-0422', email: 'rburns@lakesidetower.com' },
+];
+
+interface SavedSiteRecord {
+  id:             string;
+  siteName:       string;
+  serviceAddress: string;
+  cityState:      string;
+  accessNotes:    string;
+}
+
+const SAVED_SITES_BY_CUSTOMER: Record<string, SavedSiteRecord[]> = {
+  'cust-SMP': [
+    { id: 'site-SMP-1', siteName: 'Main Building',      serviceAddress: '4521 Medical Drive', cityState: 'Dallas, TX 75201',   accessNotes: 'Badge required at main entrance. Roof hatch unlocked after 7 AM.' },
+    { id: 'site-SMP-2', siteName: 'North Campus Annex', serviceAddress: '4533 Medical Drive', cityState: 'Dallas, TX 75201',   accessNotes: 'Park in Lot C. Check in with security.' },
+  ],
+  'cust-NDC': [
+    { id: 'site-NDC-1', siteName: 'Data Center — Building 1', serviceAddress: '8800 Northgate Blvd', cityState: 'Plano, TX 75025',    accessNotes: 'Escort required. Call Mike on arrival.' },
+  ],
+  'cust-ROP': [
+    { id: 'site-ROP-1', siteName: 'Building A — West Tower', serviceAddress: '1100 Ridgeline Pkwy', cityState: 'Irving, TX 75063',   accessNotes: 'Roof access via stairwell 3. Key on file.' },
+    { id: 'site-ROP-2', siteName: 'Building B — East Tower', serviceAddress: '1120 Ridgeline Pkwy', cityState: 'Irving, TX 75063',   accessNotes: '' },
+  ],
+  'cust-PMC': [
+    { id: 'site-PMC-1', siteName: 'Main Hospital',      serviceAddress: '2200 Parkway Blvd',  cityState: 'Garland, TX 75042',  accessNotes: 'Facilities entrance on south side.' },
+  ],
+  'cust-LT': [
+    { id: 'site-LT-1',  siteName: 'Tower — Lobby Level', serviceAddress: '500 Lakeside Dr',   cityState: 'Addison, TX 75001',  accessNotes: 'Sign in with concierge.' },
+  ],
+};
+
+function getSavedSites(customerId: string | null): SavedSiteRecord[] {
+  if (!customerId) return [];
+  return SAVED_SITES_BY_CUSTOMER[customerId] ?? [];
+}
+
 // ─── Field components ─────────────────────────────────────────────────────────
 
 function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
@@ -189,9 +241,12 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
     date: defaultDate ?? EMPTY.date,
   }));
   const [errors, setErrors]         = useState<Partial<Record<keyof WizardData, string>>>({});
-  const [selectedEquipId, setSelectedEquipId] = useState<string | null>(null);
-  const [equipMode, setEquipMode]   = useState<'manual' | null>(null);
-  const [showScanNote, setShowScanNote] = useState(false);
+  const [customerMode, setCustomerMode]             = useState<'existing' | 'new'>('existing');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [selectedSiteId, setSelectedSiteId]         = useState<string | null>(null);
+  const [selectedEquipId, setSelectedEquipId]       = useState<string | null>(null);
+  const [equipMode, setEquipMode]                   = useState<'manual' | null>(null);
+  const [showScanNote, setShowScanNote]             = useState(false);
 
   function set<K extends keyof WizardData>(key: K, value: WizardData[K]) {
     setData(prev => ({ ...prev, [key]: value }));
@@ -215,7 +270,38 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
     }));
   }
 
+  function selectCustomer(cust: SavedCustomerRecord) {
+    setSelectedCustomerId(cust.id);
+    setSelectedSiteId(null);
+    setSelectedEquipId(null);
+    setEquipMode(null);
+    setData(prev => ({
+      ...prev,
+      businessName:   cust.businessName,
+      contactName:    cust.contactName,
+      phone:          cust.phone,
+      email:          cust.email,
+      siteName:       '', serviceAddress: '', cityState: '', accessNotes: '', specialNotes: '',
+      unitLabel:      '', manufacturer:   '', modelNumber:  '', serialNumber:  '',
+      locationOnSite: '', refrigerant:    '', voltage:      '',
+    }));
+  }
+
+  function selectSite(site: SavedSiteRecord) {
+    setSelectedSiteId(site.id);
+    setSelectedEquipId(null);
+    setEquipMode(null);
+    setData(prev => ({
+      ...prev,
+      siteName:       site.siteName,
+      serviceAddress: site.serviceAddress,
+      cityState:      site.cityState,
+      accessNotes:    site.accessNotes,
+    }));
+  }
+
   const savedEquipment = getSavedEquipment(data.businessName);
+  const savedSites     = getSavedSites(selectedCustomerId);
 
   function validate(): boolean {
     const e: typeof errors = {};
@@ -229,7 +315,9 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
   }
 
   function canAdvance(): boolean {
-    if (step === 0) return data.businessName.trim().length > 0;
+    if (step === 0) return customerMode === 'existing'
+      ? selectedCustomerId !== null
+      : data.businessName.trim().length > 0;
     if (step === 3) {
       const baseOk = data.complaint.trim().length > 0 && !!data.date;
       const customOk = data.jobType !== 'Other' || data.customJobTitle.trim().length > 0;
@@ -362,52 +450,191 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                   <h2 className="text-base font-bold text-white">Customer Information</h2>
                   <p className="text-xs text-gray-500 mt-0.5">Who called in the job?</p>
                 </div>
-                <Field label="Business name" required>
-                  <input
-                    className={`${inputCls} ${errors.businessName ? 'border-red-500' : ''}`}
-                    placeholder="e.g. Summit Medical Plaza"
-                    value={data.businessName}
-                    onChange={e => set('businessName', e.target.value)}
-                    autoFocus
-                  />
-                  {errors.businessName && <p className="text-[10px] text-red-400 mt-1">{errors.businessName}</p>}
-                </Field>
-                <Field label="Contact name">
-                  <input className={inputCls} placeholder="e.g. Sarah Johnson" value={data.contactName} onChange={e => set('contactName', e.target.value)} />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Phone">
-                    <input className={inputCls} type="tel" placeholder="(214) 555-0100" value={data.phone} onChange={e => set('phone', e.target.value)} />
-                  </Field>
-                  <Field label="Email">
-                    <input className={inputCls} type="email" placeholder="sarah@example.com" value={data.email} onChange={e => set('email', e.target.value)} />
-                  </Field>
+
+                {/* Segmented control */}
+                <div className="flex bg-gray-900 border border-gray-800 rounded-xl p-1 gap-1">
+                  {(['existing', 'new'] as const).map(mode => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        if (mode === customerMode) return;
+                        setCustomerMode(mode);
+                        setSelectedCustomerId(null);
+                        setSelectedSiteId(null);
+                        setSelectedEquipId(null);
+                        setEquipMode(null);
+                        setData(prev => ({ ...EMPTY, date: prev.date }));
+                        setErrors({});
+                      }}
+                      className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+                        customerMode === mode
+                          ? 'bg-blue-600 text-white shadow'
+                          : 'text-gray-400 hover:text-gray-300'
+                      }`}
+                    >
+                      {mode === 'existing' ? 'Existing Customer' : 'New Customer'}
+                    </button>
+                  ))}
                 </div>
+
+                {/* ── Existing customer flow ──────────────────────────── */}
+                {customerMode === 'existing' && (
+                  <div className="space-y-3">
+                    <Field label="Select customer">
+                      <select
+                        className={selectCls}
+                        value={selectedCustomerId ?? ''}
+                        onChange={e => {
+                          const id = e.target.value;
+                          if (!id) {
+                            setSelectedCustomerId(null);
+                            setSelectedSiteId(null);
+                            setData(prev => ({ ...prev, businessName: '', contactName: '', phone: '', email: '' }));
+                            return;
+                          }
+                          const cust = SAVED_CUSTOMERS.find(c => c.id === id);
+                          if (cust) selectCustomer(cust);
+                        }}
+                      >
+                        <option value="">Search or select customer…</option>
+                        {SAVED_CUSTOMERS.map(c => (
+                          <option key={c.id} value={c.id}>{c.businessName}</option>
+                        ))}
+                      </select>
+                    </Field>
+
+                    {selectedCustomerId && (() => {
+                      const cust = SAVED_CUSTOMERS.find(c => c.id === selectedCustomerId);
+                      return cust ? (
+                        <motion.div
+                          initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                          className="bg-gray-900 border border-blue-800/50 rounded-xl px-4 py-3 space-y-1.5"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-bold text-white">{cust.businessName}</span>
+                            <span className="text-[9px] bg-blue-950/60 text-blue-400 border border-blue-800/50 px-1.5 py-0.5 rounded-full font-medium">existing</span>
+                          </div>
+                          {cust.contactName && <div className="text-xs text-gray-400"><span className="text-gray-600 mr-1">Contact:</span>{cust.contactName}</div>}
+                          {cust.phone       && <div className="text-xs text-gray-400"><span className="text-gray-600 mr-1">Phone:</span>{cust.phone}</div>}
+                          {cust.email       && <div className="text-xs text-gray-400"><span className="text-gray-600 mr-1">Email:</span>{cust.email}</div>}
+                        </motion.div>
+                      ) : null;
+                    })()}
+
+                    {!selectedCustomerId && (
+                      <p className="text-[10px] text-gray-600 text-center">Select a customer to continue, or switch to <strong className="text-gray-500">New Customer</strong> above.</p>
+                    )}
+                  </div>
+                )}
+
+                {/* ── New customer flow ───────────────────────────────── */}
+                {customerMode === 'new' && (
+                  <div className="space-y-3">
+                    <Field label="Business name" required>
+                      <input
+                        className={`${inputCls} ${errors.businessName ? 'border-red-500' : ''}`}
+                        placeholder="e.g. Acme Building Services"
+                        value={data.businessName}
+                        onChange={e => set('businessName', e.target.value)}
+                        autoFocus
+                      />
+                      {errors.businessName && <p className="text-[10px] text-red-400 mt-1">{errors.businessName}</p>}
+                    </Field>
+                    <Field label="Contact name">
+                      <input className={inputCls} placeholder="e.g. Sarah Johnson" value={data.contactName} onChange={e => set('contactName', e.target.value)} />
+                    </Field>
+                    <div className="grid grid-cols-2 gap-3">
+                      <Field label="Phone">
+                        <input className={inputCls} type="tel" placeholder="(214) 555-0100" value={data.phone} onChange={e => set('phone', e.target.value)} />
+                      </Field>
+                      <Field label="Email">
+                        <input className={inputCls} type="email" placeholder="sarah@example.com" value={data.email} onChange={e => set('email', e.target.value)} />
+                      </Field>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
             {/* ── Step 2: Site ─────────────────────────────────────────── */}
             {step === 1 && (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
                   <h2 className="text-base font-bold text-white">Site Information</h2>
                   <p className="text-xs text-gray-500 mt-0.5">Where is this job?</p>
                 </div>
-                <Field label="Site name / location">
-                  <input className={inputCls} placeholder="e.g. North Campus Building A" value={data.siteName} onChange={e => set('siteName', e.target.value)} />
-                </Field>
-                <Field label="Service address">
-                  <input className={inputCls} placeholder="4521 Medical Drive" value={data.serviceAddress} onChange={e => set('serviceAddress', e.target.value)} />
-                </Field>
-                <Field label="City, State">
-                  <input className={inputCls} placeholder="Dallas, TX 75201" value={data.cityState} onChange={e => set('cityState', e.target.value)} />
-                </Field>
-                <Field label="Gate / access / badge notes">
-                  <input className={inputCls} placeholder="e.g. Badge required at main entrance" value={data.accessNotes} onChange={e => set('accessNotes', e.target.value)} />
-                </Field>
-                <Field label="Roof / parking / special notes">
-                  <textarea className={textareaCls} rows={3} placeholder="e.g. Roof hatch unlocked. Park in Lot C." value={data.specialNotes} onChange={e => set('specialNotes', e.target.value)} />
-                </Field>
+
+                {/* ── Saved sites (existing customer with saved sites) ──── */}
+                {customerMode === 'existing' && savedSites.length > 0 && (
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                        Saved Sites — {data.businessName}
+                      </span>
+                      <span className="text-[9px] bg-amber-900/40 text-amber-400 border border-amber-800/50 px-1.5 py-0.5 rounded-full font-medium">prototype</span>
+                    </div>
+                    <div className="space-y-2">
+                      {savedSites.map(site => {
+                        const isSelected = selectedSiteId === site.id;
+                        return (
+                          <button
+                            key={site.id}
+                            type="button"
+                            onClick={() => selectSite(site)}
+                            className={`w-full text-left rounded-xl border px-4 py-3 transition-all active:scale-[0.98] ${
+                              isSelected
+                                ? 'border-blue-500 bg-blue-950/40 ring-1 ring-blue-500/40'
+                                : 'border-gray-700 bg-gray-900 hover:border-gray-600'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="text-sm font-bold text-white">{site.siteName}</div>
+                                <div className="text-xs text-gray-400 mt-0.5">{site.serviceAddress}</div>
+                                <div className="text-[10px] text-gray-500">{site.cityState}</div>
+                                {site.accessNotes && (
+                                  <div className="text-[10px] text-gray-500 mt-1">Access: {site.accessNotes}</div>
+                                )}
+                              </div>
+                              <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center border-2 mt-0.5 transition-colors ${
+                                isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'
+                              }`}>
+                                {isSelected && <CheckCircle size={11} className="text-white" />}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Manual site fields (always shown; pre-filled by site selection) */}
+                <div className={customerMode === 'existing' && savedSites.length > 0 ? 'border-t border-gray-800 pt-4' : ''}>
+                  {customerMode === 'existing' && savedSites.length > 0 && (
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">
+                      {selectedSiteId ? 'Confirm Site Details' : 'Or Enter a Different Address'}
+                    </div>
+                  )}
+                  <div className="space-y-3">
+                    <Field label="Site name / location">
+                      <input className={inputCls} placeholder="e.g. North Campus Building A" value={data.siteName} onChange={e => set('siteName', e.target.value)} />
+                    </Field>
+                    <Field label="Service address">
+                      <input className={inputCls} placeholder="4521 Medical Drive" value={data.serviceAddress} onChange={e => set('serviceAddress', e.target.value)} />
+                    </Field>
+                    <Field label="City, State">
+                      <input className={inputCls} placeholder="Dallas, TX 75201" value={data.cityState} onChange={e => set('cityState', e.target.value)} />
+                    </Field>
+                    <Field label="Gate / access / badge notes">
+                      <input className={inputCls} placeholder="e.g. Badge required at main entrance" value={data.accessNotes} onChange={e => set('accessNotes', e.target.value)} />
+                    </Field>
+                    <Field label="Roof / parking / special notes">
+                      <textarea className={textareaCls} rows={3} placeholder="e.g. Roof hatch unlocked. Park in Lot C." value={data.specialNotes} onChange={e => set('specialNotes', e.target.value)} />
+                    </Field>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -681,6 +908,13 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                 </div>
 
                 <ReviewSection title="Customer">
+                  <div className={`text-[9px] px-2 py-1 rounded-lg mb-2 inline-block border font-medium ${
+                    customerMode === 'existing'
+                      ? 'bg-blue-950/40 text-blue-400 border-blue-800/40'
+                      : 'bg-gray-800 text-gray-400 border-gray-700'
+                  }`}>
+                    {customerMode === 'existing' ? 'Existing customer' : 'New customer'}
+                  </div>
                   <ReviewRow label="Business"    value={data.businessName} />
                   <ReviewRow label="Contact"     value={data.contactName || '—'} />
                   <ReviewRow label="Phone"       value={data.phone || '—'} />
