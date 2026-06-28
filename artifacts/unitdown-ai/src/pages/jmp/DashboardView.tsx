@@ -233,6 +233,7 @@ export function DashboardView({ onStartJob }: Props) {
                       {/* Location-first hierarchy */}
                       <div className="font-bold text-white text-base leading-snug">{job.customer}</div>
                       <div className="text-xs text-blue-300/80 mt-0.5">{job.unitTag}</div>
+                      <div className="text-[10px] text-gray-500 mt-0.5">{job.type}</div>
                       <div className="text-[10px] text-gray-600 font-mono mt-0.5">{job.model}</div>
                       <div className="text-xs text-gray-400 mt-1.5 leading-snug">{job.symptom}</div>
                       {job.techNote && (
@@ -1192,6 +1193,7 @@ function OverviewFilterSheet({ filterId, onClose, onSelectJob }: {
                 </div>
                 <div className="font-bold text-white text-sm">{job.customer}</div>
                 <div className="text-[10px] text-blue-300/70">{job.unitTag}</div>
+                <div className="text-[10px] text-gray-500 mt-0.5">{job.type}</div>
                 <div className="text-xs text-gray-400 mt-0.5 leading-snug">{job.symptom}</div>
               </button>
             );
@@ -1224,6 +1226,7 @@ function OverviewFilterSheet({ filterId, onClose, onSelectJob }: {
               </div>
               <div className="font-bold text-white text-sm">{job.customer}</div>
               <div className="text-[10px] text-blue-300/70">{job.unitTag}</div>
+              <div className="text-[10px] text-gray-500 mt-0.5">{job.type}</div>
               <div className="text-xs text-gray-400 mt-0.5">{job.symptom}</div>
             </button>
           ))}

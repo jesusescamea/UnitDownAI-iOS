@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, ChevronLeft, ChevronRight, User, MapPin, Cpu,
   Calendar, ClipboardList, CheckCircle, AlertTriangle,
-  Camera, Plus,
+  Camera, Plus, Download,
 } from 'lucide-react';
 import type { TodayJob } from './mockData';
 import type { CalendarEvent } from './dashboardData';
@@ -246,7 +246,9 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
   const [selectedSiteId, setSelectedSiteId]         = useState<string | null>(null);
   const [selectedEquipId, setSelectedEquipId]       = useState<string | null>(null);
   const [equipMode, setEquipMode]                   = useState<'manual' | null>(null);
-  const [showScanNote, setShowScanNote]             = useState(false);
+  const [showScanNote,   setShowScanNote]   = useState(false);
+  const [showImportNote, setShowImportNote] = useState(false);
+  const [siteMode,       setSiteMode]       = useState<'saved' | 'new'>('saved');
 
   function set<K extends keyof WizardData>(key: K, value: WizardData[K]) {
     setData(prev => ({ ...prev, [key]: value }));
@@ -257,6 +259,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
     setSelectedEquipId(eq.id);
     setEquipMode(null);
     setShowScanNote(false);
+    setShowImportNote(false);
     setData(prev => ({
       ...prev,
       equipmentType:  eq.equipmentType,
@@ -275,6 +278,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
     setSelectedSiteId(null);
     setSelectedEquipId(null);
     setEquipMode(null);
+    setSiteMode('saved');
     setData(prev => ({
       ...prev,
       businessName:   cust.businessName,
@@ -356,8 +360,8 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
       priority:      resolvedPriority,
       status:        'open',
       type:          effectiveJobType,
-      customer:      [data.businessName, data.siteName].filter(Boolean).join(' — '),
-      unitTag:       equipShort + (data.locationOnSite ? ` · ${data.locationOnSite}` : ''),
+      customer:      data.businessName,
+      unitTag:       [data.siteName, equipShort].filter(Boolean).join(' · '),
       model:         [data.manufacturer, data.modelNumber].filter(Boolean).join(' ') || '—',
       equipment:     [data.manufacturer, data.modelNumber, data.unitLabel].filter(Boolean).join(' ') || data.equipmentType,
       address:       [data.serviceAddress, data.cityState].filter(Boolean).join(', ') || '—',
@@ -464,6 +468,8 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                         setSelectedSiteId(null);
                         setSelectedEquipId(null);
                         setEquipMode(null);
+                        setSiteMode('saved');
+                        setShowImportNote(false);
                         setData(prev => ({ ...EMPTY, date: prev.date }));
                         setErrors({});
                       }}
@@ -565,61 +571,77 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                   <p className="text-xs text-gray-500 mt-0.5">Where is this job?</p>
                 </div>
 
-                {/* ── Saved sites (existing customer with saved sites) ──── */}
-                {customerMode === 'existing' && savedSites.length > 0 && (
-                  <div>
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                {/* ── Existing customer with saved sites — saved mode ─────── */}
+                {customerMode === 'existing' && savedSites.length > 0 && siteMode === 'saved' && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex-1">
                         Saved Sites — {data.businessName}
                       </span>
                       <span className="text-[9px] bg-amber-900/40 text-amber-400 border border-amber-800/50 px-1.5 py-0.5 rounded-full font-medium">prototype</span>
                     </div>
-                    <div className="space-y-2">
-                      {savedSites.map(site => {
-                        const isSelected = selectedSiteId === site.id;
-                        return (
-                          <button
-                            key={site.id}
-                            type="button"
-                            onClick={() => selectSite(site)}
-                            className={`w-full text-left rounded-xl border px-4 py-3 transition-all active:scale-[0.98] ${
-                              isSelected
-                                ? 'border-blue-500 bg-blue-950/40 ring-1 ring-blue-500/40'
-                                : 'border-gray-700 bg-gray-900 hover:border-gray-600'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div className="flex-1 min-w-0">
-                                <div className="text-sm font-bold text-white">{site.siteName}</div>
-                                <div className="text-xs text-gray-400 mt-0.5">{site.serviceAddress}</div>
-                                <div className="text-[10px] text-gray-500">{site.cityState}</div>
-                                {site.accessNotes && (
-                                  <div className="text-[10px] text-gray-500 mt-1">Access: {site.accessNotes}</div>
-                                )}
-                              </div>
-                              <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center border-2 mt-0.5 transition-colors ${
-                                isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'
-                              }`}>
-                                {isSelected && <CheckCircle size={11} className="text-white" />}
-                              </div>
+                    {savedSites.map(site => {
+                      const isSelected = selectedSiteId === site.id;
+                      return (
+                        <button
+                          key={site.id}
+                          type="button"
+                          onClick={() => selectSite(site)}
+                          className={`w-full text-left rounded-xl border px-4 py-3 transition-all active:scale-[0.98] ${
+                            isSelected
+                              ? 'border-blue-500 bg-blue-950/40 ring-1 ring-blue-500/40'
+                              : 'border-gray-700 bg-gray-900 hover:border-gray-600'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-bold text-white">{site.siteName}</div>
+                              <div className="text-xs text-gray-400 mt-0.5">{site.serviceAddress}</div>
+                              <div className="text-[10px] text-gray-500">{site.cityState}</div>
+                              {site.accessNotes && (
+                                <div className="text-[10px] text-gray-500 mt-1">Access: {site.accessNotes}</div>
+                              )}
                             </div>
-                          </button>
-                        );
-                      })}
-                    </div>
+                            <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center border-2 mt-0.5 transition-colors ${
+                              isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'
+                            }`}>
+                              {isSelected && <CheckCircle size={11} className="text-white" />}
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+
+                    {/* Add New Site button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSiteMode('new');
+                        setSelectedSiteId(null);
+                        setData(prev => ({ ...prev, siteName: '', serviceAddress: '', cityState: '', accessNotes: '', specialNotes: '' }));
+                      }}
+                      className="w-full flex items-center justify-center gap-2 py-3 border border-dashed border-gray-700 rounded-xl text-sm text-gray-500 hover:border-blue-700 hover:text-blue-400 active:scale-[0.98] transition-all"
+                    >
+                      <Plus size={13} />
+                      Add New Site
+                    </button>
                   </div>
                 )}
 
-                {/* Manual site fields (always shown; pre-filled by site selection) */}
-                <div className={customerMode === 'existing' && savedSites.length > 0 ? 'border-t border-gray-800 pt-4' : ''}>
-                  {customerMode === 'existing' && savedSites.length > 0 && (
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-3">
-                      {selectedSiteId ? 'Confirm Site Details' : 'Or Enter a Different Address'}
-                    </div>
-                  )}
+                {/* ── Manual site fields (new site, no saved sites, or new customer) */}
+                {(!(customerMode === 'existing' && savedSites.length > 0) || siteMode === 'new') && (
                   <div className="space-y-3">
+                    {siteMode === 'new' && customerMode === 'existing' && savedSites.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSiteMode('saved')}
+                        className="flex items-center gap-1 text-xs text-gray-500 hover:text-gray-300 transition-colors"
+                      >
+                        <ChevronLeft size={13} /> Back to saved sites
+                      </button>
+                    )}
                     <Field label="Site name / location">
-                      <input className={inputCls} placeholder="e.g. North Campus Building A" value={data.siteName} onChange={e => set('siteName', e.target.value)} />
+                      <input className={inputCls} placeholder="e.g. North Campus Building A" value={data.siteName} onChange={e => set('siteName', e.target.value)} autoFocus={siteMode === 'new'} />
                     </Field>
                     <Field label="Service address">
                       <input className={inputCls} placeholder="4521 Medical Drive" value={data.serviceAddress} onChange={e => set('serviceAddress', e.target.value)} />
@@ -634,7 +656,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                       <textarea className={textareaCls} rows={3} placeholder="e.g. Roof hatch unlocked. Park in Lot C." value={data.specialNotes} onChange={e => set('specialNotes', e.target.value)} />
                     </Field>
                   </div>
-                </div>
+                )}
               </div>
             )}
 
@@ -724,7 +746,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
-                      onClick={() => { setShowScanNote(s => !s); setEquipMode(null); }}
+                      onClick={() => { setShowScanNote(s => !s); setEquipMode(null); setShowImportNote(false); }}
                       className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition-all active:scale-95 ${
                         showScanNote
                           ? 'border-amber-600/60 bg-amber-950/30 text-amber-300'
@@ -740,6 +762,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                         const next = equipMode === 'manual' ? null : 'manual';
                         setEquipMode(next);
                         setShowScanNote(false);
+                        setShowImportNote(false);
                         if (next === 'manual') setSelectedEquipId(null);
                       }}
                       className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition-all active:scale-95 ${
@@ -752,6 +775,37 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                       Enter Manually
                     </button>
                   </div>
+                  <button
+                    type="button"
+                    onClick={() => { setShowImportNote(s => !s); setShowScanNote(false); setEquipMode(null); }}
+                    className={`w-full mt-2 flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition-all active:scale-95 ${
+                      showImportNote
+                        ? 'border-purple-600/60 bg-purple-950/30 text-purple-300'
+                        : 'border-gray-700 bg-gray-900 text-gray-300 hover:border-gray-600'
+                    }`}
+                  >
+                    <Download size={14} />
+                    Import Equipment
+                  </button>
+
+                  {/* Import note */}
+                  {showImportNote && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                      className="mt-2 bg-purple-950/30 border border-purple-800/50 rounded-xl px-3 py-3"
+                    >
+                      <div className="flex items-start gap-2">
+                        <Download size={13} className="text-purple-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-purple-300 mb-0.5">Equipment import not connected in prototype mode</p>
+                          <p className="text-[10px] text-purple-400/80 leading-relaxed">
+                            In production, import from a CSV, your CMMS, or a previous UnitDown export.
+                            In the prototype, use <strong className="text-purple-300">Enter Manually</strong> or select from saved equipment above.
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
 
                   {/* Scan note — always shown, never fakes success */}
                   {showScanNote && (
