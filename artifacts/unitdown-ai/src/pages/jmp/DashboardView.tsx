@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ChevronRight, ChevronLeft, X, Wrench, Calendar as CalIcon,
+  ChevronRight, ChevronLeft, X, Wrench, Calendar as CalIcon, Plus,
   AlertTriangle, MapPin, Clock, Phone, Search, Cpu, FileText,
   Zap, CheckCircle, Maximize2, User, Settings, LogOut, ChevronDown,
   TrendingUp, TrendingDown, Minus, Lightbulb, Sparkles,
@@ -14,6 +14,7 @@ import {
 import { AiDiagnosticModal } from './AiDiagnosticModal';
 import { MyVanModal } from './MyVanModal';
 import { ToolChecklistModal } from './ToolChecklistModal';
+import { ScheduleJobWizard, type ScheduleWizardResult } from './ScheduleJobWizard';
 import {
   INITIAL_READINESS, INITIAL_INVENTORY, AI_STOCK_LIST,
   computeJobReadiness, readinessBadge, getJobVanId,
@@ -71,6 +72,40 @@ export function DashboardView({ onStartJob }: Props) {
   const [vanOpen,         setVanOpen]         = useState(false);
   const [toolsOpen,       setToolsOpen]       = useState(false);
   const [briefsSeen,      setBriefsSeen]      = useState<Set<string>>(new Set());
+  const [wizardOpen,      setWizardOpen]      = useState(false);
+  const [userJobs,        setUserJobs]        = useState<TodayJob[]>([]);
+  const [userCalEvents,   setUserCalEvents]   = useState<CalendarEvent[]>([]);
+  const [schedToast,      setSchedToast]      = useState<string | null>(null);
+
+  const LS_KEY = 'unitdown_jmp_scheduled_jobs';
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const records = JSON.parse(raw) as Array<{ job: TodayJob; calEvent: CalendarEvent; isToday: boolean }>;
+      setUserJobs(records.filter(r => r.isToday).map(r => r.job));
+      setUserCalEvents(records.map(r => r.calEvent));
+    } catch { /* ignore parse errors */ }
+  }, []);
+
+  function handleJobCreated(result: ScheduleWizardResult) {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      const records = raw
+        ? (JSON.parse(raw) as Array<{ job: TodayJob; calEvent: CalendarEvent; isToday: boolean }>)
+        : [];
+      records.push({ job: result.job, calEvent: result.calEvent, isToday: result.isToday });
+      localStorage.setItem(LS_KEY, JSON.stringify(records));
+    } catch { /* ignore write errors */ }
+    if (result.isToday) setUserJobs(prev => [...prev, result.job]);
+    setUserCalEvents(prev => [...prev, result.calEvent]);
+    setWizardOpen(false);
+    setSchedToast('Job scheduled');
+    setTimeout(() => setSchedToast(null), 3500);
+  }
+
+  const allJobs = [...TODAY_JOBS, ...userJobs];
 
   const now = new Date();
   const hour = now.getHours();
@@ -128,13 +163,13 @@ export function DashboardView({ onStartJob }: Props) {
 
       {/* ── AI Morning Brief ─────────────────────────────────────── */}
       <div className="px-4 pt-4">
-        <AiDayBrief />
+        <AiDayBrief jobCount={allJobs.length} />
       </div>
 
       {/* ── Calendar ─────────────────────────────────────────────── */}
       <div className="px-4 pt-4">
         <CalendarCard
-          events={JUNE_EVENTS}
+          events={[...JUNE_EVENTS, ...userCalEvents]}
           today={TODAY_DAY}
           onDayTap={(day, evts) => setSelectedDay({ day, events: evts })}
           onExpand={() => setCalFullScreen(true)}
@@ -160,10 +195,21 @@ export function DashboardView({ onStartJob }: Props) {
         </div>
       </div>
 
+      {/* ── Add Customer / Schedule Job ──────────────────────────── */}
+      <div className="px-4 pt-4">
+        <button
+          onClick={() => setWizardOpen(true)}
+          className="w-full flex items-center justify-center gap-2 bg-blue-600/20 border border-blue-600/40 rounded-2xl px-4 py-3.5 text-blue-300 font-bold text-sm active:scale-[0.98] transition-transform"
+        >
+          <Plus size={16} />
+          Add Customer / Schedule Job
+        </button>
+      </div>
+
       {/* ── Today's Jobs ─────────────────────────────────────────── */}
       <div className="px-4 pt-5">
-        <SectionHeader title="Today's Jobs" count={TODAY_JOBS.length} countLabel="jobs" />
-        {TODAY_JOBS.length === 0 ? (
+        <SectionHeader title="Today's Jobs" count={allJobs.length} countLabel="jobs" />
+        {allJobs.length === 0 ? (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
             <div className="text-3xl mb-2">☀️</div>
             <div className="font-semibold text-white mb-1">No scheduled jobs today</div>
@@ -171,7 +217,7 @@ export function DashboardView({ onStartJob }: Props) {
           </div>
         ) : (
           <div className="space-y-2">
-            {TODAY_JOBS.map((job, i) => {
+            {allJobs.map((job, i) => {
               const style = PRIORITY_STYLE[job.priority];
               return (
                 <motion.button key={job.id}
@@ -422,7 +468,7 @@ export function DashboardView({ onStartJob }: Props) {
       <AnimatePresence>
         {calFullScreen && (
           <FullScreenCalendar
-            events={JUNE_EVENTS} today={TODAY_DAY}
+            events={[...JUNE_EVENTS, ...userCalEvents]} today={TODAY_DAY}
             onClose={() => setCalFullScreen(false)}
             onDayTap={(d, e) => { setCalFullScreen(false); setSelectedDay({ day: d, events: e }); }}
           />
@@ -621,6 +667,29 @@ export function DashboardView({ onStartJob }: Props) {
           />
         )}
       </AnimatePresence>
+
+      {/* ── Schedule Job Wizard ───────────────────────────────────── */}
+      <AnimatePresence>
+        {wizardOpen && (
+          <ScheduleJobWizard
+            onClose={() => setWizardOpen(false)}
+            onCreate={handleJobCreated}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── "Job scheduled" toast ─────────────────────────────────── */}
+      <AnimatePresence>
+        {schedToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 24 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 24 }}
+            className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-gray-800 border border-gray-700 rounded-2xl px-5 py-3 flex items-center gap-2 shadow-xl"
+          >
+            <CheckCircle size={15} className="text-blue-400 flex-shrink-0" />
+            <span className="text-sm font-semibold text-white">{schedToast}</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -674,7 +743,7 @@ const DAY_NOTES = [
   { job: 'Northgate',      note: 'Time shifted to 1:00 PM per customer. Badge required at security gate.' },
 ];
 
-function AiDayBrief() {
+function AiDayBrief({ jobCount = 3 }: { jobCount?: number }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -687,7 +756,7 @@ function AiDayBrief() {
             <Sparkles size={12} className="text-blue-300" />
           </div>
           <span className="text-xs font-bold text-blue-200 tracking-wide">AI Day Brief</span>
-          <span className="text-[9px] bg-blue-700/50 text-blue-300 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">3 Jobs</span>
+          <span className="text-[9px] bg-blue-700/50 text-blue-300 px-1.5 py-0.5 rounded-full font-semibold flex-shrink-0">{jobCount} {jobCount === 1 ? 'Job' : 'Jobs'}</span>
           <span className="text-[9px] text-blue-400/60 truncate">· 8:00 AM – ~5:00 PM</span>
         </div>
         <ChevronDown size={14} className={`text-blue-400 transition-transform flex-shrink-0 ${expanded ? 'rotate-180' : ''}`} />

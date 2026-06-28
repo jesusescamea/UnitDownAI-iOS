@@ -1,0 +1,120 @@
+That should become a Create Customer → Create Site → Schedule Job flow.
+
+In UnitDown, I’d structure it like this:
+
+Add Customer
+
+↓
+
+Customer Info
+- Business name
+- Contact name
+- Phone
+- Email
+- Billing address
+
+↓
+
+Add Site
+- Site name/location
+- Service address
+- Gate/access notes
+- Roof access notes
+- Parking notes
+
+↓
+
+Add Equipment
+- Unit name
+- Equipment type
+- Manufacturer
+- Model/serial
+- Location on roof/building
+
+↓
+
+Schedule Job
+- Job type: Service Call / PM / Follow-up / Emergency
+- Date/time window
+- Assigned tech
+- Priority
+- Complaint/task
+- Notes
+- Required parts/tools
+
+Then the job appears on the Dashboard calendar, the Today’s Jobs list, and the AI Morning Brief.
+
+For the prototype, I’d ask Replit to add an “Add Customer / Schedule Job” button to the dashboard. It should open a guided wizard and create a mock scheduled job card.
+
+Copy-ready prompt:
+
+Add a prototype flow for creating a customer and scheduling a job.
+
+Goal:
+A user should be able to add a new customer/site/equipment and place that job onto the dashboard schedule.
+
+Keep this mock-data/prototype only for now unless real customer/job endpoints already exist.
+
+Add a dashboard button:
+
++ Add Customer / Schedule Job
+
+Flow should be a guided wizard:
+
+Step 1 — Customer
+- Business name
+- Contact name
+- Phone
+- Email
+
+Step 2 — Site
+- Site name
+- Service address
+- City/state
+- Access notes
+- Roof/gate/parking notes
+
+Step 3 — Equipment
+- Equipment type
+- Unit label
+- Manufacturer
+- Model
+- Serial
+- Location on site
+
+Step 4 — Schedule
+- Job type: Service Call / PM / Follow-up / Emergency
+- Date
+- Time window
+- Priority
+- Assigned technician
+- Complaint/task
+- Notes
+
+Step 5 — Review & Create
+Show summary:
+- Customer
+- Site
+- Equipment
+- Job type
+- Date/time
+- Priority
+- Notes
+
+On Create:
+- Add the job to Today’s Jobs if scheduled today
+- Add it to the compact calendar
+- Add it to the AI Day Brief
+- Add it to the dashboard job list
+- Show toast: “Job scheduled”
+- Allow tapping the new job to open the Job Brief
+
+Important:
+- Business/location should be the job card title
+- Equipment/task should appear underneath
+- Do not create a fake backend success if this is mock-only
+- Label as prototype if data does not persist
+- If local persistence already exists, save the new scheduled job locally
+- No dead buttons
+- Run typecheck
+- Report files changed and exact test path
