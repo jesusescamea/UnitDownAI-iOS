@@ -2,13 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Camera, Mic, Plus, X, ChevronDown, ChevronUp, Zap, FileText,
-  Wrench, CheckSquare, User, Cpu, CheckCircle, Sparkles, Send,
+  Wrench, CheckSquare, User, Cpu, CheckCircle, Sparkles, Send, AlertTriangle,
 } from 'lucide-react';
 import {
   MOCK_JOB, MOCK_EQUIPMENT, INITIAL_MEASUREMENTS, SUGGESTED_RECOMMENDATIONS,
   FAULT_CODES, JOB_STATE_LABELS, randomVoiceNote, AI_ASSIST_PROMPTS,
 } from './mockData';
-import type { PrototypeState, PrototypeAction, JobState, Activity, MeasurementReading, ModalType } from './types';
+import type { PrototypeState, PrototypeAction, JobState, Activity, MeasurementReading, ModalType, NameplateScanResult, NameplateFields } from './types';
 
 // ─── Color mapping ─────────────────────────────────────────────────────────────
 const ACTIVITY_COLORS: Record<string, { border: string; bg: string; label: string; icon: string }> = {
@@ -310,14 +310,22 @@ export function ActiveJobView({ state, dispatch, onComplete }: Props) {
           />
         )}
         {activeModal === 'nameplate' && (
-          <NameplateModal onClose={closeModal} onConfirm={() => {
+          <NameplateModal onClose={closeModal} onConfirm={(result) => {
             dispatch({ type: 'SET_NAMEPLATE_VERIFIED' });
+            const hasData = Object.values(result.fields).some(v => v !== null);
+            const make    = result.fields.make  ?? 'Unknown';
+            const model   = result.fields.model ?? 'Unknown';
+            const serial  = result.fields.serial;
             addActivity({
               id: `nameplate-${Date.now()}`, type: 'nameplate', timestamp: currentTime(),
-              title: 'Nameplate Captured', subtitle: `${MOCK_EQUIPMENT.make} ${MOCK_EQUIPMENT.model} · SN: ${MOCK_EQUIPMENT.serial}`,
-              badge: '✓ Verified',
-            }, 'EQUIPMENT_VERIFIED', 8);
-            toast('✓ Equipment identified');
+              title: hasData ? 'Nameplate Captured' : 'Equipment ID Skipped',
+              subtitle: hasData
+                ? `${make} ${model}${serial ? ` · SN: ${serial}` : ''}`
+                : 'No nameplate data · Manual entry required',
+              badge: result.source === 'manual' ? '✎ Manual' : result.source === 'prototype' ? '🧪 Prototype' : '✓ OCR',
+              nameplateResult: result,
+            }, 'EQUIPMENT_VERIFIED', hasData ? 8 : 3);
+            toast(hasData ? '✓ Equipment identified' : '📋 Equipment ID logged');
           }} />
         )}
         {activeModal === 'alarm' && (
@@ -464,10 +472,38 @@ function ActivityCard({ activity: a }: { activity: Activity }) {
         </div>
       )}
       {a.type === 'nameplate' && (
-        <div className="mt-2 bg-blue-900/40 rounded-xl p-2.5 grid grid-cols-3 gap-2 text-[10px]">
-          <div><div className="text-gray-500">Make</div><div className="text-white font-semibold">{MOCK_EQUIPMENT.make}</div></div>
-          <div><div className="text-gray-500">Capacity</div><div className="text-white font-semibold">{MOCK_EQUIPMENT.capacity}</div></div>
-          <div><div className="text-gray-500">Refrigerant</div><div className="text-white font-semibold">{MOCK_EQUIPMENT.refrigerant}</div></div>
+        <div className="mt-2 bg-blue-900/40 rounded-xl p-2.5 text-[10px]">
+          {a.nameplateResult ? (
+            <>
+              <div className={`text-[8px] font-bold uppercase tracking-wider mb-2 ${
+                a.nameplateResult.source === 'manual' ? 'text-blue-400' : 'text-amber-400'
+              }`}>
+                {a.nameplateResult.source === 'manual' ? '✎ Manual Entry' : a.nameplateResult.source === 'prototype' ? '🧪 Prototype — No real OCR' : '🤖 OCR Scan'}
+              </div>
+              <div className="grid grid-cols-3 gap-2">
+                {(['make', 'model', 'serial', 'capacity', 'refrigerant', 'voltage'] as const).map(field => {
+                  const val = a.nameplateResult!.fields[field];
+                  return (
+                    <div key={field}>
+                      <div className="text-gray-500 capitalize">{field}</div>
+                      <div className={val ? 'text-white font-semibold' : 'text-gray-600 italic text-[9px]'}>
+                        {val ?? 'Not detected.'}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {a.nameplateResult.needsManualReview && (
+                <div className="mt-2 text-amber-400/70 text-[9px]">⚠ Manual review needed</div>
+              )}
+            </>
+          ) : (
+            <div className="grid grid-cols-3 gap-2">
+              <div><div className="text-gray-500">Make</div><div className="text-white font-semibold">{MOCK_EQUIPMENT.make}</div></div>
+              <div><div className="text-gray-500">Capacity</div><div className="text-white font-semibold">{MOCK_EQUIPMENT.capacity}</div></div>
+              <div><div className="text-gray-500">Refrigerant</div><div className="text-white font-semibold">{MOCK_EQUIPMENT.refrigerant}</div></div>
+            </div>
+          )}
         </div>
       )}
       <AnimatePresence>
@@ -557,54 +593,280 @@ function FabMenu({ jobState, onClose, onSelect, onRepairDone }: {
   );
 }
 
-// ─── Nameplate modal ──────────────────────────────────────────────────────────
-function NameplateModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: () => void }) {
-  const [phase, setPhase] = useState<'scanning' | 'reading' | 'done'>('scanning');
-  useEffect(() => {
-    const t1 = setTimeout(() => setPhase('reading'), 1200);
-    const t2 = setTimeout(() => setPhase('done'), 2400);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
+// ─── Nameplate modal — safe prototype flow ────────────────────────────────────
+interface QualityCheckDef  { id: string; label: string; ms: number }
+interface QualityCheckState { id: string; label: string; status: 'pending' | 'running' | 'pass' }
+
+const QUALITY_CHECK_DEFS: QualityCheckDef[] = [
+  { id: 'received',  label: 'Image received',           ms: 350 },
+  { id: 'focus',     label: 'Checking focus',           ms: 550 },
+  { id: 'lighting',  label: 'Checking lighting',        ms: 550 },
+  { id: 'text',      label: 'Looking for text regions', ms: 500 },
+  { id: 'nameplate', label: 'Identifying nameplate',    ms: 700 },
+];
+
+const NAMEPLATE_FIELD_DEFS: Array<{ key: keyof NameplateFields; label: string; placeholder: string }> = [
+  { key: 'make',        label: 'Make',          placeholder: 'e.g. Carrier' },
+  { key: 'model',       label: 'Model',         placeholder: 'e.g. 50XCQ006006' },
+  { key: 'serial',      label: 'Serial Number', placeholder: 'e.g. 4321A8876' },
+  { key: 'capacity',    label: 'Capacity',      placeholder: 'e.g. 7.5 Ton' },
+  { key: 'refrigerant', label: 'Refrigerant',   placeholder: 'e.g. R-410A' },
+  { key: 'voltage',     label: 'Voltage',       placeholder: 'e.g. 208/230V 3-Phase' },
+  { key: 'phase',       label: 'Phase',         placeholder: 'e.g. 3-Phase' },
+];
+
+type NameplatePhase = 'capture' | 'analyzing' | 'result' | 'manual' | 'confirm';
+
+function NameplateModal({ onClose, onConfirm }: { onClose: () => void; onConfirm: (result: NameplateScanResult) => void }) {
+  const [phase, setPhase]               = useState<NameplatePhase>('capture');
+  const [checkIndex, setCheckIndex]     = useState(0);
+  const [scanResult, setScanResult]     = useState<NameplateScanResult | null>(null);
+  const [confirmResult, setConfirmResult] = useState<NameplateScanResult | null>(null);
+  const [manualFields, setManualFields] = useState<NameplateFields>({
+    make: null, model: null, serial: null, capacity: null, refrigerant: null, voltage: null, phase: null,
+  });
+
+  const checks: QualityCheckState[] = QUALITY_CHECK_DEFS.map((def, i) => ({
+    id: def.id, label: def.label,
+    status: i < checkIndex ? 'pass' : i === checkIndex ? 'running' : 'pending',
+  }));
+
+  function startCapture() {
+    setCheckIndex(0);
+    setPhase('analyzing');
+    let delay = 0;
+    QUALITY_CHECK_DEFS.forEach((def, i) => {
+      delay += def.ms;
+      setTimeout(() => setCheckIndex(i + 1), delay);
+    });
+    const total = QUALITY_CHECK_DEFS.reduce((s, d) => s + d.ms, 0);
+    setTimeout(() => {
+      const r: NameplateScanResult = {
+        detected: false, confidence: 0,
+        fields: { make: null, model: null, serial: null, capacity: null, refrigerant: null, voltage: null, phase: null },
+        fieldConfidence: {},
+        warnings: ['Prototype mode — camera input is not analyzed. No real OCR is running.'],
+        needsManualReview: true,
+        source: 'prototype',
+      };
+      setScanResult(r);
+      setPhase('result');
+    }, total + 300);
+  }
+
+  function buildManualResult(): NameplateScanResult {
+    const fields: NameplateFields = {
+      make:        manualFields.make        || null,
+      model:       manualFields.model       || null,
+      serial:      manualFields.serial      || null,
+      capacity:    manualFields.capacity    || null,
+      refrigerant: manualFields.refrigerant || null,
+      voltage:     manualFields.voltage     || null,
+      phase:       manualFields.phase       || null,
+    };
+    const fieldConf: Partial<Record<keyof NameplateFields, number>> = {};
+    (Object.keys(fields) as Array<keyof NameplateFields>).forEach(k => {
+      if (fields[k] !== null) fieldConf[k] = 100;
+    });
+    return {
+      detected: Object.values(fields).some(v => v !== null),
+      confidence: 100, fields, fieldConfidence: fieldConf,
+      warnings: [], needsManualReview: false, source: 'manual',
+    };
+  }
+
+  const anyManualFilled = Object.values(manualFields).some(v => v !== null && v !== '');
+
   return (
     <ModalShell title="Nameplate Capture" onClose={onClose}>
-      <div className="text-center">
-        {phase !== 'done' ? (
-          <div className="w-full h-48 bg-gray-800 rounded-2xl mb-4 flex items-center justify-center relative overflow-hidden">
-            <motion.div className="absolute inset-0 bg-white" animate={{ opacity: [0, 0.3, 0] }} transition={{ duration: 0.5, delay: 1.1 }} />
+
+      {/* ── CAPTURE ──────────────────────────────────────────────────────────── */}
+      {phase === 'capture' && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 bg-amber-950/30 border border-amber-800/40 rounded-xl px-3 py-2">
+            <span className="text-amber-400 text-[10px] font-black uppercase tracking-wider">🧪 Prototype Mode</span>
+            <span className="text-amber-300/70 text-[10px]">No real OCR — camera is not analyzed.</span>
+          </div>
+          <div className="relative w-full h-52 bg-gray-800 rounded-2xl overflow-hidden flex items-center justify-center">
+            <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-teal-400 rounded-tl-sm" />
+            <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-teal-400 rounded-tr-sm" />
+            <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-teal-400 rounded-bl-sm" />
+            <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-teal-400 rounded-br-sm" />
             <div className="text-center">
-              <div className="text-4xl mb-2">📷</div>
-              <div className="text-sm text-gray-400">{phase === 'scanning' ? 'Point at nameplate...' : 'AI reading nameplate...'}</div>
-              {phase === 'reading' && (
-                <motion.div className="flex gap-1 justify-center mt-2" animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 0.8 }}>
-                  {[0,1,2].map(i => <div key={i} className="w-1.5 h-1.5 bg-blue-400 rounded-full" />)}
-                </motion.div>
-              )}
+              <Camera size={32} className="text-gray-600 mx-auto mb-2" />
+              <p className="text-gray-500 text-sm">Position nameplate in frame</p>
+              <p className="text-gray-600 text-xs mt-1">Fill frame · Hold steady · Good lighting</p>
             </div>
           </div>
-        ) : (
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
-            <div className="bg-green-950/50 border border-green-700 rounded-2xl p-4 mb-4 text-left">
-              <div className="flex items-center gap-2 mb-3">
-                <CheckCircle size={16} className="text-green-400" />
-                <span className="text-xs font-bold uppercase tracking-wider text-green-400">AI Identified</span>
+          <button onClick={startCapture}
+            className="w-full bg-white text-gray-950 font-bold py-4 rounded-2xl flex items-center justify-center gap-2">
+            <Camera size={18} /> Capture Nameplate
+          </button>
+          <button onClick={() => setPhase('manual')}
+            className="w-full py-3 text-sm font-semibold text-gray-400 border border-gray-700 rounded-2xl">
+            ✏ Enter Manually Instead
+          </button>
+        </div>
+      )}
+
+      {/* ── ANALYZING ────────────────────────────────────────────────────────── */}
+      {phase === 'analyzing' && (
+        <div className="space-y-4">
+          <div className="w-full h-28 bg-gray-800 rounded-2xl flex items-center justify-center">
+            <div className="text-center">
+              <motion.div className="flex gap-1.5 justify-center mb-2"
+                animate={{ opacity: [1, 0.3, 1] }} transition={{ repeat: Infinity, duration: 0.8 }}>
+                {[0,1,2].map(i => <div key={i} className="w-2 h-2 bg-blue-400 rounded-full" />)}
+              </motion.div>
+              <p className="text-sm text-gray-400">Analyzing image...</p>
+            </div>
+          </div>
+          <div className="bg-gray-800 rounded-2xl p-4 space-y-2.5">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1">Image Quality Checks</div>
+            {checks.map(c => (
+              <div key={c.id} className="flex items-center gap-2.5">
+                {c.status === 'pass'    && <CheckCircle size={13} className="text-green-400 flex-shrink-0" />}
+                {c.status === 'running' && (
+                  <motion.div className="w-3.5 h-3.5 rounded-full border-2 border-blue-400 border-t-transparent flex-shrink-0"
+                    animate={{ rotate: 360 }} transition={{ repeat: Infinity, duration: 0.7, ease: 'linear' }} />
+                )}
+                {c.status === 'pending' && <div className="w-3.5 h-3.5 rounded-full border-2 border-gray-600 flex-shrink-0" />}
+                <span className={`text-xs ${c.status === 'pass' ? 'text-green-400' : c.status === 'running' ? 'text-blue-300' : 'text-gray-600'}`}>
+                  {c.label}
+                </span>
               </div>
-              {[
-                ['Make', MOCK_EQUIPMENT.make], ['Model', MOCK_EQUIPMENT.model],
-                ['Serial', MOCK_EQUIPMENT.serial], ['Capacity', MOCK_EQUIPMENT.capacity],
-                ['Refrigerant', MOCK_EQUIPMENT.refrigerant], ['Voltage', MOCK_EQUIPMENT.voltage],
-              ].map(([l, v]) => (
-                <div key={l} className="flex justify-between py-1.5 border-b border-green-900/50 last:border-0">
-                  <span className="text-xs text-gray-400">{l}</span>
-                  <span className="text-xs font-mono font-semibold text-white">{v}</span>
+            ))}
+          </div>
+          <div className="text-[10px] text-amber-400/70 text-center">🧪 Prototype — no real OCR running</div>
+        </div>
+      )}
+
+      {/* ── RESULT (prototype — no detection) ────────────────────────────────── */}
+      {phase === 'result' && scanResult && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+          <div className="bg-gray-800 border border-gray-700 rounded-2xl p-4 flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-950/50 border border-amber-800 flex items-center justify-center flex-shrink-0">
+              <span className="text-lg">🧪</span>
+            </div>
+            <div>
+              <div className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mb-0.5">Prototype Scan Only</div>
+              <div className="text-sm font-bold text-white mb-1">No real OCR running</div>
+              <p className="text-xs text-gray-500 leading-relaxed">
+                In production, real OCR will analyze the photo and return per-field confidence scores. Unreadable fields stay blank.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4">
+            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-600 mb-3">Scan Results</div>
+            <div className="grid grid-cols-2 gap-2.5">
+              {NAMEPLATE_FIELD_DEFS.map(f => (
+                <div key={f.key}>
+                  <div className="text-[9px] text-gray-600 mb-0.5">{f.label}</div>
+                  <div className="text-[11px] text-gray-600 italic">Not detected.</div>
                 </div>
               ))}
             </div>
-            <div className="text-xs text-gray-500 mb-4">3 previous service records found for this serial number</div>
-            <button onClick={onConfirm} className="w-full bg-white text-gray-950 font-bold py-4 rounded-2xl">Confirm Equipment</button>
-            <button onClick={onClose} className="w-full mt-2 text-gray-500 text-sm py-3">Correct it manually</button>
-          </motion.div>
-        )}
-      </div>
+            <div className="mt-3 flex items-start gap-2 bg-amber-950/20 border border-amber-900/30 rounded-xl px-3 py-2">
+              <AlertTriangle size={11} className="text-amber-400 flex-shrink-0 mt-0.5" />
+              <p className="text-[10px] text-amber-400/80 leading-relaxed">
+                AI never invents Make, Model, Serial, or any nameplate field. Blank means not detected.
+              </p>
+            </div>
+          </div>
+
+          <button onClick={() => setPhase('manual')}
+            className="w-full bg-white text-gray-950 font-bold py-4 rounded-2xl flex items-center justify-center gap-2">
+            ✏ Enter Equipment Data Manually
+          </button>
+          <div className="grid grid-cols-2 gap-2">
+            <button onClick={() => { setCheckIndex(0); setPhase('capture'); }}
+              className="py-3 bg-gray-800 border border-gray-700 text-sm font-semibold text-gray-300 rounded-2xl flex items-center justify-center gap-1.5">
+              <Camera size={13} /> Retake Photo
+            </button>
+            <button onClick={() => { setConfirmResult(scanResult); setPhase('confirm'); }}
+              className="py-3 bg-gray-800 border border-gray-700 text-sm text-gray-500 rounded-2xl">
+              Skip Equipment ID
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      {/* ── MANUAL ENTRY ─────────────────────────────────────────────────────── */}
+      {phase === 'manual' && (
+        <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }} className="space-y-3">
+          <div className="flex items-center justify-between mb-1">
+            <button onClick={() => setPhase(scanResult ? 'result' : 'capture')} className="text-xs text-gray-500">← Back</button>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Manual Entry</span>
+          </div>
+          <p className="text-xs text-gray-500 pb-1">Enter what you can read from the nameplate. All fields are optional.</p>
+          {NAMEPLATE_FIELD_DEFS.map(def => (
+            <div key={def.key}>
+              <label className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block mb-1">{def.label}</label>
+              <input
+                value={manualFields[def.key] ?? ''}
+                onChange={e => setManualFields(prev => ({ ...prev, [def.key]: e.target.value || null }))}
+                placeholder={def.placeholder}
+                className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 border border-gray-700 text-sm placeholder-gray-600 focus:border-teal-600 outline-none"
+              />
+            </div>
+          ))}
+          <button
+            onClick={() => { setConfirmResult(buildManualResult()); setPhase('confirm'); }}
+            className={`w-full font-bold py-4 rounded-2xl mt-1 ${anyManualFilled ? 'bg-white text-gray-950' : 'bg-gray-800 border border-gray-700 text-gray-500'}`}>
+            {anyManualFilled ? 'Review & Confirm' : 'Skip Equipment ID'}
+          </button>
+        </motion.div>
+      )}
+
+      {/* ── CONFIRM ──────────────────────────────────────────────────────────── */}
+      {phase === 'confirm' && confirmResult && (
+        <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
+          <div className={`rounded-xl px-3 py-2.5 flex items-center gap-2.5 ${
+            confirmResult.source === 'manual'
+              ? 'bg-blue-950/30 border border-blue-800/50'
+              : 'bg-amber-950/30 border border-amber-800/40'
+          }`}>
+            <span className="text-base">{confirmResult.source === 'manual' ? '✏' : '🧪'}</span>
+            <div>
+              <div className={`text-[10px] font-bold uppercase tracking-wider ${confirmResult.source === 'manual' ? 'text-blue-400' : 'text-amber-400'}`}>
+                Source: {confirmResult.source === 'manual' ? 'Manual Entry' : 'Prototype — No OCR'}
+              </div>
+              <div className="text-[9px] text-gray-500">Source is recorded in the service record.</div>
+            </div>
+          </div>
+
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl divide-y divide-gray-800">
+            {NAMEPLATE_FIELD_DEFS.map(def => {
+              const val  = confirmResult.fields[def.key];
+              const conf = confirmResult.fieldConfidence[def.key];
+              return (
+                <div key={def.key} className="flex items-center justify-between px-4 py-3">
+                  <span className="text-xs text-gray-400">{def.label}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-mono font-semibold ${val ? 'text-white' : 'text-gray-600 italic'}`}>
+                      {val ?? 'Not detected.'}
+                    </span>
+                    {val && conf !== undefined && (
+                      <span className="text-[8px] text-gray-600">{conf}%</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <button onClick={() => onConfirm(confirmResult)}
+            className="w-full bg-white text-gray-950 font-bold py-4 rounded-2xl flex items-center justify-center gap-2">
+            <CheckCircle size={16} /> Confirm & Save to Record
+          </button>
+          <button onClick={() => setPhase(confirmResult.source === 'manual' ? 'manual' : 'result')}
+            className="w-full py-3 text-center text-sm text-gray-500">
+            ← Correct Equipment Data
+          </button>
+        </motion.div>
+      )}
+
     </ModalShell>
   );
 }
@@ -660,6 +922,10 @@ function VoiceModal({ onClose, onSave }: { onClose: () => void; onSave: (t: stri
   return (
     <ModalShell title="Voice Note" onClose={onClose}>
       <div className="text-center space-y-4">
+        <div className="flex items-center justify-center gap-2 bg-amber-950/20 border border-amber-800/30 rounded-xl px-3 py-2">
+          <span className="text-amber-400 text-[10px] font-black uppercase tracking-wider">🧪 Prototype</span>
+          <span className="text-amber-300/60 text-[10px]">Random transcript · Not real audio</span>
+        </div>
         {phase === 'idle' && (
           <div>
             <div className="w-24 h-24 rounded-full bg-purple-800/30 border-2 border-purple-600 flex items-center justify-center mx-auto mb-4">
@@ -817,6 +1083,10 @@ function PhotoModal({ jobState: _j, onClose, onSave }: { jobState: JobState; onC
   return (
     <ModalShell title="Capture Photo" onClose={onClose}>
       <div className="space-y-4">
+        <div className="flex items-center gap-2 bg-amber-950/20 border border-amber-800/30 rounded-xl px-3 py-2">
+          <span className="text-amber-400 text-[10px] font-black uppercase tracking-wider">🧪 Prototype</span>
+          <span className="text-amber-300/60 text-[10px]">No real camera · Colored placeholder saved</span>
+        </div>
         <div>
           <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-2">Category (AI suggests — tap to change)</div>
           <div className="grid grid-cols-3 gap-2">
@@ -922,6 +1192,10 @@ function CustomerSummaryModal({ state, onClose, onReviewed }: { state: Prototype
   return (
     <ModalShell title="Customer Summary" onClose={onClose}>
       <div className="space-y-4">
+        <div className="flex items-center gap-2 bg-amber-950/20 border border-amber-800/30 rounded-xl px-3 py-1.5">
+          <span className="text-amber-400 text-[10px] font-black uppercase tracking-wider">🧪 Prototype</span>
+          <span className="text-amber-300/60 text-[10px]">Hardcoded content · Not AI-generated from your activities</span>
+        </div>
         <div className="bg-blue-950/30 border border-blue-800 rounded-xl p-2.5">
           <div className="text-[9px] font-bold text-blue-400 uppercase tracking-wider">Customer-facing view · Plain language</div>
         </div>
@@ -996,7 +1270,7 @@ function AiAssistModal({ onClose }: { onClose: () => void }) {
             </div>
             <div>
               <div className="font-bold text-white text-sm">AI Field Assistant</div>
-              <div className="text-[9px] text-blue-400">Carrier 50XCQ006 context loaded</div>
+              <div className="text-[9px] text-amber-400/80">🧪 Prototype · Hardcoded responses</div>
             </div>
           </div>
           <button onClick={onClose} className="w-8 h-8 rounded-full bg-gray-800 flex items-center justify-center">

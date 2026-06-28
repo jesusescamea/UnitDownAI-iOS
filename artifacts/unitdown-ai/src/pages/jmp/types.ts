@@ -27,6 +27,26 @@ export interface MeasurementReading {
   verificationStatus?: 'ok' | 'warn' | 'alert';
 }
 
+export interface NameplateFields {
+  make:        string | null;
+  model:       string | null;
+  serial:      string | null;
+  capacity:    string | null;
+  refrigerant: string | null;
+  voltage:     string | null;
+  phase:       string | null;
+}
+
+export interface NameplateScanResult {
+  detected:          boolean;
+  confidence:        number;
+  fields:            NameplateFields;
+  fieldConfidence:   Partial<Record<keyof NameplateFields, number>>;
+  warnings:          string[];
+  needsManualReview: boolean;
+  source:            'ocr' | 'manual' | 'prototype';
+}
+
 export interface Activity {
   id: string;
   type: ActivityType;
@@ -42,6 +62,7 @@ export interface Activity {
   partQty?: number;
   partDetail?: string;
   isAISuggestion?: boolean;
+  nameplateResult?: NameplateScanResult;
 }
 
 export interface PartRecord {
