@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, ChevronLeft, ChevronRight, User, MapPin, Cpu,
   Calendar, ClipboardList, CheckCircle, AlertTriangle,
+  Camera, Plus,
 } from 'lucide-react';
 import type { TodayJob } from './mockData';
 import type { CalendarEvent } from './dashboardData';
@@ -40,6 +41,8 @@ interface WizardData {
   modelNumber:       string;
   serialNumber:      string;
   locationOnSite:    string;
+  refrigerant:       string;
+  voltage:           string;
   // Step 4 — Schedule
   jobType:           string;
   date:              string;
@@ -54,7 +57,7 @@ const EMPTY: WizardData = {
   businessName: '', contactName: '', phone: '', email: '',
   siteName: '', serviceAddress: '', cityState: '', accessNotes: '', specialNotes: '',
   equipmentType: 'RTU (Packaged Rooftop Unit)', unitLabel: '', manufacturer: '',
-  modelNumber: '', serialNumber: '', locationOnSite: '',
+  modelNumber: '', serialNumber: '', locationOnSite: '', refrigerant: '', voltage: '',
   jobType: 'Service Call', date: new Date().toISOString().split('T')[0],
   timeWindow: '8:00 – 10:00 AM', priority: 'normal',
   assignedTech: 'Marcus Rivera', complaint: '', notes: '',
@@ -91,6 +94,68 @@ const STEPS = [
   { label: 'Review',   icon: ClipboardList },
 ];
 
+// ─── Saved equipment mock data (prototype) ────────────────────────────────────
+// Derived from the same customers as EQUIPMENT_ATTENTION in dashboardData.ts.
+// These are shown when the user's entered businessName matches a known site.
+// In production this would come from GET /api/units?clientId=...
+
+interface SavedEquipmentRecord {
+  id:             string;
+  unitLabel:      string;
+  equipmentType:  string;
+  manufacturer:   string;
+  modelNumber:    string;
+  serialNumber:   string;
+  locationOnSite: string;
+  lastService:    string;
+  refrigerant:    string;
+  voltage:        string;
+  openIssue:      string | null;
+}
+
+const SAVED_EQUIPMENT_BY_CUSTOMER: Record<string, SavedEquipmentRecord[]> = {
+  'summit medical plaza': [
+    { id: 'eq-SMP-RTU3', unitLabel: 'RTU-3', equipmentType: 'RTU (Packaged Rooftop Unit)',
+      manufacturer: 'Carrier', modelNumber: '50XCQ006', serialNumber: '4321A8876',
+      locationOnSite: 'Rooftop, North Wing', lastService: 'Jun 27, 2026',
+      refrigerant: 'R-410A', voltage: '208/230V 3-Phase',
+      openIssue: 'Repeated Code 82 — High Pressure Lockout' },
+    { id: 'eq-SMP-AHU1', unitLabel: 'AHU-1', equipmentType: 'AHU (Air Handler)',
+      manufacturer: 'Carrier', modelNumber: 'CNPVP4821ALA', serialNumber: '3219C4421',
+      locationOnSite: 'Basement, Mechanical Room', lastService: 'Mar 12, 2024',
+      refrigerant: 'R-410A', voltage: '208/230V 1-Phase', openIssue: null },
+  ],
+  'northgate data center': [
+    { id: 'eq-NDC-CRAC1', unitLabel: 'CRAC-1', equipmentType: 'CRAC (Computer Room A/C)',
+      manufacturer: 'Liebert', modelNumber: 'DS150', serialNumber: '0921LD5431',
+      locationOnSite: 'Server Room B', lastService: 'Jun 27, 2026',
+      refrigerant: 'R-407C', voltage: '208/230V 3-Phase', openIssue: null },
+  ],
+  'ridgeline office park': [
+    { id: 'eq-ROP-RTU7', unitLabel: 'RTU-7', equipmentType: 'RTU (Packaged Rooftop Unit)',
+      manufacturer: 'Trane', modelNumber: 'YCD150', serialNumber: '7821TY3301',
+      locationOnSite: 'Rooftop', lastService: 'Jun 27, 2026',
+      refrigerant: 'R-410A', voltage: '460V 3-Phase', openIssue: null },
+    { id: 'eq-ROP-RTU8', unitLabel: 'RTU-8', equipmentType: 'RTU (Packaged Rooftop Unit)',
+      manufacturer: 'Trane', modelNumber: 'YCD090', serialNumber: '7821TY3302',
+      locationOnSite: 'Rooftop', lastService: 'Apr 15, 2025',
+      refrigerant: 'R-410A', voltage: '460V 3-Phase', openIssue: null },
+    { id: 'eq-ROP-AHU1', unitLabel: 'AHU-1', equipmentType: 'AHU (Air Handler)',
+      manufacturer: 'Trane', modelNumber: 'TAM8', serialNumber: '6612TR9901',
+      locationOnSite: 'Mechanical Room', lastService: 'Apr 15, 2025',
+      refrigerant: 'R-410A', voltage: '208/230V 1-Phase', openIssue: null },
+  ],
+};
+
+function getSavedEquipment(businessName: string): SavedEquipmentRecord[] {
+  const lower = businessName.toLowerCase().trim();
+  if (!lower) return [];
+  for (const [key, equip] of Object.entries(SAVED_EQUIPMENT_BY_CUSTOMER)) {
+    if (lower.includes(key) || key.includes(lower)) return equip;
+  }
+  return [];
+}
+
 // ─── Field components ─────────────────────────────────────────────────────────
 
 function Label({ children, required }: { children: React.ReactNode; required?: boolean }) {
@@ -117,17 +182,39 @@ const textareaCls = 'w-full bg-gray-800 border border-gray-700 rounded-xl px-3 p
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
-  const [step, setStep]     = useState(0);
-  const [data, setData]     = useState<WizardData>(() => ({
+  const [step, setStep]             = useState(0);
+  const [data, setData]             = useState<WizardData>(() => ({
     ...EMPTY,
     date: defaultDate ?? EMPTY.date,
   }));
-  const [errors, setErrors] = useState<Partial<Record<keyof WizardData, string>>>({});
+  const [errors, setErrors]         = useState<Partial<Record<keyof WizardData, string>>>({});
+  const [selectedEquipId, setSelectedEquipId] = useState<string | null>(null);
+  const [equipMode, setEquipMode]   = useState<'manual' | null>(null);
+  const [showScanNote, setShowScanNote] = useState(false);
 
   function set<K extends keyof WizardData>(key: K, value: WizardData[K]) {
     setData(prev => ({ ...prev, [key]: value }));
     if (errors[key]) setErrors(prev => { const e = { ...prev }; delete e[key]; return e; });
   }
+
+  function selectEquipment(eq: SavedEquipmentRecord) {
+    setSelectedEquipId(eq.id);
+    setEquipMode(null);
+    setShowScanNote(false);
+    setData(prev => ({
+      ...prev,
+      equipmentType:  eq.equipmentType,
+      unitLabel:      eq.unitLabel,
+      manufacturer:   eq.manufacturer,
+      modelNumber:    eq.modelNumber,
+      serialNumber:   eq.serialNumber,
+      locationOnSite: eq.locationOnSite,
+      refrigerant:    eq.refrigerant,
+      voltage:        eq.voltage,
+    }));
+  }
+
+  const savedEquipment = getSavedEquipment(data.businessName);
 
   function validate(): boolean {
     const e: typeof errors = {};
@@ -183,6 +270,8 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
         data.accessNotes   && `Access: ${data.accessNotes}`,
         data.specialNotes  && `Site notes: ${data.specialNotes}`,
         data.contactName   && `Contact: ${data.contactName}${data.phone ? ` · ${data.phone}` : ''}`,
+        data.refrigerant   && `Refrigerant: ${data.refrigerant}`,
+        data.voltage       && `Voltage: ${data.voltage}`,
       ].filter(Boolean) as string[],
       isPrototype: true,
     };
@@ -313,34 +402,178 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
 
             {/* ── Step 3: Equipment ────────────────────────────────────── */}
             {step === 2 && (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <div>
                   <h2 className="text-base font-bold text-white">Equipment</h2>
                   <p className="text-xs text-gray-500 mt-0.5">What unit needs service?</p>
                 </div>
-                <Field label="Equipment type">
-                  <select className={selectCls} value={data.equipmentType} onChange={e => set('equipmentType', e.target.value)}>
-                    {EQUIPMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Unit label">
-                    <input className={inputCls} placeholder="e.g. RTU-3, AHU-1" value={data.unitLabel} onChange={e => set('unitLabel', e.target.value)} />
-                  </Field>
-                  <Field label="Location on site">
-                    <input className={inputCls} placeholder="e.g. Rooftop, N. Wing" value={data.locationOnSite} onChange={e => set('locationOnSite', e.target.value)} />
-                  </Field>
+
+                {/* ── Saved equipment at this site ───────────────────────── */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+                      {data.businessName.trim()
+                        ? savedEquipment.length > 0
+                          ? `Saved Equipment — ${data.businessName}`
+                          : 'No saved equipment for this site'
+                        : 'Saved Equipment'}
+                    </span>
+                    {savedEquipment.length > 0 && (
+                      <span className="text-[9px] bg-amber-900/40 text-amber-400 border border-amber-800/50 px-1.5 py-0.5 rounded-full font-medium">prototype</span>
+                    )}
+                  </div>
+
+                  {!data.businessName.trim() ? (
+                    <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-center">
+                      <p className="text-xs text-gray-500">Enter a customer name in step 1 to see saved equipment.</p>
+                    </div>
+                  ) : savedEquipment.length === 0 ? (
+                    <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-center">
+                      <p className="text-xs text-gray-500">No saved equipment for this site yet.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      {savedEquipment.map(eq => {
+                        const isSelected = selectedEquipId === eq.id;
+                        return (
+                          <button
+                            key={eq.id}
+                            type="button"
+                            onClick={() => selectEquipment(eq)}
+                            className={`w-full text-left rounded-xl border px-4 py-3 transition-all active:scale-[0.98] ${
+                              isSelected
+                                ? 'border-blue-500 bg-blue-950/40 ring-1 ring-blue-500/40'
+                                : 'border-gray-700 bg-gray-900 hover:border-gray-600'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3">
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-sm font-bold text-white">{eq.unitLabel}</span>
+                                  <span className="text-[10px] text-blue-300/70">{eq.equipmentType.split(' ')[0]}</span>
+                                  {eq.openIssue && (
+                                    <span className="text-[9px] bg-amber-900/40 text-amber-400 px-1.5 py-0.5 rounded-full border border-amber-800/40 flex items-center gap-1">
+                                      <AlertTriangle size={9} /> Open issue
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="text-xs text-gray-300 mt-0.5">{eq.manufacturer} {eq.modelNumber}</div>
+                                <div className="text-[10px] text-gray-500 mt-0.5">{eq.locationOnSite}</div>
+                                {eq.serialNumber && (
+                                  <div className="text-[9px] font-mono text-gray-600 mt-0.5">S/N: {eq.serialNumber}</div>
+                                )}
+                                {eq.openIssue && (
+                                  <div className="text-[10px] text-amber-400/80 mt-1 leading-relaxed">{eq.openIssue}</div>
+                                )}
+                                <div className="text-[9px] text-gray-600 mt-1">Last service: {eq.lastService}</div>
+                              </div>
+                              <div className={`w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center border-2 mt-0.5 transition-colors ${
+                                isSelected ? 'bg-blue-500 border-blue-500' : 'border-gray-600'
+                              }`}>
+                                {isSelected && <CheckCircle size={11} className="text-white" />}
+                              </div>
+                            </div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
-                <Field label="Manufacturer">
-                  <input className={inputCls} placeholder="e.g. Carrier, Trane, Lennox" value={data.manufacturer} onChange={e => set('manufacturer', e.target.value)} />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Model number">
-                    <input className={inputCls} placeholder="e.g. 50XCQ006" value={data.modelNumber} onChange={e => set('modelNumber', e.target.value)} />
-                  </Field>
-                  <Field label="Serial number">
-                    <input className={inputCls} placeholder="e.g. 4321A8876" value={data.serialNumber} onChange={e => set('serialNumber', e.target.value)} />
-                  </Field>
+
+                {/* ── Add new equipment ──────────────────────────────────── */}
+                <div>
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Add New Equipment</div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      type="button"
+                      onClick={() => { setShowScanNote(s => !s); setEquipMode(null); }}
+                      className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition-all active:scale-95 ${
+                        showScanNote
+                          ? 'border-amber-600/60 bg-amber-950/30 text-amber-300'
+                          : 'border-gray-700 bg-gray-900 text-gray-300 hover:border-gray-600'
+                      }`}
+                    >
+                      <Camera size={14} />
+                      Scan Nameplate
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = equipMode === 'manual' ? null : 'manual';
+                        setEquipMode(next);
+                        setShowScanNote(false);
+                        if (next === 'manual') setSelectedEquipId(null);
+                      }}
+                      className={`flex items-center justify-center gap-2 py-3 rounded-xl border text-sm font-medium transition-all active:scale-95 ${
+                        equipMode === 'manual'
+                          ? 'border-blue-600/60 bg-blue-950/30 text-blue-300'
+                          : 'border-gray-700 bg-gray-900 text-gray-300 hover:border-gray-600'
+                      }`}
+                    >
+                      <Plus size={14} />
+                      Enter Manually
+                    </button>
+                  </div>
+
+                  {/* Scan note — always shown, never fakes success */}
+                  {showScanNote && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                      className="mt-2 bg-amber-950/30 border border-amber-800/50 rounded-xl px-3 py-3"
+                    >
+                      <div className="flex items-start gap-2">
+                        <AlertTriangle size={13} className="text-amber-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-xs font-bold text-amber-300 mb-0.5">Nameplate OCR not connected in prototype mode</p>
+                          <p className="text-[10px] text-amber-400/80 leading-relaxed">
+                            Camera-based nameplate scanning (OpenAI Vision) is available in the production app.
+                            In the prototype, use <strong className="text-amber-300">Enter Manually</strong> or select from saved equipment above.
+                          </p>
+                        </div>
+                      </div>
+                    </motion.div>
+                  )}
+
+                  {/* Manual entry fields */}
+                  {equipMode === 'manual' && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}
+                      className="mt-3 space-y-3 bg-gray-900 border border-gray-800 rounded-xl p-4"
+                    >
+                      <Field label="Equipment type">
+                        <select className={selectCls} value={data.equipmentType} onChange={e => set('equipmentType', e.target.value)}>
+                          {EQUIPMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </Field>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Unit label">
+                          <input className={inputCls} placeholder="RTU-3, AHU-1" value={data.unitLabel} onChange={e => set('unitLabel', e.target.value)} />
+                        </Field>
+                        <Field label="Location on site">
+                          <input className={inputCls} placeholder="Rooftop, N. Wing" value={data.locationOnSite} onChange={e => set('locationOnSite', e.target.value)} />
+                        </Field>
+                      </div>
+                      <Field label="Manufacturer">
+                        <input className={inputCls} placeholder="Carrier, Trane, Lennox…" value={data.manufacturer} onChange={e => set('manufacturer', e.target.value)} />
+                      </Field>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Model number">
+                          <input className={inputCls} placeholder="50XCQ006" value={data.modelNumber} onChange={e => set('modelNumber', e.target.value)} />
+                        </Field>
+                        <Field label="Serial number">
+                          <input className={inputCls} placeholder="4321A8876" value={data.serialNumber} onChange={e => set('serialNumber', e.target.value)} />
+                        </Field>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Field label="Refrigerant">
+                          <input className={inputCls} placeholder="R-410A" value={data.refrigerant} onChange={e => set('refrigerant', e.target.value)} />
+                        </Field>
+                        <Field label="Voltage / phase">
+                          <input className={inputCls} placeholder="208/230V 3-Ph" value={data.voltage} onChange={e => set('voltage', e.target.value)} />
+                        </Field>
+                      </div>
+                    </motion.div>
+                  )}
                 </div>
               </div>
             )}
@@ -429,12 +662,19 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                 </ReviewSection>
 
                 <ReviewSection title="Equipment">
+                  {selectedEquipId && (
+                    <div className="text-[9px] bg-blue-950/40 text-blue-400 border border-blue-800/40 px-2 py-1 rounded-lg mb-2">
+                      Linked from saved equipment record
+                    </div>
+                  )}
                   <ReviewRow label="Type"        value={data.equipmentType} />
                   {data.unitLabel      && <ReviewRow label="Unit label"  value={data.unitLabel} />}
                   {data.locationOnSite && <ReviewRow label="Location"    value={data.locationOnSite} />}
                   {data.manufacturer   && <ReviewRow label="Make"        value={data.manufacturer} />}
                   {data.modelNumber    && <ReviewRow label="Model"       value={data.modelNumber} />}
                   {data.serialNumber   && <ReviewRow label="Serial"      value={data.serialNumber} />}
+                  {data.refrigerant    && <ReviewRow label="Refrigerant" value={data.refrigerant} />}
+                  {data.voltage        && <ReviewRow label="Voltage"     value={data.voltage} />}
                 </ReviewSection>
 
                 <ReviewSection title="Schedule">
