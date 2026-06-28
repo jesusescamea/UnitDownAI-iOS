@@ -3,6 +3,22 @@
 export type ItemStatus   = 'ready' | 'low' | 'missing';
 export type ItemPriority = 'required' | 'recommended' | 'nice' | 'none';
 
+export type AITag =
+  | 'Fast Moving'
+  | 'Rarely Used'
+  | 'Seasonal'
+  | 'Critical Spare'
+  | 'High Failure Item'
+  | 'Universal Part'
+  | 'OEM Only'
+  | 'High Value'
+  | 'Large Item'
+  | 'Requires EPA Certification'
+  | 'Long Lead Time';
+
+export type ReturnTripRisk  = 'Very Low' | 'Low' | 'Medium' | 'High' | 'Critical';
+export type RestockCategory = 'Critical Today' | 'Likely Today' | 'Recommended This Week' | 'Shop Stock' | 'Seasonal';
+
 export type ItemCategory =
   | 'Refrigerant'
   | 'Capacitors'
@@ -73,6 +89,15 @@ export interface InventoryItem {
   aiRec?:         string;
   substitutes?:   SubstituteItem[];
   usageHistory?:  UsageRecord[];
+  // ── AI Intelligence ────────────────────────────────────────────────────
+  aiTags?:               AITag[];
+  // ── Supply House (future integration) ─────────────────────────────────
+  supplierName?:         string;
+  supplierAvailability?: 'In Stock' | 'Low Stock' | 'Out of Stock' | 'Special Order';
+  supplierPrice?:        number;
+  oemPartNumber?:        string;
+  universalAlternative?: string;
+  pickupTimeMin?:        number;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -280,6 +305,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: ['summit'], recommendedFor: [], niceToHaveFor: [],
     lastUsed: 'Jun 26', usagePattern: 'Used on most refrigerant calls',
     aiRec: 'Summit Medical RTU-3 has high-pressure history — carry a full cylinder.',
+    aiTags: ['Fast Moving', 'Requires EPA Certification', 'Seasonal'],
     substitutes: [{ name: 'R-454B', compatible: false, note: 'Different pressure rating — do not interchange.' }],
     usageHistory: [
       { date: 'Jun 26', qty: 1, site: 'Summit Medical Plaza' },
@@ -293,6 +319,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: [], recommendedFor: [], niceToHaveFor: [],
     lastUsed: 'Jun 10', usagePattern: 'Legacy equipment recovery only',
     aiRec: 'Recovery only — EPA 608 prohibits reuse for charging.',
+    aiTags: ['Requires EPA Certification', 'Large Item'],
   },
   {
     id: 'r407c', name: 'R-407C Refrigerant',
@@ -314,6 +341,8 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: [], recommendedFor: ['summit'], niceToHaveFor: [],
     lastUsed: 'Jun 26', usagePattern: 'Replaced 4 this month',
     aiRec: 'Summit RTU-3 repeated Code 82 — condenser fan capacitor is primary suspect. Carry two.',
+    aiTags: ['High Failure Item', 'Fast Moving', 'Universal Part'],
+    supplierName: 'Ferguson HVAC', supplierAvailability: 'In Stock', supplierPrice: 12.50, pickupTimeMin: 15, universalAlternative: 'Genteq Z97F9835',
     substitutes: [{ name: '40/5 MFD Dual Run', compatible: false, note: 'Different rating — confirm nameplate before substituting.' }],
     usageHistory: [
       { date: 'Jun 26', qty: 1, site: 'Summit Medical Plaza' },
@@ -365,6 +394,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: [], recommendedFor: ['summit'], niceToHaveFor: [],
     lastUsed: 'Jun 21', usagePattern: 'Most common size',
     aiRec: 'RTU-3 contactor history shows arcing. Replacement likely today.',
+    aiTags: ['High Failure Item', 'Fast Moving'],
     usageHistory: [
       { date: 'Jun 21', qty: 1, site: 'Summit Medical Plaza' },
       { date: 'Jun 8',  qty: 1, site: 'Ridgeline Office Park' },
@@ -376,6 +406,8 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     category: 'Contactors', qty: 0, minQty: 1, unit: 'each',
     requiredFor: [], recommendedFor: ['summit'], niceToHaveFor: [],
     lastUsed: 'Jun 12', aiRec: 'Out of stock. Restock before Summit call.',
+    aiTags: ['High Failure Item'],
+    supplierName: 'Waxman Supply', supplierAvailability: 'In Stock', supplierPrice: 38.00, pickupTimeMin: 22,
     substitutes: [{ name: '3-Pole 40A Heavy-Duty', compatible: true, note: 'Confirm coil voltage (24V typical) before installing.' }],
   },
   {
@@ -391,6 +423,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     category: 'Relays', qty: 2, minQty: 2, unit: 'each',
     requiredFor: [], recommendedFor: ['northgate'], niceToHaveFor: [],
     lastUsed: 'Jun 20', aiRec: 'Used frequently on CRAC units at Northgate.',
+    aiTags: ['Fast Moving'],
     usageHistory: [
       { date: 'Jun 20', qty: 1, site: 'Northgate Data Center' },
       { date: 'May 15', qty: 1, site: 'Northgate Data Center' },
@@ -415,6 +448,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     category: 'Transformers', qty: 1, minQty: 1, unit: 'each',
     requiredFor: [], recommendedFor: ['summit', 'northgate'], niceToHaveFor: [],
     lastUsed: 'Jun 18', aiRec: 'Carry as a spare — frequent failure after high-pressure events.',
+    aiTags: ['Critical Spare'],
     usageHistory: [
       { date: 'Jun 18', qty: 1, site: 'Summit Medical Plaza' },
       { date: 'May 10', qty: 1, site: 'Northgate Data Center' },
@@ -434,6 +468,8 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: [], recommendedFor: ['summit'], niceToHaveFor: [],
     lastUsed: 'Jun 10',
     aiRec: 'RTU-3 condenser fan is the suspected root cause of Code 82. Carrying one avoids a return trip.',
+    aiTags: ['High Value', 'High Failure Item', 'Long Lead Time'],
+    supplierName: 'Waxman Supply', supplierAvailability: 'Low Stock', supplierPrice: 145.00, pickupTimeMin: 22, oemPartNumber: 'HC39GE234A',
   },
   {
     id: 'motor-cond-quarter', name: 'Condenser Fan Motor 1/4 HP',
@@ -447,6 +483,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: [], recommendedFor: ['ridgeline'], niceToHaveFor: [],
     lastUsed: 'Jun 2',
     aiRec: 'Out of stock. AHU-5 vibration trend could lead to motor replacement at Ridgeline.',
+    aiTags: ['High Value', 'Large Item', 'Long Lead Time'],
   },
 
   // ── Fan Blades ────────────────────────────────────────────────────────────────
@@ -477,6 +514,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: ['ridgeline'], recommendedFor: [], niceToHaveFor: [],
     lastUsed: 'Jun 18', usagePattern: 'AHU shaft bearing replacement',
     aiRec: 'AHU-5 vibration trend indicates bearing wear. Carry at least two.',
+    aiTags: ['Long Lead Time'],
     usageHistory: [
       { date: 'Jun 18', qty: 2, site: 'Ridgeline Office Park' },
       { date: 'May 22', qty: 2, site: 'Ridgeline Office Park' },
@@ -502,6 +540,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: ['ridgeline'], recommendedFor: [], niceToHaveFor: [],
     lastUsed: 'Jun 20', usagePattern: 'AHU-5 confirmed belt size',
     aiRec: 'Stocked and ready for Ridgeline AHU-5.',
+    aiTags: ['Fast Moving'],
     usageHistory: [
       { date: 'Jun 20', qty: 1, site: 'Ridgeline Office Park' },
       { date: 'May 22', qty: 1, site: 'Ridgeline Office Park' },
@@ -572,6 +611,8 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: [], recommendedFor: ['summit', 'northgate'], niceToHaveFor: [],
     lastUsed: 'Jun 23', usagePattern: 'Replaced frequently on commercial units',
     aiRec: 'Stock empty. Add to restock before departure.',
+    aiTags: ['Fast Moving', 'Critical Spare'],
+    supplierName: 'Ferguson HVAC', supplierAvailability: 'In Stock', supplierPrice: 0.85, pickupTimeMin: 15,
     substitutes: [{ name: '3A Time-Delay Fuse', compatible: true, note: 'Confirm fast-blow vs time-delay before installing.' }],
     usageHistory: [
       { date: 'Jun 23', qty: 3, site: 'Northgate Data Center' },
@@ -606,6 +647,8 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: [], recommendedFor: ['summit'], niceToHaveFor: [],
     lastUsed: 'Jun 3',
     aiRec: 'Summit RTU-3 has repeated high-pressure lockouts — switch may need replacement.',
+    aiTags: ['Critical Spare', 'High Failure Item'],
+    supplierName: 'Ferguson HVAC', supplierAvailability: 'In Stock', supplierPrice: 24.00, pickupTimeMin: 15,
   },
   {
     id: 'ps-low', name: 'Low-Pressure Safety Switch',
@@ -651,6 +694,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: ['summit'], recommendedFor: ['ridgeline'], niceToHaveFor: [],
     lastUsed: 'Jun 26',
     aiRec: 'Required for Summit Medical condenser cleaning.',
+    aiTags: ['Fast Moving', 'Seasonal'],
     usageHistory: [
       { date: 'Jun 26', qty: 1, site: 'Summit Medical Plaza' },
       { date: 'Jun 20', qty: 1, site: 'Ridgeline Office Park' },
@@ -704,6 +748,8 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: ['northgate'], recommendedFor: [], niceToHaveFor: [],
     lastUsed: 'May 30', usagePattern: 'Scheduled PM every 90 days at Northgate',
     aiRec: "Required for today's CRAC-3 PM. This call cannot be completed without it.",
+    aiTags: ['OEM Only', 'Long Lead Time'],
+    supplierName: 'Liebert Distributor', supplierAvailability: 'Special Order', supplierPrice: 89.00, pickupTimeMin: 180, oemPartNumber: 'LB-106898G1',
     substitutes: [{ name: 'Universal humidifier canister', compatible: false, note: 'Confirm electrode spacing — Liebert DS spacing is non-standard.' }],
     usageHistory: [
       { date: 'May 30', qty: 1, site: 'Northgate Data Center' },
@@ -796,3 +842,247 @@ export function aiVanSummary(inventory: InventoryItem[]): string {
   const comparison = aiRouteComparison(inventory);
   return comparison.body || comparison.headline;
 }
+
+// ─── Return Trip Risk ──────────────────────────────────────────────────────────
+
+const JOB_HISTORY_FACTORS: Record<string, number> = {
+  summit:    0.75, // RTU-3 failed Code 82 three times — previous repairs unsuccessful
+  northgate: 0.90, // Missing required humidifier canister drops confidence
+  ridgeline: 0.95, // Standard PM, reliable equipment history
+};
+
+export function computeFirstVisitLikelihood(
+  inventory: InventoryItem[],
+  toolsScore: number,
+  jobId: string,
+): number {
+  const partsScore = computeJobReadiness(inventory, jobId);
+  const histFactor = JOB_HISTORY_FACTORS[jobId] ?? 1.0;
+  const raw = (partsScore * 0.60 + toolsScore * 0.25 + 15) * histFactor;
+  return Math.round(Math.max(0, Math.min(100, raw)));
+}
+
+export function computeReturnTripRisk(likelihood: number): ReturnTripRisk {
+  if (likelihood >= 92) return 'Very Low';
+  if (likelihood >= 80) return 'Low';
+  if (likelihood >= 65) return 'Medium';
+  if (likelihood >= 45) return 'High';
+  return 'Critical';
+}
+
+export function returnTripRiskStyle(risk: ReturnTripRisk): {
+  bg: string; border: string; text: string; label: string;
+} {
+  switch (risk) {
+    case 'Very Low': return { bg: 'bg-green-950/40',  border: 'border-green-800/60',  text: 'text-green-400',  label: 'VERY LOW'  };
+    case 'Low':      return { bg: 'bg-green-950/20',  border: 'border-green-900/50',  text: 'text-green-500',  label: 'LOW'       };
+    case 'Medium':   return { bg: 'bg-yellow-950/30', border: 'border-yellow-800/60', text: 'text-yellow-400', label: 'MEDIUM'    };
+    case 'High':     return { bg: 'bg-orange-950/30', border: 'border-orange-800/60', text: 'text-orange-400', label: 'HIGH'      };
+    case 'Critical': return { bg: 'bg-red-950/30',    border: 'border-red-800/60',    text: 'text-red-400',    label: 'CRITICAL'  };
+  }
+}
+
+// ─── Smart Restock ────────────────────────────────────────────────────────────
+
+export interface RestockSection {
+  category:    RestockCategory;
+  description: string;
+  why:         string;
+  items:       InventoryItem[];
+}
+
+const TODAY_JOBS_IDS = ['summit', 'northgate', 'ridgeline'];
+
+export function generateRestockSections(inventory: InventoryItem[]): RestockSection[] {
+  const criticalToday = inventory.filter(i =>
+    itemStatus(i) === 'missing' && i.requiredFor.some(j => TODAY_JOBS_IDS.includes(j)),
+  );
+
+  const likelyToday = inventory.filter(i => {
+    if (criticalToday.includes(i)) return false;
+    const s = itemStatus(i);
+    return (
+      (s === 'missing' && i.recommendedFor.some(j => TODAY_JOBS_IDS.includes(j))) ||
+      (s === 'low'     && i.requiredFor.some(j => TODAY_JOBS_IDS.includes(j)))
+    );
+  });
+
+  const recThisWeek = inventory.filter(i => {
+    if (criticalToday.includes(i) || likelyToday.includes(i)) return false;
+    const s = itemStatus(i);
+    return s !== 'ready' && (
+      i.aiTags?.includes('High Failure Item') ||
+      i.aiTags?.includes('Fast Moving') ||
+      i.aiTags?.includes('Critical Spare')
+    );
+  });
+
+  const shopStock = inventory.filter(i => {
+    if (criticalToday.includes(i) || likelyToday.includes(i) || recThisWeek.includes(i)) return false;
+    return itemStatus(i) !== 'ready';
+  });
+
+  const seasonal = inventory.filter(i =>
+    i.aiTags?.includes('Seasonal') &&
+    itemStatus(i) !== 'ready' &&
+    !criticalToday.includes(i) && !likelyToday.includes(i),
+  );
+
+  return ([
+    {
+      category:    'Critical Today',
+      description: "Cannot complete today's scheduled work without these",
+      why:         'Required for active work orders. A return trip is guaranteed if missing.',
+      items:       criticalToday,
+    },
+    {
+      category:    'Likely Today',
+      description: "High probability of needing on today's calls",
+      why:         'Based on job history, equipment patterns, and active fault codes.',
+      items:       likelyToday,
+    },
+    {
+      category:    'Recommended This Week',
+      description: 'AI-recommended — usage patterns and failure history',
+      why:         'High-failure items, fast-movers, or critical spares running low.',
+      items:       recThisWeek,
+    },
+    {
+      category:    'Shop Stock',
+      description: 'Standard van stock below minimum quantity',
+      why:         'Not needed today — restock before next dispatch.',
+      items:       shopStock,
+    },
+    {
+      category:    'Seasonal',
+      description: 'Summer high-heat priority items',
+      why:         'Peak cooling season — elevated demand for refrigerant and capacitors.',
+      items:       seasonal,
+    },
+  ] as RestockSection[]).filter(s => s.items.length > 0);
+}
+
+// ─── Morning Brief ────────────────────────────────────────────────────────────
+
+export interface MorningBrief {
+  techName:       string;
+  todayReadiness: number;
+  jobCount:       number;
+  highestRiskJob: string;
+  highestRisk:    ReturnTripRisk;
+  mustGrab:       Array<{ name: string; reason: string }>;
+  leaveBehind:    Array<{ name: string; reason: string }>;
+  weatherNote:    string;
+  tempF:          number;
+  aiInsights:     string[];
+}
+
+export function generateMorningBrief(
+  inventory: InventoryItem[],
+  toolsScores: { summit: number; northgate: number; ridgeline: number },
+): MorningBrief {
+  const likelihoods = {
+    summit:    computeFirstVisitLikelihood(inventory, toolsScores.summit,    'summit'),
+    northgate: computeFirstVisitLikelihood(inventory, toolsScores.northgate, 'northgate'),
+    ridgeline: computeFirstVisitLikelihood(inventory, toolsScores.ridgeline, 'ridgeline'),
+  };
+
+  const todayReadiness = Math.round(
+    (likelihoods.summit + likelihoods.northgate + likelihoods.ridgeline) / 3,
+  );
+
+  const sortedByRisk = Object.entries(likelihoods).sort(([, a], [, b]) => a - b);
+  const [highestRiskJobId, highestRiskScore] = sortedByRisk[0];
+  const highestRiskJobName = JOB_INFO[highestRiskJobId]?.name ?? highestRiskJobId;
+
+  const mustGrab: Array<{ name: string; reason: string }> = inventory
+    .filter(i => {
+      const s = itemStatus(i);
+      return (s === 'missing' || s === 'low') &&
+        i.requiredFor.some(j => TODAY_JOBS_IDS.includes(j));
+    })
+    .slice(0, 6)
+    .map(i => ({
+      name:   i.name,
+      reason: i.aiRec ?? `Required for ${i.requiredFor.map(j => JOB_INFO[j]?.abbr ?? j).join(', ')}`,
+    }));
+
+  const leaveBehind: Array<{ name: string; reason: string }> = inventory
+    .filter(i =>
+      i.aiTags?.includes('Large Item') &&
+      i.requiredFor.length === 0 &&
+      i.recommendedFor.length === 0 &&
+      i.niceToHaveFor.length === 0,
+    )
+    .map(i => ({ name: i.name, reason: 'Not required for any scheduled job today' }));
+
+  const r410qty = inventory.find(i => i.id === 'r410a')?.qty ?? 0;
+
+  const aiInsights: string[] = [
+    'RTU-3 has failed Code 82 on three previous visits — prior condenser cleaning did not resolve root cause.',
+    "Today's 91°F will drive elevated head pressures. Expect high-pressure lockouts.",
+    `Only ${r410qty} R-410A cylinder on hand — Summit Medical requires a full cylinder minimum.`,
+    'Heat stress accelerates capacitor failure. Carry extra 35/5 and 40/5 dual-run caps.',
+    '3A control fuses are depleted — common replacement across all three sites today.',
+  ];
+
+  return {
+    techName:       'Marcus',
+    todayReadiness,
+    jobCount:       3,
+    highestRiskJob: highestRiskJobName,
+    highestRisk:    computeReturnTripRisk(highestRiskScore),
+    mustGrab,
+    leaveBehind,
+    weatherNote:    '91°F · Partly Cloudy · SW 8 mph',
+    tempF:          91,
+    aiInsights,
+  };
+}
+
+// ─── Nearby Techs (Borrow From Another Van) ────────────────────────────────────
+
+export interface NearbyTech {
+  id:          string;
+  name:        string;
+  initials:    string;
+  distanceMi:  number;
+  etaMin:      number;
+  vanId:       string;
+  status:      'available' | 'on-call' | 'en-route';
+  availItems:  Array<{ id: string; name: string; qty: number; unit: string }>;
+}
+
+export const NEARBY_TECHS: NearbyTech[] = [
+  {
+    id:         'tech-kevin',
+    name:       'Kevin Marsh',
+    initials:   'KM',
+    distanceMi: 2.1,
+    etaMin:     8,
+    vanId:      'Unit #31',
+    status:     'available',
+    availItems: [
+      { id: 'contactor-30a', name: '2-Pole 30A Contactor',        qty: 2, unit: 'each' },
+      { id: 'cap-35-5',      name: '35/5 MFD Dual Capacitor',     qty: 1, unit: 'each' },
+      { id: 'fan-blade-18',  name: 'Condenser Fan Blade 18"',     qty: 1, unit: 'each' },
+      { id: 'fuse-3a',       name: '3A Control Fuse',             qty: 6, unit: 'each' },
+      { id: 'ps-high',       name: 'High-Pressure Safety Switch', qty: 1, unit: 'each' },
+    ],
+  },
+  {
+    id:         'tech-sam',
+    name:       'Sam Torres',
+    initials:   'ST',
+    distanceMi: 4.7,
+    etaMin:     18,
+    vanId:      'Unit #52',
+    status:     'on-call',
+    availItems: [
+      { id: 'motor-cond-fan', name: 'Condenser Fan Motor 1/3 HP',  qty: 1, unit: 'each' },
+      { id: 'contactor-40a',  name: '3-Pole 40A Contactor',        qty: 1, unit: 'each' },
+      { id: 'cap-40-5',       name: '40/5 MFD Dual Capacitor',     qty: 1, unit: 'each' },
+      { id: 'xfmr-40va',      name: '40VA Control Transformer',    qty: 1, unit: 'each' },
+    ],
+  },
+];
