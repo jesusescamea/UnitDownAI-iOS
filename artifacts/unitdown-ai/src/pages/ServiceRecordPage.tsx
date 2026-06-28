@@ -937,7 +937,7 @@ export function ServiceRecordPage({ jobId }: ServiceRecordPageProps) {
               <PlaceholderSection
                 icon={Brain}
                 title="Professional Report"
-                message="AI-generated professional report will appear here once generated."
+                message="AI report generation not connected."
               />
             )}
 
@@ -951,7 +951,7 @@ export function ServiceRecordPage({ jobId }: ServiceRecordPageProps) {
                   <p className="text-sm text-slate-800 leading-relaxed">{aiReport.customerSummary}</p>
                 </div>
               ) : (
-                <p className="text-sm text-slate-400 italic">No Customer Summary generated.</p>
+                <p className="text-sm text-slate-400 italic">AI report generation not connected.</p>
               )}
             </div>
 
@@ -965,7 +965,7 @@ export function ServiceRecordPage({ jobId }: ServiceRecordPageProps) {
                   <p className="text-sm text-slate-800 leading-relaxed">{aiReport.invoiceSummary}</p>
                 </div>
               ) : (
-                <p className="text-sm text-slate-400 italic">No Invoice Summary generated.</p>
+                <p className="text-sm text-slate-400 italic">AI report generation not connected.</p>
               )}
             </div>
           </div>
@@ -995,10 +995,7 @@ export function ServiceRecordPage({ jobId }: ServiceRecordPageProps) {
               </div>
             ) : (
               <div className="rounded-xl bg-slate-50 border border-slate-100 p-5 text-center">
-                <p className="text-sm text-slate-500 italic">No Equipment Memory generated.</p>
-                <p className="text-xs text-slate-400 mt-1">
-                  AI-extracted equipment observations will appear here in a future release.
-                </p>
+                <p className="text-sm text-slate-500 italic">No equipment memory recorded for this job.</p>
               </div>
             )}
           </div>

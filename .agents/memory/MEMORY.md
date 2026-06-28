@@ -3,3 +3,4 @@
 - [Capacitor iOS pk_test_ root cause](capacitor-ios-clerk-key.md) — dev env VITE_CLERK_PUBLISHABLE_KEY=pk_test_ bakes into iOS bundle; fix is build with pk_live_ then cap sync, not just changing source.
 - [Trial + credit + reward system](trial-credit-reward-system.md) — full architecture for 7-day trial, 25 initial credits, 5-credit onboarding rewards, and backend enforcement via user_trials table.
 - [Job Mode offline-first architecture](job-mode-offline.md) — client-generated permanent IDs, IndexedDB sync queue (idb), onConflictDoNothing idempotency; startJob never requires network.
+- [Van inventory persistence pattern](van-inventory-persistence.md) — van_inventory + tool_checklist tables; API uses clientId query-param auth (like units.ts, not Bearer); MyVanModal merges persisted qty into INITIAL_INVENTORY template on load.

@@ -1,4 +1,5 @@
-import { useState, useRef, useCallback, useMemo } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useUser } from '@clerk/clerk-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Search, Plus, Minus, ChevronRight, CheckCircle, AlertTriangle,
@@ -175,6 +176,70 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
   const [stockOpen,      setStockOpen]     = useState(false);
   const [briefOpen,      setBriefOpen]     = useState(true);
   const [borrowOpen,     setBorrowOpen]    = useState(false);
+  const [vanLoading,     setVanLoading]    = useState(false);
+
+  const { user } = useUser();
+
+  // ── API persistence helpers ────────────────────────────────────────────────
+  // Fire-and-forget: local state is the source of truth; API persists across sessions.
+  function persistQty(id: string, qty: number) {
+    const uid = user?.id;
+    if (!uid) return;
+    fetch(`/api/van/inventory/${encodeURIComponent(id)}?clientId=${encodeURIComponent(uid)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ qty }),
+    }).catch(() => {}); // silent fail — offline-safe
+  }
+
+  // ── Load persisted inventory on mount ─────────────────────────────────────
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+
+    setVanLoading(true);
+    (async () => {
+      try {
+        const resp = await fetch(`/api/van/inventory?clientId=${encodeURIComponent(uid)}`);
+        if (!resp.ok) return;
+        const { items } = await resp.json() as { items: Array<{ id: string; qty: number }> };
+
+        if (items.length === 0) {
+          // First visit: seed the server with default inventory
+          await fetch('/api/van/inventory/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientId: uid,
+              items: INITIAL_INVENTORY.map(i => ({
+                id: i.id,
+                itemName: i.name,
+                category: i.category,
+                qty: i.qty,
+                minQty: i.minQty,
+                unit: i.unit,
+              })),
+            }),
+          });
+          // Local state already matches INITIAL_INVENTORY — nothing more to do
+        } else {
+          // Merge persisted qty values into the rich local template
+          const qtyById = Object.fromEntries(items.map(a => [a.id, a.qty]));
+          const merged = INITIAL_INVENTORY.map(i => ({
+            ...i,
+            qty: Object.prototype.hasOwnProperty.call(qtyById, i.id) ? qtyById[i.id] : i.qty,
+          }));
+          setInventory(merged);
+          setRestockSet(new Set(merged.filter(i => itemStatus(i) !== 'ready').map(i => i.id)));
+        }
+      } catch {
+        // Offline or API unavailable — stay on local INITIAL_INVENTORY state
+      } finally {
+        setVanLoading(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id]);
 
   // ── Tools readiness (memoized — tools don't change in prototype) ──────────
   const toolsReadiness = useMemo(() => ({
@@ -242,6 +307,7 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
         return s;
       });
     }
+    persistQty(id, clamped);
   }
 
   function markLoaded(id: string) {

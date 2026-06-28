@@ -20,6 +20,7 @@ import aiPolishRouter from "./aiPolish";
 import voiceInterpretRouter from "./voiceInterpret";
 import voiceReportRouter from "./voiceReport";
 import jobsRouter from "./jobs";
+import vanRouter from "./van";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use(aiPolishRouter);
 router.use(voiceInterpretRouter);
 router.use(voiceReportRouter);
 router.use(jobsRouter);
+router.use(vanRouter);
 
 export default router;

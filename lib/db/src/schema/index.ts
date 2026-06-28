@@ -10,3 +10,5 @@ export * from "./unitPhotos";
 export * from "./scheduledEvents";
 export * from "./devices";
 export * from "./jobs";
+export * from "./vanInventory";
+export * from "./toolChecklist";

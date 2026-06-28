@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, unitRecords } from "@workspace/db";
+import { db, unitRecords, jobs, jobTimelineEvents } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 
 const unitsRouter = Router();
@@ -314,6 +314,102 @@ unitsRouter.delete("/units/:id", async (req: Request, res: Response) => {
   } catch (err: any) {
     req.log?.error(err, "Failed to archive unit");
     res.status(500).json({ error: "Failed to archive unit" });
+  }
+});
+
+// ─── GET /api/units/:id/memory — cross-job pattern analysis for a unit ─────────
+// Queries all job_timeline_events linked to this unit across every completed job
+// and synthesizes: repeated parts, chronic alarms, and accumulated memory facts.
+unitsRouter.get("/units/:id/memory", async (req: Request, res: Response) => {
+  const clientId = req.query.clientId as string;
+  if (!validateClientId(clientId)) {
+    res.status(401).json({ error: "Authentication required" });
+    return;
+  }
+
+  const unitId = String(req.params.id);
+
+  try {
+    const events = await db
+      .select({
+        eventType: jobTimelineEvents.eventType,
+        parts:     jobTimelineEvents.parts,
+        metadata:  jobTimelineEvents.metadata,
+        notes:     jobTimelineEvents.notes,
+        timestamp: jobTimelineEvents.timestamp,
+        jobId:     jobTimelineEvents.jobId,
+      })
+      .from(jobTimelineEvents)
+      .innerJoin(
+        jobs,
+        and(
+          eq(jobTimelineEvents.jobId, jobs.id),
+          eq(jobs.unitId, unitId),
+          eq(jobs.userId, clientId),
+        ),
+      )
+      .orderBy(desc(jobTimelineEvents.timestamp));
+
+    const jobIds = new Set(events.map((e) => e.jobId));
+
+    // ── Pattern: repeated parts across multiple jobs ───────────────────────────
+    const partMap: Record<string, { name: string; totalQty: number; jobIds: Set<string> }> = {};
+    for (const ev of events) {
+      const parts = ev.parts as Array<{ name?: string; qty?: number }> | null;
+      if (!Array.isArray(parts)) continue;
+      for (const p of parts) {
+        const name = (p.name ?? "Unknown part").trim();
+        if (!partMap[name]) partMap[name] = { name, totalQty: 0, jobIds: new Set() };
+        partMap[name].totalQty += typeof p.qty === "number" ? p.qty : 1;
+        partMap[name].jobIds.add(ev.jobId);
+      }
+    }
+    const repeatedParts = Object.values(partMap)
+      .filter((p) => p.jobIds.size >= 2)
+      .map((p) => ({ name: p.name, totalQty: p.totalQty, jobCount: p.jobIds.size }))
+      .sort((a, b) => b.jobCount - a.jobCount);
+
+    // ── Pattern: memory facts extracted from job metadata ─────────────────────
+    // Later jobs override earlier ones for the same key (most recent is truth).
+    const memoryMap: Record<string, string> = {};
+    for (const ev of [...events].reverse()) {
+      const meta = ev.metadata as Record<string, unknown> | null;
+      if (!meta) continue;
+      const extracts = meta["memoryExtracts"];
+      if (extracts && typeof extracts === "object" && !Array.isArray(extracts)) {
+        for (const [k, v] of Object.entries(extracts as Record<string, unknown>)) {
+          if (typeof v === "string") memoryMap[k] = v;
+        }
+      }
+    }
+    const memoryFacts = Object.entries(memoryMap).map(([key, value]) => `${key}: ${value}`);
+
+    // ── Pattern: chronic alarm codes ──────────────────────────────────────────
+    const alarmCounts: Record<string, number> = {};
+    for (const ev of events) {
+      if (ev.eventType !== "alarm") continue;
+      const meta = ev.metadata as Record<string, unknown> | null;
+      const code = meta?.["alarmCode"];
+      if (typeof code === "string" && code) {
+        alarmCounts[code] = (alarmCounts[code] ?? 0) + 1;
+      }
+    }
+    const chronicAlarms = Object.entries(alarmCounts)
+      .filter(([, count]) => count >= 2)
+      .map(([code, count]) => ({ code, count }))
+      .sort((a, b) => b.count - a.count);
+
+    res.json({
+      unitId,
+      jobCount: jobIds.size,
+      eventCount: events.length,
+      repeatedParts,
+      memoryFacts,
+      chronicAlarms,
+    });
+  } catch (err) {
+    req.log?.error(err, "Failed to build memory insights");
+    res.status(500).json({ error: "Failed to build memory insights" });
   }
 });
 
