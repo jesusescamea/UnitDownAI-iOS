@@ -16,8 +16,9 @@ export interface ScheduleWizardResult {
 }
 
 interface Props {
-  onClose:  () => void;
-  onCreate: (result: ScheduleWizardResult) => void;
+  onClose:      () => void;
+  onCreate:     (result: ScheduleWizardResult) => void;
+  defaultDate?: string;
 }
 
 interface WizardData {
@@ -115,9 +116,12 @@ const textareaCls = 'w-full bg-gray-800 border border-gray-700 rounded-xl px-3 p
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export function ScheduleJobWizard({ onClose, onCreate }: Props) {
+export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
   const [step, setStep]     = useState(0);
-  const [data, setData]     = useState<WizardData>(EMPTY);
+  const [data, setData]     = useState<WizardData>(() => ({
+    ...EMPTY,
+    date: defaultDate ?? EMPTY.date,
+  }));
   const [errors, setErrors] = useState<Partial<Record<keyof WizardData, string>>>({});
 
   function set<K extends keyof WizardData>(key: K, value: WizardData[K]) {

@@ -76,6 +76,7 @@ export function DashboardView({ onStartJob }: Props) {
   const [userJobs,        setUserJobs]        = useState<TodayJob[]>([]);
   const [userCalEvents,   setUserCalEvents]   = useState<CalendarEvent[]>([]);
   const [schedToast,      setSchedToast]      = useState<string | null>(null);
+  const [prefillDate,     setPrefillDate]      = useState<string | null>(null);
 
   const LS_KEY = 'unitdown_jmp_scheduled_jobs';
 
@@ -103,6 +104,14 @@ export function DashboardView({ onStartJob }: Props) {
     setWizardOpen(false);
     setSchedToast('Job scheduled');
     setTimeout(() => setSchedToast(null), 3500);
+  }
+
+  function handleAddJobFromCalendar() {
+    const date = selectedDay
+      ? `2026-06-${String(selectedDay.day).padStart(2, '0')}`
+      : new Date().toISOString().split('T')[0];
+    setPrefillDate(date);
+    setWizardOpen(true);
   }
 
   const allJobs = [...TODAY_JOBS, ...userJobs];
@@ -173,6 +182,7 @@ export function DashboardView({ onStartJob }: Props) {
           today={TODAY_DAY}
           onDayTap={(day, evts) => setSelectedDay({ day, events: evts })}
           onExpand={() => setCalFullScreen(true)}
+          onAddJob={handleAddJobFromCalendar}
         />
       </div>
 
@@ -193,17 +203,6 @@ export function DashboardView({ onStartJob }: Props) {
             </button>
           ))}
         </div>
-      </div>
-
-      {/* ── Add Customer / Schedule Job ──────────────────────────── */}
-      <div className="px-4 pt-4">
-        <button
-          onClick={() => setWizardOpen(true)}
-          className="w-full flex items-center justify-center gap-2 bg-blue-600/20 border border-blue-600/40 rounded-2xl px-4 py-3.5 text-blue-300 font-bold text-sm active:scale-[0.98] transition-transform"
-        >
-          <Plus size={16} />
-          Add Customer / Schedule Job
-        </button>
       </div>
 
       {/* ── Today's Jobs ─────────────────────────────────────────── */}
@@ -672,8 +671,9 @@ export function DashboardView({ onStartJob }: Props) {
       <AnimatePresence>
         {wizardOpen && (
           <ScheduleJobWizard
-            onClose={() => setWizardOpen(false)}
+            onClose={() => { setWizardOpen(false); setPrefillDate(null); }}
             onCreate={handleJobCreated}
+            defaultDate={prefillDate ?? undefined}
           />
         )}
       </AnimatePresence>
@@ -880,10 +880,11 @@ function AiDayBrief({ jobCount = 3 }: { jobCount?: number }) {
 // ─── Compact Calendar Card ─────────────────────────────────────────────────────
 const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-function CalendarCard({ events, today, onDayTap, onExpand }: {
+function CalendarCard({ events, today, onDayTap, onExpand, onAddJob }: {
   events: CalendarEvent[]; today: number;
   onDayTap: (day: number, events: CalendarEvent[]) => void;
   onExpand: () => void;
+  onAddJob: () => void;
 }) {
   const eventMap = buildEventMap(events);
   const cells = buildCells();
@@ -901,9 +902,15 @@ function CalendarCard({ events, today, onDayTap, onExpand }: {
           <CalIcon size={12} className="text-blue-400" />
           <span className="text-xs font-bold text-white tracking-wide">June 2026</span>
         </div>
-        <button onClick={onExpand} className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
-          <Maximize2 size={11} /><span>Expand</span>
-        </button>
+        <div className="flex items-center gap-3">
+          <button onClick={onAddJob} className="flex items-center gap-1 text-[10px] font-semibold text-blue-400 hover:text-blue-300 active:scale-95 transition-all">
+            <Plus size={11} /><span>Add Job</span>
+          </button>
+          <div className="w-px h-3 bg-gray-700" />
+          <button onClick={onExpand} className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-300 transition-colors">
+            <Maximize2 size={11} /><span>Expand</span>
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-7 px-2 pt-2 pb-0.5">
