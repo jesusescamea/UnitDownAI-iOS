@@ -52,12 +52,6 @@ resolutionRouter.post("/resolution", async (req: Request, res: Response) => {
     await fs.mkdir(FEEDBACK_DIR, { recursive: true });
     await fs.appendFile(RESOLUTION_LOG, JSON.stringify(entry) + "\n", "utf8");
     req.log?.info({ resolved, issueInput: issueInput.slice(0, 60) }, "Resolution feedback received");
-    console.log("Resolution feedback received:", {
-      resolved,
-      ...(resolved
-        ? { selectedRecommendationId: entry.selectedRecommendationId }
-        : { actualFix: String(entry.actualFix).slice(0, 80) }),
-    });
     res.json({ ok: true });
   } catch (err) {
     req.log?.error(err, "Failed to write resolution feedback");

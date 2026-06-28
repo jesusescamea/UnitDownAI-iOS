@@ -30,12 +30,6 @@ feedbackRouter.post("/feedback", async (req: Request, res: Response) => {
     // Append as newline-delimited JSON — one entry per line, safe for concurrent writes
     await fs.appendFile(FEEDBACK_LOG, JSON.stringify(entry) + "\n", "utf8");
     req.log?.info({ recommendationId, vote }, "Feedback received");
-    console.log("Feedback received:", {
-      recommendationId,
-      vote,
-      confidence,
-      issueInput: issueInput.slice(0, 80),
-    });
     res.json({ ok: true });
   } catch (err) {
     req.log?.error(err, "Failed to write feedback");

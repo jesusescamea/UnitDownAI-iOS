@@ -2081,8 +2081,6 @@ function Home() {
   }, [clerkSignOut]);
 
   const runDiagnosis = useCallback((trimmed: string) => {
-    console.log("[UnitDown] Route called: POST /api/hvac/diagnose", { symptoms: trimmed, clientId });
-
     setTimeout(() => {
       resultsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 100);
