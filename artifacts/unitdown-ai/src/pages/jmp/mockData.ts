@@ -8,8 +8,8 @@ export const MOCK_JOB = {
   equipmentShort: 'RTU-3',
   location: 'Rooftop, North Wing',
   symptom: 'Unit not cooling — high pressure alarm active',
-  technician: 'Marcus Rivera',
-  techInitials: 'MR',
+  technician: '—',
+  techInitials: '—',
   date: 'June 27, 2026',
   dispatcher: 'Sarah (office)',
   priority: 'High' as const,
@@ -33,9 +33,9 @@ export const MOCK_EQUIPMENT = {
 };
 
 export const MOCK_HISTORY = [
-  { date: 'Apr 2025', tech: 'D. Carter', summary: 'Code 82 — High Pressure. Cleared alarm, recommended condenser coil cleaning.' },
-  { date: 'Aug 2024', tech: 'M. Rivera', summary: 'Code 82 — High Pressure. Cleared and restarted. Coil restriction suspected.' },
-  { date: 'Mar 2024', tech: 'D. Carter', summary: 'Preventive Maintenance. Belt replaced (3VX425). All readings within spec.' },
+  { date: 'Apr 2025', tech: '—', summary: 'Code 82 — High Pressure. Cleared alarm, recommended condenser coil cleaning.' },
+  { date: 'Aug 2024', tech: '—', summary: 'Code 82 — High Pressure. Cleared and restarted. Coil restriction suspected.' },
+  { date: 'Mar 2024', tech: '—', summary: 'Preventive Maintenance. Belt replaced (3VX425). All readings within spec.' },
 ];
 
 export const INITIAL_MEASUREMENTS: MeasurementReading[] = [
@@ -144,7 +144,7 @@ export const TODAY_JOBS: TodayJob[] = [
       'Medical facility — badge required at main entrance',
       'Customer requested arrival no earlier than 8:00 AM',
       'Roof hatch is unlocked — direct rooftop access available',
-      'Previous tech (D. Carter) noted recurring Code 82, coil restriction suspected',
+      'Prior service records note recurring Code 82, coil restriction suspected',
       'R-410A cylinder and dual capacitor 35/5µF loaded on your truck',
     ],
     isPrototype: true,

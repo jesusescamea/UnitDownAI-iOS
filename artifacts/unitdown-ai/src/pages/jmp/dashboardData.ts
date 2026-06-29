@@ -105,10 +105,10 @@ export const EQUIPMENT_ATTENTION: EquipmentAttention[] = [
       suggestedParts: ['Dual run capacitor', 'Contactor', 'Coil cleaner', 'Pressure gauges', 'Refrigerant'],
     },
     serviceHistory: [
-      { date: 'Jun 27, 2026', tech: 'M. Rivera', type: 'Service Call', summary: 'Code 82 active. Unit not cooling.', alarms: ['Code 82 — High Pressure'] },
-      { date: 'Apr 15, 2025', tech: 'D. Carter', type: 'Service Call', summary: 'Code 82. Cleared alarm, recommended condenser cleaning. Deferred.', alarms: ['Code 82 — High Pressure'] },
-      { date: 'Aug 3, 2024',  tech: 'M. Rivera', type: 'Service Call', summary: 'Code 82. Cleared and restarted. Condenser cleaning deferred again.', alarms: ['Code 82 — High Pressure'] },
-      { date: 'Mar 12, 2024', tech: 'D. Carter', type: 'PM',           summary: 'Annual PM. Belt replaced (3VX425). All readings within spec.', parts: ['Belt 3VX425'] },
+      { date: 'Jun 27, 2026', tech: '—', type: 'Service Call', summary: 'Code 82 active. Unit not cooling.', alarms: ['Code 82 — High Pressure'] },
+      { date: 'Apr 15, 2025', tech: '—', type: 'Service Call', summary: 'Code 82. Cleared alarm, recommended condenser cleaning. Deferred.', alarms: ['Code 82 — High Pressure'] },
+      { date: 'Aug 3, 2024',  tech: '—', type: 'Service Call', summary: 'Code 82. Cleared and restarted. Condenser cleaning deferred again.', alarms: ['Code 82 — High Pressure'] },
+      { date: 'Mar 12, 2024', tech: '—', type: 'PM',           summary: 'Annual PM. Belt replaced (3VX425). All readings within spec.', parts: ['Belt 3VX425'] },
     ],
     measurements: [
       { label: 'Head Pressure',  value: '385 psi', trend: 'up' },
@@ -145,9 +145,9 @@ export const EQUIPMENT_ATTENTION: EquipmentAttention[] = [
       suggestedParts: ['Replacement bearings', 'Sheave set', 'Belt set', 'Vibration meter', 'Motor alignment tool'],
     },
     serviceHistory: [
-      { date: 'Jun 26, 2026', tech: 'M. Rivera', type: 'Service Call', summary: 'Vibration at 0.31 in/s. Fan motor quoted for replacement.' },
-      { date: 'Jan 8, 2026',  tech: 'D. Carter', type: 'PM',           summary: 'Vibration first noted at 0.12 in/s. Logged for monitoring.' },
-      { date: 'Jul 2025',     tech: 'M. Rivera', type: 'PM',           summary: 'Routine PM. No abnormal readings. Belts replaced.' },
+      { date: 'Jun 26, 2026', tech: '—', type: 'Service Call', summary: 'Vibration at 0.31 in/s. Fan motor quoted for replacement.' },
+      { date: 'Jan 8, 2026',  tech: '—', type: 'PM',           summary: 'Vibration first noted at 0.12 in/s. Logged for monitoring.' },
+      { date: 'Jul 2025',     tech: '—', type: 'PM',           summary: 'Routine PM. No abnormal readings. Belts replaced.' },
     ],
     measurements: [
       { label: 'Vibration',    value: '0.31 in/s', trend: 'up' },
@@ -180,9 +180,9 @@ export const EQUIPMENT_ATTENTION: EquipmentAttention[] = [
       suggestedParts: ['Humidifier canister (Liebert DS-series)', 'Water treatment tablets', 'Descaling solution'],
     },
     serviceHistory: [
-      { date: 'Jun 2, 2026',  tech: 'M. Rivera', type: 'PM', summary: 'Annual PM. Canister noted as needing replacement. Deferred pending parts order.', parts: ['Canister on order'] },
-      { date: 'Feb 5, 2026',  tech: 'D. Carter', type: 'PM', summary: 'Quarterly PM. Canister at 80% life. Noted for replacement at next PM.' },
-      { date: 'Jun 20, 2025', tech: 'M. Rivera', type: 'Emergency', summary: 'High temperature alarm. Low humidity contributing factor. Canister replaced.', alarms: ['High Temp Alarm'] },
+      { date: 'Jun 2, 2026',  tech: '—', type: 'PM', summary: 'Annual PM. Canister noted as needing replacement. Deferred pending parts order.', parts: ['Canister on order'] },
+      { date: 'Feb 5, 2026',  tech: '—', type: 'PM', summary: 'Quarterly PM. Canister at 80% life. Noted for replacement at next PM.' },
+      { date: 'Jun 20, 2025', tech: '—', type: 'Emergency', summary: 'High temperature alarm. Low humidity contributing factor. Canister replaced.', alarms: ['High Temp Alarm'] },
     ],
   },
 ];

@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useUser } from '@clerk/clerk-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, ChevronLeft, ChevronRight, User, MapPin, Cpu,
@@ -65,7 +66,7 @@ const EMPTY: WizardData = {
   modelNumber: '', serialNumber: '', locationOnSite: '', refrigerant: '', voltage: '',
   jobType: 'Service Call', customJobTitle: '', date: new Date().toISOString().split('T')[0],
   timeWindow: '8:00 – 10:00 AM', priority: 'normal',
-  assignedTech: 'Marcus Rivera', complaint: '', notes: '',
+  assignedTech: '', complaint: '', notes: '',
 };
 
 const EQUIPMENT_TYPES = [
@@ -82,7 +83,6 @@ const TIME_WINDOWS = [
   'All Day', 'ASAP / Emergency',
 ];
 
-const TECHS = ['Marcus Rivera', 'D. Carter', 'J. Williams', '(Call out / Unassigned)'];
 
 const PRIORITY_OPTIONS: { value: WizardData['priority']; label: string; color: string }[] = [
   { value: 'normal',    label: 'Normal',    color: 'border-blue-600/60 bg-blue-900/20 text-blue-300' },
@@ -99,10 +99,7 @@ const STEPS = [
   { label: 'Review',   icon: ClipboardList },
 ];
 
-// ─── Saved equipment mock data (prototype) ────────────────────────────────────
-// Derived from the same customers as EQUIPMENT_ATTENTION in dashboardData.ts.
-// These are shown when the user's entered businessName matches a known site.
-// In production this would come from GET /api/units?clientId=...
+// ─── Saved equipment (mock data — will be replaced by GET /api/units?clientId=...) ──────────────
 
 interface SavedEquipmentRecord {
   id:             string;
@@ -161,7 +158,7 @@ function getSavedEquipment(businessName: string): SavedEquipmentRecord[] {
   return [];
 }
 
-// ─── Saved customer & site mock data (prototype) ──────────────────────────────
+// ─── Saved customer & site (mock data — will be replaced by customer API) ─────
 // In production these would come from a real customer/site database.
 
 interface SavedCustomerRecord {
@@ -239,6 +236,9 @@ const textareaCls = 'w-full bg-gray-800 border border-gray-700 rounded-xl px-3 p
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
+  const { user } = useUser();
+  const techName = user?.fullName || user?.firstName || 'Me';
+
   const [step, setStep]             = useState(0);
   const [data, setData]             = useState<WizardData>(() => ({
     ...EMPTY,
@@ -253,6 +253,11 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
   const [showScanNote,   setShowScanNote]   = useState(false);
   const [showImportNote, setShowImportNote] = useState(false);
   const [siteMode,       setSiteMode]       = useState<'saved' | 'new'>('saved');
+
+  // Auto-assign logged-in user as technician once Clerk user loads
+  useEffect(() => {
+    if (user) setData(prev => ({ ...prev, assignedTech: techName }));
+  }, [techName, user]);
 
   function set<K extends keyof WizardData>(key: K, value: WizardData[K]) {
     setData(prev => ({ ...prev, [key]: value }));
@@ -380,7 +385,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
         data.refrigerant   && `Refrigerant: ${data.refrigerant}`,
         data.voltage       && `Voltage: ${data.voltage}`,
       ].filter(Boolean) as string[],
-      isPrototype: true,
+      isPrototype: false,
     };
 
     const calEventType: CalendarEvent['type'] =
@@ -680,9 +685,6 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                           : 'No saved equipment for this site'
                         : 'Saved Equipment'}
                     </span>
-                    {savedEquipment.length > 0 && (
-                      <span className="text-[9px] bg-amber-900/40 text-amber-400 border border-amber-800/50 px-1.5 py-0.5 rounded-full font-medium">prototype</span>
-                    )}
                   </div>
 
                   {!data.businessName.trim() ? (
@@ -799,10 +801,10 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                       <div className="flex items-start gap-2">
                         <Download size={13} className="text-purple-400 flex-shrink-0 mt-0.5" />
                         <div>
-                          <p className="text-xs font-bold text-purple-300 mb-0.5">Equipment import not connected in prototype mode</p>
+                          <p className="text-xs font-bold text-purple-300 mb-0.5">Equipment import — coming soon</p>
                           <p className="text-[10px] text-purple-400/80 leading-relaxed">
-                            In production, import from a CSV, your CMMS, or a previous UnitDown export.
-                            In the prototype, use <strong className="text-purple-300">Enter Manually</strong> or select from saved equipment above.
+                            Import from a CSV, your CMMS, or a previous UnitDown export.
+                            For now, use <strong className="text-purple-300">Enter Manually</strong> or select from saved equipment above.
                           </p>
                         </div>
                       </div>
@@ -818,10 +820,10 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                       <div className="flex items-start gap-2">
                         <AlertTriangle size={13} className="text-amber-400 flex-shrink-0 mt-0.5" />
                         <div>
-                          <p className="text-xs font-bold text-amber-300 mb-0.5">Nameplate OCR not connected in prototype mode</p>
+                          <p className="text-xs font-bold text-amber-300 mb-0.5">Nameplate scanning available during a job</p>
                           <p className="text-[10px] text-amber-400/80 leading-relaxed">
-                            Camera-based nameplate scanning (OpenAI Vision) is available in the production app.
-                            In the prototype, use <strong className="text-amber-300">Enter Manually</strong> or select from saved equipment above.
+                            Use <strong className="text-amber-300">Scan Nameplate</strong> from the job dashboard to capture equipment details with the camera.
+                            Here, use <strong className="text-amber-300">Enter Manually</strong> or select from saved equipment above.
                           </p>
                         </div>
                       </div>
@@ -929,9 +931,11 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                   </Field>
                 </div>
                 <Field label="Assigned technician">
-                  <select className={selectCls} value={data.assignedTech} onChange={e => set('assignedTech', e.target.value)}>
-                    {TECHS.map(t => <option key={t} value={t}>{t}</option>)}
-                  </select>
+                  <div className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm flex items-center gap-2">
+                    <User size={14} className="text-blue-400 flex-shrink-0" />
+                    <span className="text-white flex-1">{techName}</span>
+                    <span className="text-[10px] text-gray-500">You</span>
+                  </div>
                 </Field>
                 <Field label="Complaint / task" required>
                   <textarea
