@@ -1,0 +1,107 @@
+Pause landing page work.
+
+Focus on replacing the production work area with the UnitDown 2.0 experience.
+
+Current issue:
+The /records screen still shows the old Field Hub / Priority Center / Active Work layout. This does not match the new UnitDown 2.0 dashboard/job design.
+
+Goal:
+Completely migrate the production app work area to the UnitDown 2.0 interface.
+
+Do not change:
+- Bundle ID
+- version/build number
+- authentication
+- Apple IAP
+- Stripe
+- backend APIs
+- database schemas
+
+Primary requirement:
+The production screens must visually and functionally match the new UnitDown 2.0 experience we built:
+- AI Day Brief
+- modern calendar
+- Today’s Jobs
+- dispatch workflow
+- job cards
+- equipment intelligence
+- service history
+- recommendations
+- 2.0 dark/light theme
+
+Tasks:
+
+1. Replace /records as the main Field Hub screen.
+The current /records layout with:
+- old KPI cards
+- Priority Center
+- Active Work
+- old Saved Units section
+must be replaced or moved into the new UnitDown 2.0 Field Hub layout.
+
+2. Preserve the actual records/equipment functionality.
+Do not delete saved units, equipment CRUD, scanner, timeline, or memory.
+Instead:
+- move Saved Units into a dedicated Equipment/Records section
+- keep route access for equipment list/details
+- update the visual design to match 2.0
+
+3. Make /dashboard and /records consistent.
+There should not be two different dashboards.
+Either:
+- /dashboard becomes the main Field Hub and /records becomes Equipment Records only
+OR
+- /records is replaced by the new Field Hub and equipment records become /equipment
+
+Choose the cleanest route structure and report it.
+
+4. Replace old work cards.
+Old Active Work cards and Priority Center cards should become 2.0-style job cards / alert cards.
+
+5. Job area must use the new 2.0 design.
+The production job experience must look like the new prototype:
+- Dispatch
+- Active Job
+- Completing
+- Service Record
+
+No old JobModePage UI should remain visible.
+
+6. Add 2.0 AppNav across production work screens:
+- Field Hub
+- Jobs
+- Equipment
+- Diagnose
+- Account
+
+7. Make light mode and dark mode both match 2.0.
+Do not leave /records looking like the old app in light mode.
+
+8. Remove duplicate experiences.
+There should not be:
+- old Field Hub plus new Field Hub
+- old job dashboard plus new job dashboard
+- old records dashboard plus new records page
+
+9. Keep diagnostic landing decision separate.
+Do not spend time on public landing page in this sprint.
+Focus only on the logged-in production app.
+
+10. Run:
+- frontend typecheck
+- backend typecheck
+- shared/lib typecheck
+- frontend build
+- backend build
+
+Final report:
+- New route map
+- What /records does now
+- What /dashboard does now
+- What route shows saved equipment
+- What route shows jobs
+- Files changed
+- Typecheck result
+- Build result
+- Remaining blockers
+- Whether the production work area now matches UnitDown 2.0

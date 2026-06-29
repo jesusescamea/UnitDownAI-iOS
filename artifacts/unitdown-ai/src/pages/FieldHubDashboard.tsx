@@ -6,23 +6,23 @@
  * Every section shows an honest empty state when data is absent.
  * No mock data, no fake counts.
  */
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, type ElementType } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@clerk/clerk-react";
 import {
   ThermometerSnowflake,
-  Wrench,
   Briefcase,
   Plus,
   Calendar,
   ChevronRight,
   Stethoscope,
   Building2,
-  User,
+  Wrench,
 } from "lucide-react";
 import { useJobMode } from "@/context/JobModeContext";
 import { ScheduleJobWizard, type ScheduleWizardResult } from "@/pages/jmp/ScheduleJobWizard";
 import { useToast } from "@/hooks/use-toast";
+import { AppNav } from "@/components/AppNav";
 
 // ── Minimal types matching the live API response shapes ──────────────────────
 
@@ -187,51 +187,9 @@ export default function FieldHubDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 pb-12">
+    <div className="min-h-screen bg-slate-50 dark:bg-gray-950 pb-12">
 
-      {/* ── Top nav ─────────────────────────────────────────────────────────── */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-4xl mx-auto px-4 h-14 flex items-center justify-between">
-          <button
-            onClick={() => navigate("/dashboard")}
-            className="flex items-center gap-2"
-          >
-            <div className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center">
-              <ThermometerSnowflake className="w-4 h-4 text-white" />
-            </div>
-            <span className="text-sm font-extrabold text-slate-900 tracking-tight">UnitDown</span>
-            <span className="hidden sm:inline text-xs font-semibold text-blue-600 bg-blue-50 rounded px-1.5 py-0.5 ml-0.5">
-              Field Hub
-            </span>
-          </button>
-
-          <nav className="flex items-center gap-0.5">
-            <button
-              onClick={() => navigate("/records")}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            >
-              <Wrench className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Records</span>
-            </button>
-            <button
-              onClick={() => navigate("/job")}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-            >
-              <Briefcase className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Job Mode</span>
-            </button>
-            <button
-              onClick={() => navigate("/account")}
-              className="flex items-center gap-1 px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-            >
-              <User className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">
-                {clerkUser?.firstName || "Account"}
-              </span>
-            </button>
-          </nav>
-        </div>
-      </header>
+      <AppNav active="dashboard" />
 
       <main className="max-w-4xl mx-auto px-4 py-6 space-y-7">
 
@@ -255,7 +213,7 @@ export default function FieldHubDashboard() {
               { icon: Calendar,    label: "Schedule",      action: () => setShowScheduleWizard(true),     cls: "text-orange-600 bg-orange-50" },
               { icon: Briefcase,   label: "Job Mode",      action: () => navigate("/job"),                cls: "text-violet-600 bg-violet-50" },
               { icon: Wrench,      label: "Records",       action: () => navigate("/records"),            cls: "text-slate-600 bg-slate-100"  },
-            ] as { icon: React.ElementType; label: string; action: () => void; cls: string }[]).map(({ icon: Icon, label, action, cls }) => (
+            ] as { icon: ElementType; label: string; action: () => void; cls: string }[]).map(({ icon: Icon, label, action, cls }) => (
               <button
                 key={label}
                 onClick={action}

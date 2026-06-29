@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
+import { AppNav } from "@/components/AppNav";
 import { useUser, useClerk, useSignIn } from "@clerk/clerk-react";
 import { shouldUseAppleIAP, isIOS, isIOSApp } from "@/lib/platform";
 import { checkIAPSubscriptionActive, restorePurchases, IAP_PRODUCT_ID } from "@/lib/appleIAP";
@@ -454,23 +455,9 @@ export default function AccountPage() {
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="min-h-screen bg-[#f8fafc] text-slate-900 font-sans">
+    <div className="min-h-screen bg-[#f8fafc] dark:bg-gray-950 text-slate-900 dark:text-white font-sans">
 
-      {/* Sticky header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-2xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-3">
-          <button
-            onClick={() => navigate("/")}
-            className="flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-900 transition-colors"
-            data-testid="account-back"
-          >
-            <ChevronLeft className="w-4 h-4" />
-            Back
-          </button>
-          <span className="text-slate-200">|</span>
-          <span className="text-sm font-bold text-slate-700">My Account</span>
-        </div>
-      </header>
+      <AppNav active="account" />
 
       <main className="max-w-2xl mx-auto px-4 sm:px-6 py-8 space-y-5">
 
