@@ -26,6 +26,7 @@ import {
   INITIAL_TOOLS, INITIAL_TOOLS_READINESS,
   computeToolsReadiness, toolReadinessBadge,
 } from './toolData';
+import { AppNav } from '../../components/AppNav';
 import { NameplateWorkflowModal } from './NameplateWorkflowModal';
 import { UnassignedScansModal }   from './UnassignedScansModal';
 import { DispatchInboxModal } from './dispatch/DispatchInboxModal';
@@ -192,10 +193,11 @@ export function DashboardView({ onStartJob }: Props) {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white overflow-y-auto pb-24">
+      <AppNav active="dashboard" />
       <div className="max-w-2xl mx-auto">
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 pt-12 pb-4">
+      <div className="bg-gray-900 border-b border-gray-800 px-4 pt-4 pb-4">
         <div className="flex items-start justify-between">
           <div>
             <div className="text-gray-500 text-xs mb-0.5">{greeting},</div>

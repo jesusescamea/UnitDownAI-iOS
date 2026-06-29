@@ -27,6 +27,7 @@ import { StartJobSheet } from "@/components/job/StartJobSheet";
 import { JobDispatchView, type JobUnitData } from "./job/JobDispatchView";
 import { JobActiveView } from "./job/JobActiveView";
 import { JobCompletionView } from "./job/JobCompletionView";
+import { AppNav } from "@/components/AppNav";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -60,8 +61,9 @@ function JobsListScreen({ onStartNew, onResume }: JobsListScreenProps) {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white">
+      <AppNav active="job" />
       {/* Header */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 pt-12 pb-5">
+      <div className="bg-gray-900 border-b border-gray-800 px-4 pt-5 pb-5">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center">
             <Briefcase className="w-5 h-5 text-white" />

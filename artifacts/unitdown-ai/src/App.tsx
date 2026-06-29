@@ -21,6 +21,7 @@ import BrandPage from "./pages/seo/BrandPage";
 import BrandHub from "./pages/seo/BrandHub";
 import SponsorPage from "./pages/SponsorPage";
 import AccountPage from "./pages/AccountPage";
+import { AppNav } from "@/components/AppNav";
 import RecordsPage from "./pages/RecordsPage";
 import UnitFormPage from "./pages/UnitFormPage";
 import UnitDetailPage from "./pages/UnitDetailPage";
@@ -2272,7 +2273,8 @@ export function Home() {
       />
 
       {/* Navigation */}
-      <header className="bg-white/90 backdrop-blur-md border-b border-blue-100 sticky top-0 z-50">
+      {clerkLoaded && clerkUser && <AppNav active="diagnose" />}
+      <header className={`bg-white/90 backdrop-blur-md border-b border-blue-100 sticky top-0 z-50${clerkLoaded && clerkUser ? ' hidden' : ''}`}>
         <div className="container max-w-6xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="w-8 h-8 sm:w-10 sm:h-10 bg-blue-600 rounded-lg flex items-center justify-center shadow-md shadow-blue-600/20">

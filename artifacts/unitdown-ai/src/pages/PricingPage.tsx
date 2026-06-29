@@ -24,6 +24,7 @@ import { shouldUseAppleIAP } from "@/lib/platform";
 import { purchasePro } from "@/lib/appleIAP";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { AppNav } from "@/components/AppNav";
 
 const FREE_FEATURES = [
   "4 free diagnostics",
@@ -79,22 +80,26 @@ export default function PricingPage() {
     <div className="min-h-screen bg-slate-50">
 
       {/* ── Header ────────────────────────────────────────────────────────────── */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
-        <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
-          <button
-            onClick={() => navigate(isLoaded && clerkUser ? "/dashboard" : "/")}
-            className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            <ArrowLeft className="w-4 h-4" />
-          </button>
-          <div className="flex items-center gap-2">
-            <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center">
-              <ThermometerSnowflake className="w-3.5 h-3.5 text-white" />
+      {isLoaded && clerkUser ? (
+        <AppNav />
+      ) : (
+        <header className="bg-white border-b border-slate-200 sticky top-0 z-40">
+          <div className="max-w-3xl mx-auto px-4 h-14 flex items-center gap-3">
+            <button
+              onClick={() => navigate("/")}
+              className="p-1.5 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+            >
+              <ArrowLeft className="w-4 h-4" />
+            </button>
+            <div className="flex items-center gap-2">
+              <div className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center">
+                <ThermometerSnowflake className="w-3.5 h-3.5 text-white" />
+              </div>
+              <span className="text-sm font-extrabold text-slate-900 tracking-tight">UnitDown</span>
             </div>
-            <span className="text-sm font-extrabold text-slate-900 tracking-tight">UnitDown</span>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       <main className="max-w-3xl mx-auto px-4 py-10 space-y-8">
 
