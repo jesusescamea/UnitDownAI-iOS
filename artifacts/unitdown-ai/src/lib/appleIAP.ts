@@ -7,7 +7,7 @@
  * Product setup required in App Store Connect:
  *   Product ID: com.unitdown.subscription.monthly
  *   Type: Auto-renewing subscription
- *   Price: $7.99/month
+ *   Price: $14.99/month
  *
  * iOS Xcode setup (outside Replit):
  *   1. Run: npx cap add ios && npx cap sync

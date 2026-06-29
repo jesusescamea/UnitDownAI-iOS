@@ -584,7 +584,7 @@ export function LandingPage() {
             Ready to run a better field operation?
           </h2>
           <p className="text-gray-400 mb-8">
-            Free plan available. Pro and Team plans unlock Job Mode, Service Records, Equipment Memory, and unlimited diagnoses.
+            Free plan available. Pro unlocks Job Mode, Service Records, Equipment Memory, and unlimited diagnoses.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             {isSignedIn ? (

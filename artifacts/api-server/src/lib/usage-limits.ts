@@ -2,8 +2,8 @@
 // the usage router and the hvac router (backstop check).
 
 // ── Anonymous / legacy free tier ─────────────────────────────────────────────
-export const FREE_ANON_USES = 4;
-export const FREE_AUTH_USES = 4;
+export const FREE_ANON_USES = 5;
+export const FREE_AUTH_USES = 5;
 
 export type UsageStatus = "free" | "login_gate" | "upgrade_wall";
 

@@ -529,7 +529,7 @@ export default function AccountPage() {
                 <p className="text-xs text-slate-500 mt-0.5">
                   {isPro
                     ? "Unlimited diagnostics, full ranked reports, and all Pro features."
-                    : "Up to 4 free diagnostics. Upgrade for unlimited access."}
+                    : "Up to 5 free diagnostics/month. Upgrade for unlimited access."}
                 </p>
               </div>
               <span

@@ -167,7 +167,7 @@ const LEADS_KEY = "unitdown_leads";
 const DIAG_COUNT_KEY = "unitdown_free_diagnostics_used";
 const CLIENT_ID_KEY = "unitdown_client_id";
 const PRO_KEY = "unitdown_is_pro";
-const FREE_DIAGNOSES = 4;
+const FREE_DIAGNOSES = 5;
 const MAX_HISTORY = 20;
 
 function getOrCreateClientId(): string {
@@ -432,7 +432,7 @@ interface AppleIAPUpgradeModalProps {
 }
 
 function AppleIAPUpgradeModal({ open, onClose, onPurchaseComplete }: AppleIAPUpgradeModalProps) {
-  const [productPrice, setProductPrice] = useState("$7.99");
+  const [productPrice, setProductPrice] = useState("$14.99");
   const [productsLoading, setProductsLoading] = useState(false);
   // null = loading/unknown, true = StoreKit confirmed product, false = StoreKit returned 0
   const [productAvailable, setProductAvailable] = useState<boolean | null>(null);
@@ -1238,7 +1238,7 @@ function UpgradeOverlay({ diagCount, onUpgrade, onDismiss }: { diagCount: number
         <Sparkles className="w-4 h-4 text-blue-200" />
         <span className="text-xs font-extrabold text-blue-100 uppercase tracking-widest">Pro Diagnostic Suite</span>
         {!appleIAP && (
-          <span className="ml-auto text-xs font-bold bg-blue-800/60 text-blue-100 rounded-full px-3 py-0.5">From $7.99/month</span>
+          <span className="ml-auto text-xs font-bold bg-blue-800/60 text-blue-100 rounded-full px-3 py-0.5">$14.99/month</span>
         )}
         <button
           onClick={() => setShowDismissOptions(true)}
@@ -1293,89 +1293,30 @@ function UpgradeOverlay({ diagCount, onUpgrade, onDismiss }: { diagCount: number
           {/* Right: plan cards */}
           <div className="md:w-64 flex-shrink-0 space-y-3">
 
-            {/* On iOS: single IAP product only (Apple guideline — no team tier) */}
-            {appleIAP ? (
-              <div className="rounded-xl border border-slate-200 overflow-hidden">
-                <div className="bg-slate-900 px-4 py-3">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mb-0.5">Pro Tech</p>
-                  <div className="flex items-end gap-0.5">
-                    <span className="text-2xl font-black text-white">$7.99</span>
-                    <span className="text-slate-400 text-xs font-semibold pb-0.5">/mo</span>
-                  </div>
-                  <p className="text-xs text-slate-300 font-semibold mt-1">For solo technicians · Cancel anytime</p>
+            {/* Single Pro Technician card — iOS uses IAP, web uses Stripe */}
+            <div className="rounded-xl border-2 border-blue-500 overflow-hidden">
+              <div className="bg-gradient-to-br from-blue-600 to-blue-700 px-4 py-3">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <p className="text-xs font-bold text-blue-200 uppercase tracking-widest leading-none">Pro Technician</p>
+                  <span className="text-[10px] font-extrabold bg-white/20 text-white rounded-full px-2 py-0.5">Most Popular</span>
                 </div>
-                <div className="bg-white px-4 py-3">
-                  <Button
-                    onClick={onUpgrade}
-                    data-testid="btn-upgrade-to-pro"
-                    className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold h-9 rounded-lg text-sm transition-all"
-                  >
-                    Subscribe
-                  </Button>
+                <div className="flex items-end gap-0.5">
+                  <span className="text-2xl font-black text-white">$14.99</span>
+                  <span className="text-blue-300 text-xs font-semibold pb-0.5">/mo</span>
                 </div>
+                <p className="text-xs text-blue-200 font-semibold mt-1">Unlimited diagnostics · Cancel anytime</p>
               </div>
-            ) : (
-              <>
-                {/* Pro Tech */}
-                <div className="rounded-xl border border-slate-200 overflow-hidden">
-                  <div className="bg-slate-900 px-4 py-3">
-                    <p className="text-xs font-bold text-slate-400 uppercase tracking-widest leading-none mb-0.5">Pro Tech</p>
-                    <div className="flex items-end gap-0.5">
-                      <span className="text-2xl font-black text-white">$7.99</span>
-                      <span className="text-slate-400 text-xs font-semibold pb-0.5">/mo</span>
-                    </div>
-                    <p className="text-xs text-slate-300 font-semibold mt-1">For solo technicians</p>
-                  </div>
-                  <div className="bg-white px-4 py-3">
-                    <Button
-                      onClick={onUpgrade}
-                      data-testid="btn-upgrade-to-pro"
-                      className="w-full bg-slate-900 hover:bg-slate-800 text-white font-extrabold h-9 rounded-lg text-sm transition-all"
-                    >
-                      Subscribe — $7.99/mo
-                    </Button>
-                  </div>
-                </div>
-
-                {/* Contractor Pro — Most Popular */}
-                <div className="rounded-xl border-2 border-blue-500 overflow-hidden relative">
-                  <div className="absolute top-2 right-2">
-                    <span className="text-xs font-extrabold bg-blue-500 text-white rounded-full px-2.5 py-0.5">Most Popular</span>
-                  </div>
-                  <div className="bg-gradient-to-br from-blue-600 to-blue-700 px-4 py-3">
-                    <p className="text-xs font-bold text-blue-200 uppercase tracking-widest leading-none mb-0.5">Contractor Pro</p>
-                    <div className="flex items-end gap-0.5">
-                      <span className="text-2xl font-black text-white">$18.99</span>
-                      <span className="text-blue-300 text-xs font-semibold pb-0.5">/mo</span>
-                    </div>
-                    <p className="text-xs text-blue-200 font-semibold mt-1 leading-snug">For growing HVAC shops</p>
-                  </div>
-                  <div className="bg-white px-4 py-3 space-y-2">
-                    <ul className="space-y-1.5">
-                      {[
-                        { icon: Users, label: "Up to 4 technicians" },
-                        { icon: History, label: "Shared diagnostic history" },
-                        { icon: BookOpen, label: "Shared diagnostic library" },
-                        { icon: Phone, label: "Priority support" },
-                      ].map(({ icon: Icon, label }) => (
-                        <li key={label} className="flex items-center gap-1.5">
-                          <Icon className="w-3 h-3 text-blue-500 flex-shrink-0" />
-                          <span className="text-xs font-medium text-slate-600">{label}</span>
-                        </li>
-                      ))}
-                    </ul>
-                    <Button
-                      onClick={onUpgrade}
-                      data-testid="btn-upgrade-team"
-                      className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold h-9 rounded-lg shadow-sm text-sm transition-all"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                      Get Contractor Pro
-                    </Button>
-                  </div>
-                </div>
-              </>
-            )}
+              <div className="bg-white px-4 py-3">
+                <Button
+                  onClick={onUpgrade}
+                  data-testid="btn-upgrade-to-pro"
+                  className="w-full bg-blue-600 hover:bg-blue-700 text-white font-extrabold h-9 rounded-lg shadow-sm text-sm transition-all"
+                >
+                  <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                  Upgrade to Pro
+                </Button>
+              </div>
+            </div>
 
             {/* Social proof */}
             <div className="text-center pt-1">
@@ -1790,7 +1731,7 @@ export function Home() {
   const [modalOpen, setModalOpen] = useState(false);
   const [emailWallOpen, setEmailWallOpen] = useState(false);
   const [diagCount, setDiagCount] = useState(0);
-  const [freeRemaining, setFreeRemaining] = useState(4);
+  const [freeRemaining, setFreeRemaining] = useState(5);
   const [trialState, setTrialState] = useState<{
     active: boolean;
     daysLeft: number;
@@ -2732,7 +2673,7 @@ export function Home() {
                                   ? <><span className="font-extrabold">{freeLeft} free {freeLeft === 1 ? "use" : "uses"} remaining.</span> <span className="text-blue-600">Sign up free to keep diagnosing.</span></>
                                   : <span className="text-amber-700 font-bold">Free uses complete — create a free account to continue.</span>}
                               </p>
-                              <span className="ml-auto text-xs font-bold text-blue-500 whitespace-nowrap">Upgrade from $7.99/mo →</span>
+                              <span className="ml-auto text-xs font-bold text-blue-500 whitespace-nowrap">Upgrade to Pro →</span>
                             </div>
                           </motion.div>
                         )}

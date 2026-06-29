@@ -208,7 +208,7 @@ export default function ProGate({ children, previewTitle }: ProGateProps) {
             {/* Subscription disclosure */}
             <div className="mt-4 rounded-xl bg-slate-50 border border-slate-100 px-4 py-3 text-center space-y-1">
               <p className="text-[11px] font-bold text-slate-700">UnitDown AI Pro — 1-Month Subscription</p>
-              <p className="text-[11px] text-slate-500">$7.99/month · Auto-renewing · Cancel anytime in Apple ID Settings</p>
+              <p className="text-[11px] text-slate-500">$14.99/month · Auto-renewing · Cancel anytime in Apple ID Settings</p>
               <p className="text-[11px] text-slate-400 leading-relaxed">
                 Payment charged to your Apple ID at purchase confirmation. Renews automatically unless cancelled at least 24 hours before the end of the period.
               </p>
