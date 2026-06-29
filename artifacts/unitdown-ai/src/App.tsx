@@ -37,6 +37,7 @@ import DevJobRecordPreview from "./pages/DevJobRecordPreview";
 import { JobModePage } from "./pages/JobModePage";
 import { ServiceRecordPage } from "./pages/ServiceRecordPage";
 import { LandingPage } from "./pages/LandingPage";
+import PTChartPage from "./pages/PTChartPage";
 import { JobModeProvider } from "./context/JobModeContext";
 import InstallPromptBanner from "./components/InstallPromptBanner";
 import { ActiveJobBanner } from "./components/job/ActiveJobBanner";
@@ -2214,7 +2215,7 @@ export function Home() {
       />
 
       {/* Navigation */}
-      {clerkLoaded && clerkUser && <AppNav active="diagnose" />}
+      {clerkLoaded && clerkUser && <AppNav />}
       <header className={`bg-white/90 backdrop-blur-md border-b border-blue-100 sticky top-0 z-50${clerkLoaded && clerkUser ? ' hidden' : ''}`}>
         <div className="container max-w-6xl mx-auto px-4 sm:px-6 h-16 sm:h-20 flex items-center justify-between">
           <div className="flex items-center gap-2 sm:gap-3">
@@ -2357,22 +2358,35 @@ export function Home() {
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[800px] sm:w-[1000px] h-[500px] opacity-[0.03] bg-[radial-gradient(circle,theme(colors.blue.600)_0%,transparent_70%)] pointer-events-none" />
 
           <div className="container max-w-4xl mx-auto px-4 sm:px-6 text-center space-y-6 relative z-10">
-            <motion.h1
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1]"
-            >
-              Commercial HVAC <br className="hidden md:block" />
-              Intelligence <span className="text-blue-600">Built for the Field</span>
-            </motion.h1>
-            <motion.p
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.1 }}
-              className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto font-medium"
-            >
-              Diagnose faster. Save equipment history. Track repairs. Manage follow-ups. One platform built for commercial HVAC professionals.
-            </motion.p>
+            {/* Marketing headline — hidden for signed-in users in Field OS mode */}
+            {!(clerkLoaded && clerkUser) && (
+              <>
+                <motion.h1
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="text-4xl sm:text-5xl md:text-7xl font-extrabold tracking-tight text-slate-900 leading-[1.1]"
+                >
+                  Commercial HVAC <br className="hidden md:block" />
+                  Intelligence <span className="text-blue-600">Built for the Field</span>
+                </motion.h1>
+                <motion.p
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                  className="text-lg md:text-xl text-slate-600 max-w-2xl mx-auto font-medium"
+                >
+                  Diagnose faster. Save equipment history. Track repairs. Manage follow-ups. One platform built for commercial HVAC professionals.
+                </motion.p>
+              </>
+            )}
+
+            {/* Field OS header — shown only for signed-in users */}
+            {clerkLoaded && clerkUser && (
+              <div className="text-left max-w-3xl mx-auto">
+                <h1 className="text-xl font-extrabold text-slate-900 tracking-tight">Run Diagnosis</h1>
+                <p className="text-sm text-slate-500 mt-0.5">Describe symptoms, readings, or observations below</p>
+              </div>
+            )}
 
             <motion.div
               initial={{ opacity: 0, y: 20 }}
@@ -2455,23 +2469,25 @@ export function Home() {
               </form>
             </motion.div>
 
-            {/* Web CTA */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.35 }}
-              className="flex justify-center pt-2"
-            >
-              <button
-                type="button"
-                onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-                className="flex items-center gap-2 h-[44px] px-5 bg-slate-900 text-white rounded-[10px] text-sm font-semibold hover:bg-slate-800 transition-colors"
-                aria-label="Use UnitDown AI on the web"
+            {/* Web CTA — marketing only, hidden for signed-in users */}
+            {!(clerkLoaded && clerkUser) && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35 }}
+                className="flex justify-center pt-2"
               >
-                <Globe className="w-4 h-4" />
-                Use on the Web
-              </button>
-            </motion.div>
+                <button
+                  type="button"
+                  onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+                  className="flex items-center gap-2 h-[44px] px-5 bg-slate-900 text-white rounded-[10px] text-sm font-semibold hover:bg-slate-800 transition-colors"
+                  aria-label="Use UnitDown AI on the web"
+                >
+                  <Globe className="w-4 h-4" />
+                  Use on the Web
+                </button>
+              </motion.div>
+            )}
 
             <motion.div
               initial={{ opacity: 0 }}
@@ -2558,19 +2574,21 @@ export function Home() {
           </div>
         </section>
 
-        {/* Trust Badges Strip */}
-        <section id="features" className="border-y border-slate-200 bg-white" aria-label="Features">
-          <div className="container max-w-6xl mx-auto px-4 sm:px-6 py-5">
-            <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 items-center">
-              {trustBadges.map((badge, i) => (
-                <div key={i} className="flex items-center gap-2 text-slate-600">
-                  <badge.icon className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500 opacity-80 flex-shrink-0" />
-                  <span className="text-xs sm:text-sm font-semibold whitespace-nowrap">{badge.label}</span>
-                </div>
-              ))}
+        {/* Trust Badges Strip — marketing only, hidden for signed-in Field OS users */}
+        {!(clerkLoaded && clerkUser) && (
+          <section id="features" className="border-y border-slate-200 bg-white" aria-label="Features">
+            <div className="container max-w-6xl mx-auto px-4 sm:px-6 py-5">
+              <div className="flex flex-wrap justify-center gap-x-6 gap-y-3 items-center">
+                {trustBadges.map((badge, i) => (
+                  <div key={i} className="flex items-center gap-2 text-slate-600">
+                    <badge.icon className="w-4 h-4 sm:w-5 sm:h-5 text-blue-500 opacity-80 flex-shrink-0" />
+                    <span className="text-xs sm:text-sm font-semibold whitespace-nowrap">{badge.label}</span>
+                  </div>
+                ))}
+              </div>
             </div>
-          </div>
-        </section>
+          </section>
+        )}
 
         {/* Dynamic Content: Results or How It Works */}
         <div className="flex-1" ref={resultsRef}>
@@ -3481,6 +3499,7 @@ function App() {
               <Route path="/" component={RootRoute} />
               <Route path="/dashboard" component={DashboardRoute} />
               <Route path="/diagnose" component={Home} />
+              <Route path="/pt-chart" component={PTChartPage} />
               <Route path="/pricing" component={PricingPage} />
               <Route path="/admin" component={AdminView} />
               <Route path="/terms" component={TermsPage} />

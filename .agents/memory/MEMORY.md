@@ -4,3 +4,4 @@
 - [Trial + credit + reward system](trial-credit-reward-system.md) — full architecture for 7-day trial, 25 initial credits, 5-credit onboarding rewards, and backend enforcement via user_trials table.
 - [Job Mode offline-first architecture](job-mode-offline.md) — client-generated permanent IDs, IndexedDB sync queue (idb), onConflictDoNothing idempotency; startJob never requires network.
 - [Van inventory persistence pattern](van-inventory-persistence.md) — van_inventory + tool_checklist tables; API uses clientId query-param auth (like units.ts, not Bearer); MyVanModal merges persisted qty into INITIAL_INVENTORY template on load.
+- [PT Chart + Nav architecture](pt-chart-nav.md) — AppNavSection type is "dashboard"|"job"|"pt-chart"|"records"|"account"; Home component at /diagnose uses !(clerkLoaded && clerkUser) guards to hide marketing elements for authenticated users.

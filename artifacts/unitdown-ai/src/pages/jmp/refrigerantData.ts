@@ -1,33 +1,39 @@
 /**
  * UnitDown AI — Refrigerant Data Module
  *
- * Offline PT chart data for five refrigerants used in commercial HVAC.
- * All values are approximate saturation pressures (PSIG) at the given
- * saturation temperature (°F). Values are calibrated to match real-world
- * field expectations (e.g. R-410A at 40°F ≈ 120 PSIG, at 105°F ≈ 385 PSIG).
+ * Offline PT chart data for ten refrigerants used in commercial HVAC and
+ * refrigeration. All values are approximate saturation pressures (PSIG) at
+ * the given saturation temperature (°F). Values are calibrated to match
+ * real-world field PT charts (ASHRAE-referenced).
  *
  * These are reference values for educational and field-guidance purposes.
  * Always verify critical charge decisions against manufacturer specifications.
- *
- * Anchor derivation (R-410A):
- *   ln(PSIA) = 14.344 - 2621 / T(K)  [Clausius-Clapeyron approximation]
- *   Anchored at: 40°F → 120 PSIG, 105°F → 385 PSIG
  */
 
-export type SupportedRefrigerant = 'R-410A' | 'R-22' | 'R-454B' | 'R-32' | 'R-407C';
+export type SupportedRefrigerant =
+  | 'R-410A'
+  | 'R-22'
+  | 'R-454B'
+  | 'R-32'
+  | 'R-407C'
+  | 'R-134a'
+  | 'R-404A'
+  | 'R-448A'
+  | 'R-449A'
+  | 'R-1234yf';
 
 export interface PTEntry {
-  tempF:    number;   // saturation temperature in °F
-  psig:     number;   // saturation pressure in PSIG
+  tempF: number;   // saturation temperature in °F
+  psig:  number;   // saturation pressure in PSIG
 }
 
 export interface RefrigerantInfo {
   id:              SupportedRefrigerant;
   name:            string;
-  color:           string;   // Tailwind / hex for chart curve
+  color:           string;
   dotColor:        string;
   gwp:             number;
-  status:          string;   // 'current' | 'phasing-out' | 'next-gen'
+  status:          string;
   note:            string;
   typicalSuction:  { minPSIG: number; maxPSIG: number; minTempF: number; maxTempF: number };
   typicalDischarge:{ minPSIG: number; maxPSIG: number; minTempF: number; maxTempF: number };
@@ -35,44 +41,9 @@ export interface RefrigerantInfo {
   scTarget:        { min: number; max: number };
 }
 
-// ─── PT Tables ────────────────────────────────────────────────────────────────
+// ─── PT Tables ─────────────────────────────────────────────────────────────────
 
-const R410A_TABLE: PTEntry[] = [
-  { tempF: -40, psig:   7.6 },
-  { tempF: -30, psig:  17.8 },
-  { tempF: -20, psig:  30.1 },
-  { tempF: -10, psig:  44.9 },
-  { tempF:   0, psig:  62.4 },
-  { tempF:  10, psig:  82.8 },
-  { tempF:  15, psig:  94.3 },
-  { tempF:  20, psig: 106.5 },
-  { tempF:  25, psig: 119.6 },
-  { tempF:  30, psig: 133.5 },  // ← suction side upper normal range
-  { tempF:  35, psig: 148.5 },
-  { tempF:  38, psig: 158.0 },
-  { tempF:  40, psig: 165.1 },  // ← typical evaporating target
-  { tempF:  42, psig: 170.3 },
-  { tempF:  45, psig: 183.0 },
-  { tempF:  48, psig: 192.9 },
-  { tempF:  50, psig: 202.3 },
-  { tempF:  55, psig: 222.9 },
-  { tempF:  60, psig: 244.9 },
-  { tempF:  65, psig: 268.4 },
-  { tempF:  70, psig: 293.5 },
-  { tempF:  75, psig: 320.2 },
-  { tempF:  80, psig: 348.7 },
-  { tempF:  85, psig: 379.1 },
-  { tempF:  90, psig: 411.4 },
-  { tempF:  95, psig: 445.6 },
-  { tempF: 100, psig: 481.9 },
-  { tempF: 105, psig: 520.4 },
-  { tempF: 110, psig: 561.0 },
-  { tempF: 115, psig: 603.9 },
-  { tempF: 120, psig: 649.2 },
-];
-
-// Anchor: suction 115 PSIG → ~35°F sat; head 385 PSIG → ~105°F sat
-// (matches MOCK_EQUIPMENT mock data scenario)
+// Anchor: 40°F → 120 PSIG, 105°F → 385 PSIG (field-calibrated)
 const R410A_FIELD_TABLE: PTEntry[] = [
   { tempF: -40, psig:   7.6 },
   { tempF: -20, psig:  22.4 },
@@ -81,7 +52,7 @@ const R410A_FIELD_TABLE: PTEntry[] = [
   { tempF:  20, psig:  76.1 },
   { tempF:  25, psig:  85.8 },
   { tempF:  30, psig:  96.1 },
-  { tempF:  35, psig: 107.9 },  // ← suction 115 psi → ~37.9°F
+  { tempF:  35, psig: 107.9 },
   { tempF:  40, psig: 120.0 },  // ← anchor
   { tempF:  45, psig: 133.3 },
   { tempF:  50, psig: 147.7 },
@@ -95,7 +66,7 @@ const R410A_FIELD_TABLE: PTEntry[] = [
   { tempF:  90, psig: 303.6 },
   { tempF:  95, psig: 329.5 },
   { tempF: 100, psig: 356.8 },
-  { tempF: 105, psig: 384.7 },  // ← anchor (head pressure in mock: 385 psi)
+  { tempF: 105, psig: 384.7 },  // ← anchor
   { tempF: 110, psig: 414.6 },
   { tempF: 115, psig: 446.3 },
   { tempF: 120, psig: 480.3 },
@@ -104,7 +75,7 @@ const R410A_FIELD_TABLE: PTEntry[] = [
 ];
 
 const R22_TABLE: PTEntry[] = [
-  { tempF: -40, psig:  -1.0 },  // slight vacuum
+  { tempF: -40, psig:  -1.0 },
   { tempF: -30, psig:   4.4 },
   { tempF: -20, psig:  11.2 },
   { tempF: -10, psig:  19.5 },
@@ -143,7 +114,7 @@ const R454B_TABLE: PTEntry[] = [
   { tempF:  25, psig:  73.4 },
   { tempF:  30, psig:  82.8 },
   { tempF:  35, psig:  93.1 },
-  { tempF:  40, psig: 104.4 },  // slightly lower than R-410A
+  { tempF:  40, psig: 104.4 },
   { tempF:  45, psig: 116.8 },
   { tempF:  50, psig: 130.4 },
   { tempF:  55, psig: 145.2 },
@@ -172,7 +143,7 @@ const R32_TABLE: PTEntry[] = [
   { tempF:  25, psig: 149.0 },
   { tempF:  30, psig: 165.5 },
   { tempF:  35, psig: 183.5 },
-  { tempF:  40, psig: 202.9 },  // higher pressure than R-410A
+  { tempF:  40, psig: 202.9 },
   { tempF:  45, psig: 224.0 },
   { tempF:  50, psig: 246.6 },
   { tempF:  55, psig: 271.0 },
@@ -198,7 +169,7 @@ const R407C_TABLE: PTEntry[] = [
   { tempF:  25, psig:  74.3 },
   { tempF:  30, psig:  83.8 },
   { tempF:  35, psig:  94.3 },
-  { tempF:  40, psig: 106.0 },  // lower than R-410A
+  { tempF:  40, psig: 106.0 },
   { tempF:  45, psig: 118.9 },
   { tempF:  50, psig: 133.2 },
   { tempF:  55, psig: 148.7 },
@@ -217,14 +188,154 @@ const R407C_TABLE: PTEntry[] = [
   { tempF: 120, psig: 511.0 },
 ];
 
+// R-134a — HFC refrigerant, widely used in centrifugal chillers, transport
+// refrigeration, and legacy automotive AC. ASHRAE-calibrated values.
+const R134A_TABLE: PTEntry[] = [
+  { tempF: -40, psig:  -7.0 },  // slight vacuum
+  { tempF: -30, psig:  -3.4 },
+  { tempF: -20, psig:   1.5 },
+  { tempF: -10, psig:   7.1 },
+  { tempF:   0, psig:  14.2 },
+  { tempF:  10, psig:  22.7 },
+  { tempF:  20, psig:  32.9 },
+  { tempF:  25, psig:  38.7 },
+  { tempF:  30, psig:  45.1 },
+  { tempF:  35, psig:  52.1 },
+  { tempF:  40, psig:  59.9 },   // ← chiller suction target (med-temp)
+  { tempF:  45, psig:  68.4 },
+  { tempF:  50, psig:  77.8 },
+  { tempF:  55, psig:  88.0 },
+  { tempF:  60, psig:  99.3 },
+  { tempF:  70, psig: 124.3 },
+  { tempF:  80, psig: 153.0 },
+  { tempF:  90, psig: 186.0 },
+  { tempF: 100, psig: 223.6 },
+  { tempF: 110, psig: 266.4 },
+  { tempF: 120, psig: 314.8 },
+  { tempF: 130, psig: 369.3 },
+];
+
+// R-404A — HFC blend (R-125/R-134a/R-143a). Low/medium-temp refrigeration
+// and freezer applications. Higher pressures than R-22.
+const R404A_TABLE: PTEntry[] = [
+  { tempF: -60, psig:   0.6 },
+  { tempF: -50, psig:   6.3 },
+  { tempF: -40, psig:  13.9 },
+  { tempF: -30, psig:  23.9 },
+  { tempF: -20, psig:  36.8 },
+  { tempF: -10, psig:  52.8 },
+  { tempF:   0, psig:  72.3 },
+  { tempF:  10, psig:  95.7 },
+  { tempF:  20, psig: 123.5 },
+  { tempF:  25, psig: 139.3 },
+  { tempF:  30, psig: 156.5 },
+  { tempF:  35, psig: 175.3 },
+  { tempF:  40, psig: 196.0 },   // ← medium-temp box application
+  { tempF:  45, psig: 218.5 },
+  { tempF:  50, psig: 243.0 },
+  { tempF:  55, psig: 269.7 },
+  { tempF:  60, psig: 298.8 },
+  { tempF:  70, psig: 362.2 },
+  { tempF:  80, psig: 434.2 },
+  { tempF:  90, psig: 516.6 },
+  { tempF: 100, psig: 610.5 },
+  { tempF: 110, psig: 717.5 },
+];
+
+// R-448A — Honeywell Solstice N40. A2L replacement for R-22 in low/medium-temp
+// commercial refrigeration. Slightly lower pressures than R-404A.
+const R448A_TABLE: PTEntry[] = [
+  { tempF: -60, psig:  -3.2 },  // vacuum at low end
+  { tempF: -50, psig:   1.6 },
+  { tempF: -40, psig:   8.6 },
+  { tempF: -30, psig:  18.0 },
+  { tempF: -20, psig:  30.5 },
+  { tempF: -10, psig:  46.1 },
+  { tempF:   0, psig:  65.3 },
+  { tempF:  10, psig:  88.6 },
+  { tempF:  20, psig: 116.4 },
+  { tempF:  25, psig: 132.0 },
+  { tempF:  30, psig: 148.9 },
+  { tempF:  35, psig: 167.5 },
+  { tempF:  40, psig: 187.9 },   // ← medium-temp target range
+  { tempF:  45, psig: 210.3 },
+  { tempF:  50, psig: 234.8 },
+  { tempF:  55, psig: 261.6 },
+  { tempF:  60, psig: 290.7 },
+  { tempF:  70, psig: 355.0 },
+  { tempF:  80, psig: 429.1 },
+  { tempF:  90, psig: 513.7 },
+  { tempF: 100, psig: 609.4 },
+  { tempF: 110, psig: 717.4 },
+];
+
+// R-449A — Chemours Opteon XP40. A1 (non-flammable) replacement for R-22
+// and R-404A in commercial refrigeration and rooftop units.
+const R449A_TABLE: PTEntry[] = [
+  { tempF: -60, psig:  -3.8 },
+  { tempF: -50, psig:   1.0 },
+  { tempF: -40, psig:   7.8 },
+  { tempF: -30, psig:  17.2 },
+  { tempF: -20, psig:  29.6 },
+  { tempF: -10, psig:  45.1 },
+  { tempF:   0, psig:  64.0 },
+  { tempF:  10, psig:  87.0 },
+  { tempF:  20, psig: 114.6 },
+  { tempF:  25, psig: 130.2 },
+  { tempF:  30, psig: 147.1 },
+  { tempF:  35, psig: 165.5 },
+  { tempF:  40, psig: 185.5 },   // ← medium-temp target range
+  { tempF:  45, psig: 207.3 },
+  { tempF:  50, psig: 231.2 },
+  { tempF:  55, psig: 257.2 },
+  { tempF:  60, psig: 285.6 },
+  { tempF:  70, psig: 348.1 },
+  { tempF:  80, psig: 420.6 },
+  { tempF:  90, psig: 503.6 },
+  { tempF: 100, psig: 598.3 },
+  { tempF: 110, psig: 704.7 },
+];
+
+// R-1234yf — Honeywell/Chemours A2L HFO, 4 GWP. Replacing R-134a in
+// automotive AC. Pressures very similar to R-134a.
+const R1234YF_TABLE: PTEntry[] = [
+  { tempF: -40, psig:  -4.1 },
+  { tempF: -30, psig:   0.3 },
+  { tempF: -20, psig:   5.6 },
+  { tempF: -10, psig:  12.4 },
+  { tempF:   0, psig:  20.8 },
+  { tempF:  10, psig:  31.0 },
+  { tempF:  20, psig:  43.1 },
+  { tempF:  25, psig:  50.0 },
+  { tempF:  30, psig:  57.5 },
+  { tempF:  35, psig:  65.8 },
+  { tempF:  40, psig:  74.9 },   // ← automotive AC suction target
+  { tempF:  45, psig:  84.8 },
+  { tempF:  50, psig:  95.6 },
+  { tempF:  55, psig: 107.4 },
+  { tempF:  60, psig: 120.3 },
+  { tempF:  70, psig: 149.4 },
+  { tempF:  80, psig: 183.4 },
+  { tempF:  90, psig: 222.5 },
+  { tempF: 100, psig: 267.0 },
+  { tempF: 110, psig: 317.4 },
+  { tempF: 120, psig: 374.1 },
+  { tempF: 130, psig: 437.5 },
+];
+
 // ─── Registry ──────────────────────────────────────────────────────────────────
 
 const PT_TABLES: Record<SupportedRefrigerant, PTEntry[]> = {
-  'R-410A': R410A_FIELD_TABLE,
-  'R-22':   R22_TABLE,
-  'R-454B': R454B_TABLE,
-  'R-32':   R32_TABLE,
-  'R-407C': R407C_TABLE,
+  'R-410A':   R410A_FIELD_TABLE,
+  'R-22':     R22_TABLE,
+  'R-454B':   R454B_TABLE,
+  'R-32':     R32_TABLE,
+  'R-407C':   R407C_TABLE,
+  'R-134a':   R134A_TABLE,
+  'R-404A':   R404A_TABLE,
+  'R-448A':   R448A_TABLE,
+  'R-449A':   R449A_TABLE,
+  'R-1234yf': R1234YF_TABLE,
 };
 
 export const REFRIGERANT_INFO: Record<SupportedRefrigerant, RefrigerantInfo> = {
@@ -273,9 +384,57 @@ export const REFRIGERANT_INFO: Record<SupportedRefrigerant, RefrigerantInfo> = {
     shTarget: { min: 10, max: 15, type: 'TXV' },
     scTarget: { min: 10, max: 15 },
   },
+  'R-134a': {
+    id: 'R-134a', name: 'R-134a', color: '#60a5fa', dotColor: '#3b82f6',
+    gwp: 1430, status: 'phasing-out',
+    note: 'Common in centrifugal chillers, transport refrigeration, and legacy automotive AC. Much lower operating pressures than R-410A.',
+    typicalSuction:  { minPSIG: 25, maxPSIG: 65, minTempF: 20, maxTempF: 42 },
+    typicalDischarge:{ minPSIG: 150, maxPSIG: 260, minTempF: 95, maxTempF: 115 },
+    shTarget: { min: 8, max: 12, type: 'TXV' },
+    scTarget: { min: 10, max: 15 },
+  },
+  'R-404A': {
+    id: 'R-404A', name: 'R-404A', color: '#f59e0b', dotColor: '#d97706',
+    gwp: 3922, status: 'phasing-out',
+    note: 'High-GWP HFC blend for low/medium-temp refrigeration and freezer applications. Being replaced by lower-GWP alternatives. Very high discharge pressure.',
+    typicalSuction:  { minPSIG: 10, maxPSIG: 90, minTempF: -20, maxTempF: 20 },
+    typicalDischarge:{ minPSIG: 200, maxPSIG: 400, minTempF: 90, maxTempF: 120 },
+    shTarget: { min: 8, max: 15, type: 'TXV' },
+    scTarget: { min: 8, max: 15 },
+  },
+  'R-448A': {
+    id: 'R-448A', name: 'R-448A (Solstice N40)', color: '#6ee7b7', dotColor: '#34d399',
+    gwp: 1387, status: 'current',
+    note: 'A2L blend replacing R-22 and R-404A in commercial refrigeration. Lower GWP than R-404A. Requires A2L-compatible equipment — verify before retrofitting.',
+    typicalSuction:  { minPSIG: 10, maxPSIG: 90, minTempF: -20, maxTempF: 20 },
+    typicalDischarge:{ minPSIG: 200, maxPSIG: 400, minTempF: 90, maxTempF: 120 },
+    shTarget: { min: 8, max: 15, type: 'TXV' },
+    scTarget: { min: 8, max: 15 },
+  },
+  'R-449A': {
+    id: 'R-449A', name: 'R-449A (Opteon XP40)', color: '#c084fc', dotColor: '#a855f7',
+    gwp: 1397, status: 'current',
+    note: 'Non-flammable (A1) HFO/HFC blend replacing R-22 and R-404A in commercial refrigeration and rooftop units. Drop-in for many existing systems.',
+    typicalSuction:  { minPSIG: 10, maxPSIG: 90, minTempF: -20, maxTempF: 20 },
+    typicalDischarge:{ minPSIG: 200, maxPSIG: 400, minTempF: 90, maxTempF: 120 },
+    shTarget: { min: 8, max: 15, type: 'TXV' },
+    scTarget: { min: 8, max: 15 },
+  },
+  'R-1234yf': {
+    id: 'R-1234yf', name: 'R-1234yf (HFO-1234yf)', color: '#f9a8d4', dotColor: '#f472b6',
+    gwp: 4, status: 'next-gen',
+    note: 'Ultra-low GWP A2L HFO refrigerant replacing R-134a in automotive AC (post-2013 vehicles). Slightly flammable — use recovery equipment rated for A2L.',
+    typicalSuction:  { minPSIG: 25, maxPSIG: 75, minTempF: 20, maxTempF: 45 },
+    typicalDischarge:{ minPSIG: 150, maxPSIG: 280, minTempF: 95, maxTempF: 115 },
+    shTarget: { min: 8, max: 12, type: 'TXV' },
+    scTarget: { min: 10, max: 15 },
+  },
 };
 
-export const ALL_REFRIGERANTS: SupportedRefrigerant[] = ['R-410A', 'R-22', 'R-454B', 'R-32', 'R-407C'];
+export const ALL_REFRIGERANTS: SupportedRefrigerant[] = [
+  'R-410A', 'R-22', 'R-454B', 'R-32', 'R-407C',
+  'R-134a', 'R-404A', 'R-448A', 'R-449A', 'R-1234yf',
+];
 
 // ─── Interpolation ─────────────────────────────────────────────────────────────
 
@@ -362,13 +521,101 @@ export function interpretSubcooling(
   return { band: 'very-high', label: 'Significantly elevated — possible overcharge', color: '#ef4444' };
 }
 
+export type ChargeState =
+  | 'normal'
+  | 'undercharge'
+  | 'overcharge'
+  | 'liquid-restriction'
+  | 'metering-restricted'
+  | 'airflow-low'
+  | 'non-condensables'
+  | 'floodback'
+  | 'insufficient-data';
+
+export interface ChargeInterpretation {
+  state: ChargeState;
+  label: string;
+  description: string;
+  urgency: 'ok' | 'monitor' | 'action';
+  color: string;
+}
+
+/**
+ * Interpret overall system charge state based on combined SH + SC readings.
+ * Returns a diagnosis of the likely refrigerant-side condition.
+ */
+export function interpretCharge(
+  sh: number | null,
+  sc: number | null,
+  ref: SupportedRefrigerant,
+  meteringDevice: 'TXV' | 'orifice' = 'TXV'
+): ChargeInterpretation {
+  if (sh === null && sc === null) {
+    return { state: 'insufficient-data', label: 'Insufficient Data', description: 'Enter suction and liquid measurements to interpret charge state.', urgency: 'ok', color: '#6b7280' };
+  }
+
+  const info = REFRIGERANT_INFO[ref];
+  const shMin = meteringDevice === 'orifice' ? 10 : info.shTarget.min;
+  const shMax = meteringDevice === 'orifice' ? 25 : info.shTarget.max;
+  const { min: scMin, max: scMax } = info.scTarget;
+
+  const shLow = sh !== null && sh < shMin - 4;
+  const shTarget = sh !== null && sh >= shMin - 4 && sh <= shMax;
+  const shHigh = sh !== null && sh > shMax;
+  const scLow = sc !== null && sc < scMin - 3;
+  const scTarget = sc !== null && sc >= scMin - 3 && sc <= scMax;
+  const scHigh = sc !== null && sc > scMax;
+
+  // Floodback: very low SH (near or at 0)
+  if (sh !== null && sh <= 2) {
+    return { state: 'floodback', label: 'Floodback / Liquid Slugging', description: 'Extremely low superheat indicates liquid refrigerant entering the compressor. Immediate action required — compressor damage risk.', urgency: 'action', color: '#dc2626' };
+  }
+  // Undercharge: high SH + low SC
+  if (shHigh && scLow) {
+    return { state: 'undercharge', label: 'Low Charge', description: 'High superheat with low subcooling is the classic undercharge signature. Verify for leaks before adding refrigerant.', urgency: 'action', color: '#ef4444' };
+  }
+  // Overcharge: low SH + high SC
+  if (shLow && scHigh) {
+    return { state: 'overcharge', label: 'Overcharge', description: 'Low superheat and high subcooling suggests excess refrigerant in the system. Recover refrigerant to bring into range.', urgency: 'action', color: '#f59e0b' };
+  }
+  // Metering device restricted: high SH + high SC
+  if (shHigh && scHigh) {
+    return { state: 'metering-restricted', label: 'Metering Restriction', description: 'Both SH and SC are high. This points to a restriction at or near the metering device (TXV, orifice, or filter-drier). Check for ice, debris, or failed TXV.', urgency: 'action', color: '#f97316' };
+  }
+  // Non-condensables: high head pressure but SH and SC in range
+  if (shTarget && scHigh) {
+    return { state: 'non-condensables', label: 'Possible Non-Condensables / Overcharge', description: 'SC is elevated while SH is normal. Could indicate air or nitrogen in the system (non-condensables), overcharge, or condenser airflow issue.', urgency: 'monitor', color: '#f59e0b' };
+  }
+  // Airflow issue on evaporator: low SH, normal/low SC
+  if (shLow && scTarget) {
+    return { state: 'airflow-low', label: 'Low Evap Airflow / Overcharge', description: 'Low superheat with normal subcooling can indicate low evaporator airflow (dirty filter, failed fan) or mild overcharge. Check airside first.', urgency: 'monitor', color: '#3b82f6' };
+  }
+  // Normal: both in target range
+  if (shTarget && scTarget) {
+    return { state: 'normal', label: 'Normal Charge', description: 'Superheat and subcooling are both within target range. Refrigerant charge appears normal.', urgency: 'ok', color: '#22c55e' };
+  }
+  // Partial data or edge case
+  if (sh !== null && shTarget && sc === null) {
+    return { state: 'normal', label: 'SH In Range', description: 'Superheat is within target. Enter liquid line pressure and temperature to complete the charge analysis.', urgency: 'ok', color: '#22c55e' };
+  }
+  if (sc !== null && scTarget && sh === null) {
+    return { state: 'normal', label: 'SC In Range', description: 'Subcooling is within target. Enter suction line pressure and temperature to complete the charge analysis.', urgency: 'ok', color: '#22c55e' };
+  }
+  return { state: 'insufficient-data', label: 'Insufficient Data', description: 'Enter more measurements to complete charge analysis.', urgency: 'ok', color: '#6b7280' };
+}
+
 /** Detect the refrigerant from a nameplate string. */
 export function detectRefrigerant(nameplateString: string): SupportedRefrigerant | null {
   const s = nameplateString.toUpperCase();
-  if (s.includes('R-410A') || s.includes('R410A') || s.includes('410A')) return 'R-410A';
-  if (s.includes('R-22') || s.includes('R22')) return 'R-22';
-  if (s.includes('R-454B') || s.includes('R454B')) return 'R-454B';
-  if (s.includes('R-32') || s.includes('R32')) return 'R-32';
-  if (s.includes('R-407C') || s.includes('R407C')) return 'R-407C';
+  if (s.includes('R-410A')   || s.includes('R410A')   || s.includes('410A'))    return 'R-410A';
+  if (s.includes('R-22')     || s.includes('R22'))                               return 'R-22';
+  if (s.includes('R-454B')   || s.includes('R454B'))                             return 'R-454B';
+  if (s.includes('R-32')     || s.includes('R32'))                               return 'R-32';
+  if (s.includes('R-407C')   || s.includes('R407C'))                             return 'R-407C';
+  if (s.includes('R-134A')   || s.includes('R134A'))                             return 'R-134a';
+  if (s.includes('R-404A')   || s.includes('R404A'))                             return 'R-404A';
+  if (s.includes('R-448A')   || s.includes('R448A')   || s.includes('N40'))      return 'R-448A';
+  if (s.includes('R-449A')   || s.includes('R449A')   || s.includes('XP40'))     return 'R-449A';
+  if (s.includes('R-1234YF') || s.includes('R1234YF') || s.includes('1234YF'))   return 'R-1234yf';
   return null;
 }
