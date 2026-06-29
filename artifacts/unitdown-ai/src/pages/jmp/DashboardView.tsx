@@ -601,6 +601,7 @@ export function DashboardView({ onStartJob }: Props) {
           <DispatchInboxModal
             onClose={() => setInboxOpen(false)}
             onStartJob={() => { setInboxOpen(false); onStartJob(); }}
+            onJobAccepted={handleJobCreated}
           />
         )}
       </AnimatePresence>

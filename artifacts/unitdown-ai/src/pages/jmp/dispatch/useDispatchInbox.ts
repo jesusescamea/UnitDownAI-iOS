@@ -50,6 +50,15 @@ export function useDispatchInbox() {
     });
   }, []);
 
+  const updateJob = useCallback((updated: ImportedJob) => {
+    setJobs(prev => {
+      const exists = prev.some(j => j.id === updated.id);
+      const next = exists ? prev.map(j => j.id === updated.id ? updated : j) : [...prev, updated];
+      save(next);
+      return next;
+    });
+  }, []);
+
   const acceptAll = useCallback(() => {
     setJobs(prev => {
       const next = prev.map(j => j.status === 'pending' ? { ...j, status: 'accepted' as ImportStatus } : j);
@@ -70,5 +79,5 @@ export function useDispatchInbox() {
   const acceptedJobs = jobs.filter(j => j.status === 'accepted');
   const dupJobs      = jobs.filter(j => j.status === 'duplicate');
 
-  return { jobs, pendingJobs, acceptedJobs, dupJobs, addJobs, updateStatus, removeJob, acceptAll, clearAccepted };
+  return { jobs, pendingJobs, acceptedJobs, dupJobs, addJobs, updateJob, updateStatus, removeJob, acceptAll, clearAccepted };
 }

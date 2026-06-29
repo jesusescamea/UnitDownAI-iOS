@@ -1,6 +1,7 @@
 export type ProviderType =
   | 'paste'
   | 'csv'
+  | 'ics'
   | 'manual'
   | 'outlook_calendar'
   | 'outlook_email'

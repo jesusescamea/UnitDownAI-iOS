@@ -1,5 +1,5 @@
 // ─── Dispatch Inbox — Import Parsers ─────────────────────────────────────────
-// Each parser returns Partial<ImportedJob>[] — the caller merges with defaults.
+// Each parser returns ImportedJob[] — ready to add to inbox.
 
 import type { ImportedJob, ProviderType, JobPriority } from './types';
 
@@ -11,12 +11,30 @@ function isoNow(): string {
   return new Date().toISOString();
 }
 
+function todayISO(): string {
+  return new Date().toISOString().split('T')[0];
+}
+
 function guessPriority(text: string): JobPriority {
   const t = text.toLowerCase();
   if (t.includes('emergency') || t.includes('urgent') || t.includes('asap')) return 'emergency';
   if (t.includes('high priority') || t.includes('high pri')) return 'high';
-  if (t.includes(' pm ') || t.includes('preventive') || t.includes('maintenance')) return 'pm';
+  if (t.includes(' pm ') || t.includes('preventive') || t.includes('preventative') || t.includes('maintenance')) return 'pm';
   return 'normal';
+}
+
+function guessJobType(text: string): string {
+  const t = text.toLowerCase();
+  if (t.includes('pm survey') || t.includes('survey')) return 'PM Survey';
+  if (t.includes('pm') || t.includes('preventive') || t.includes('preventative') || t.includes('maintenance')) return 'Preventive Maintenance';
+  if (t.includes('emergency') || t.includes('urgent')) return 'Emergency';
+  if (t.includes('install')) return 'Installation';
+  if (t.includes('follow') && t.includes('up')) return 'Follow-up';
+  if (t.includes('startup') || t.includes('start up') || t.includes('start-up')) return 'Startup';
+  if (t.includes('warranty')) return 'Warranty';
+  if (t.includes('inspection')) return 'Inspection';
+  if (t.includes('serv') || t.includes('service') || t.includes('repair')) return 'Service Call';
+  return 'Service Call';
 }
 
 function defaultJob(source: ProviderType): ImportedJob {
@@ -27,7 +45,7 @@ function defaultJob(source: ProviderType): ImportedJob {
     customer: '',
     site: '',
     address: '',
-    appointmentDate: new Date().toISOString().split('T')[0],
+    appointmentDate: todayISO(),
     appointmentTime: '',
     timeWindow: '',
     phone: '',
@@ -44,17 +62,73 @@ function defaultJob(source: ProviderType): ImportedJob {
   };
 }
 
+// ─── Semicolon-delimited format ────────────────────────────────────────────────
+// Handles: "2606-37730 ; Lowes; serv; 7:00 AM; Lincoln; Vendor meet 10 am; POC 510-472-1230"
+
+function parseSemicolonLine(line: string): ImportedJob | null {
+  const parts = line.split(';').map(p => p.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+
+  const job = defaultJob('paste');
+  job.rawData = line;
+
+  const jobNumMatch = parts[0]?.match(/(\d{4}-\d{4,7}|\d{5,10})/);
+  if (jobNumMatch) job.jobNumber = jobNumMatch[1];
+
+  if (parts[1]) job.customer = parts[1].trim();
+
+  const typeAndKeywords = parts.slice(2).join(' ').toLowerCase();
+  job.jobType = guessJobType(typeAndKeywords);
+  job.priority = guessPriority(typeAndKeywords);
+
+  for (const part of parts) {
+    const timeMatch = part.match(/(\d{1,2}:\d{2}\s*(?:AM|PM)?(?:\s*[-–]\s*\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/i);
+    if (timeMatch && !job.appointmentTime) {
+      const t = timeMatch[1].trim();
+      if (t.includes('–') || t.includes('-')) job.timeWindow = t;
+      else job.appointmentTime = t;
+    }
+
+    const phoneMatch = part.match(/(\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4})/);
+    if (phoneMatch) job.phone = phoneMatch[1];
+  }
+
+  // Location: part that's not a time, phone, type-keyword, or job number
+  const timeRx = /\d{1,2}:\d{2}/;
+  const phoneRx = /\d{3}[\s.\-]\d{4}/;
+  const typeWords = /^(serv|pm|survey|warranty|inspection|startup|install|emergency|urgent|follow|vendor)/i;
+  for (const part of parts.slice(2)) {
+    if (!timeRx.test(part) && !phoneRx.test(part) && !typeWords.test(part) && part.length > 2) {
+      if (!job.site) { job.site = part; continue; }
+      if (!job.notes) { job.notes = part; }
+    }
+  }
+
+  if (!job.customer) return null;
+  return job;
+}
+
 // ─── Paste / text parser ──────────────────────────────────────────────────────
-// Extracts one or more jobs from free-form pasted dispatch text.
-// Uses heuristic line parsing — works with many dispatch formats.
 
 export function parsePastedText(text: string): ImportedJob[] {
   if (!text.trim()) return [];
 
   const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
-  const jobs: ImportedJob[] = [];
 
-  // Detect if text contains multiple job blocks (look for repeating Job #, WO#, etc.)
+  // Detect semicolon-delimited dispatch format
+  const semiLines = lines.filter(l => (l.match(/;/g) ?? []).length >= 2);
+  if (semiLines.length > 0 && semiLines.length >= Math.floor(lines.length * 0.5)) {
+    const jobs: ImportedJob[] = [];
+    for (const line of lines) {
+      if ((line.match(/;/g) ?? []).length < 1) continue;
+      const job = parseSemicolonLine(line);
+      if (job) jobs.push(job);
+    }
+    if (jobs.length > 0) return jobs;
+  }
+
+  // Standard label:value block parser
+  const jobs: ImportedJob[] = [];
   const jobBreakPattern = /^(job\s*#?|work\s*order\s*#?|wo\s*#?|dispatch\s*#?)/i;
   const blocks: string[][] = [];
   let current: string[] = [];
@@ -69,69 +143,50 @@ export function parsePastedText(text: string): ImportedJob[] {
   }
   if (current.length > 0) blocks.push(current);
 
-  // Parse each block into a job
   for (const block of blocks) {
     const job = defaultJob('paste');
     job.rawData = block.join('\n');
+    const blockText = block.join(' ');
 
     for (const line of block) {
-      const lower = line.toLowerCase();
-
-      // Job number
       const jobNumMatch = line.match(/(?:job\s*#?|wo\s*#?|work\s*order\s*#?|dispatch\s*#?)\s*:?\s*([A-Z0-9\-]+)/i);
       if (jobNumMatch) job.jobNumber = jobNumMatch[1];
 
-      // Customer
       const custMatch = line.match(/(?:customer|client|account)\s*:?\s*(.+)/i);
       if (custMatch) job.customer = custMatch[1].trim();
 
-      // Address
       const addrMatch = line.match(/(?:address|location|site\s*address)\s*:?\s*(.+)/i);
       if (addrMatch) job.address = addrMatch[1].trim();
 
-      // Site / building
       const siteMatch = line.match(/(?:site|building|facility)\s*:?\s*(.+)/i);
       if (siteMatch && !job.site) job.site = siteMatch[1].trim();
 
-      // Time / window
       const timeMatch = line.match(/(\d{1,2}:\d{2}\s*(?:AM|PM)?(?:\s*[-–]\s*\d{1,2}:\d{2}\s*(?:AM|PM)?)?)/i);
       if (timeMatch && !job.appointmentTime) {
-        const t = timeMatch[1];
+        const t = timeMatch[1].trim();
         if (t.includes('–') || t.includes('-')) job.timeWindow = t;
         else job.appointmentTime = t;
       }
 
-      // Date
       const dateMatch = line.match(/(\d{1,2}[\/-]\d{1,2}[\/-]\d{2,4}|\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\s+\d{1,2},?\s+\d{4})/i);
-      if (dateMatch && !job.appointmentDate.startsWith('20')) job.appointmentDate = dateMatch[1];
+      if (dateMatch) job.appointmentDate = dateMatch[1];
 
-      // Phone
       const phoneMatch = line.match(/(\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4})/);
       if (phoneMatch) job.phone = phoneMatch[1];
 
-      // Equipment
       const equipMatch = line.match(/(?:unit|equipment|hvac|system|rtu|ahu|chiller|boiler)\s*:?\s*(.+)/i);
       if (equipMatch) job.equipment = equipMatch[1].trim();
 
-      // Complaint / symptom
-      const complaintMatch = line.match(/(?:complaint|symptom|issue|problem|report|description)\s*:?\s*(.+)/i);
+      const complaintMatch = line.match(/(?:complaint|symptom|issue|problem|report|description|task)\s*:?\s*(.+)/i);
       if (complaintMatch) job.complaint = complaintMatch[1].trim();
 
-      // Tech
       const techMatch = line.match(/(?:tech(?:nician)?|assigned\s*to|assign)\s*:?\s*(.+)/i);
       if (techMatch) job.technician = techMatch[1].trim();
-
-      // Job type
-      if (lower.includes('preventive') || lower.includes(' pm ')) job.jobType = 'Preventive Maintenance';
-      else if (lower.includes('follow') && lower.includes('up')) job.jobType = 'Follow-up';
-      else if (lower.includes('install')) job.jobType = 'Installation';
-
-      // Priority from text
-      const p = guessPriority(line);
-      if (p !== 'normal') job.priority = p;
     }
 
-    // Fallback: if customer is still empty, use first meaningful line
+    job.jobType = guessJobType(blockText);
+    job.priority = guessPriority(blockText) !== 'normal' ? guessPriority(blockText) : job.priority;
+
     if (!job.customer && block.length > 0) {
       const firstMeaningful = block.find(l => !l.match(/^(job|wo|work order|dispatch)/i));
       if (firstMeaningful) job.customer = firstMeaningful.trim();
@@ -144,30 +199,27 @@ export function parsePastedText(text: string): ImportedJob[] {
 }
 
 // ─── CSV parser ───────────────────────────────────────────────────────────────
-// Accepts RFC 4180 CSV. Column headers are matched case-insensitively and by
-// common alias names used by different dispatch platforms.
 
 const FIELD_ALIASES: Record<keyof ImportedJob, string[]> = {
   jobNumber:       ['job #', 'job number', 'job num', 'wo #', 'wo number', 'work order', 'order #', 'id'],
   customer:        ['customer', 'client', 'account', 'customer name', 'business'],
   site:            ['site', 'building', 'facility', 'site name', 'location name'],
-  address:         ['address', 'street', 'service address', 'site address', 'job address'],
-  appointmentDate: ['date', 'appointment date', 'scheduled date', 'job date', 'service date'],
-  appointmentTime: ['time', 'appointment time', 'start time', 'scheduled time'],
-  timeWindow:      ['window', 'time window', 'arrival window', 'arrival time'],
+  address:         ['address', 'street', 'service address', 'site address', 'job address', 'location'],
+  appointmentDate: ['date', 'appointment date', 'scheduled date', 'job date', 'service date', 'start date'],
+  appointmentTime: ['time', 'appointment time', 'start time', 'scheduled time', 'start'],
+  timeWindow:      ['window', 'time window', 'arrival window', 'arrival time', 'end', 'end time'],
   phone:           ['phone', 'tel', 'telephone', 'contact phone', 'customer phone'],
   technician:      ['tech', 'technician', 'assigned to', 'employee', 'rep'],
   jobType:         ['type', 'job type', 'service type', 'call type'],
   priority:        ['priority', 'pri', 'urgency', 'severity'],
-  complaint:       ['complaint', 'symptom', 'issue', 'problem', 'description', 'notes', 'work description'],
+  complaint:       ['complaint', 'symptom', 'issue', 'problem', 'description', 'work description', 'task'],
   notes:           ['notes', 'dispatch notes', 'internal notes', 'comments'],
   equipment:       ['unit', 'equipment', 'asset', 'hvac unit', 'asset tag'],
-  // fields not CSV-populated
   id: [], source: [], attachments: [], rawData: [], importedAt: [], status: [], duplicateOf: [],
 };
 
 function matchHeader(header: string): keyof ImportedJob | null {
-  const normalized = header.toLowerCase().trim();
+  const normalized = header.toLowerCase().trim().replace(/[#\s]+/g, ' ').trim();
   for (const [field, aliases] of Object.entries(FIELD_ALIASES)) {
     if (aliases.some(a => a === normalized || normalized.includes(a) || a.includes(normalized))) {
       return field as keyof ImportedJob;
@@ -218,18 +270,133 @@ export function parseCSV(text: string): ImportedJob[] {
       if (!val) return;
 
       if (field === 'priority') {
-        job.priority = guessPriority(val) !== 'normal' ? guessPriority(val) : (val.toLowerCase() as JobPriority) ?? 'normal';
+        const p = guessPriority(val);
+        job.priority = p !== 'normal' ? p : (['emergency', 'high', 'normal', 'pm'].includes(val.toLowerCase()) ? val.toLowerCase() as JobPriority : 'normal');
       } else if (field === 'attachments' || field === 'source' || field === 'id' || field === 'rawData' || field === 'importedAt' || field === 'status' || field === 'duplicateOf') {
-        // skip
+        // skip system fields
       } else {
         (job as unknown as Record<string, unknown>)[field] = val;
       }
     });
 
-    // Normalize priority if it came from CSV as free text
     if (!['emergency', 'high', 'normal', 'pm'].includes(job.priority)) {
       job.priority = guessPriority(job.priority as unknown as string);
     }
+
+    if (job.jobType) job.jobType = guessJobType(job.jobType);
+
+    jobs.push(job);
+  }
+
+  return jobs;
+}
+
+// ─── ICS / iCalendar parser ────────────────────────────────────────────────────
+// Parses VEVENT blocks from .ics files exported from any calendar app.
+
+function parseICSDate(val: string): string {
+  const dateOnly = val.split('T')[0].replace(/[^0-9]/g, '');
+  if (dateOnly.length === 8) {
+    return `${dateOnly.slice(0, 4)}-${dateOnly.slice(4, 6)}-${dateOnly.slice(6, 8)}`;
+  }
+  return todayISO();
+}
+
+function parseICSTime(val: string): string {
+  if (!val.includes('T')) return '';
+  const timePart = val.split('T')[1]?.replace('Z', '').replace(/[^0-9]/g, '') ?? '';
+  if (timePart.length < 4) return '';
+  const h = parseInt(timePart.slice(0, 2), 10);
+  const m = timePart.slice(2, 4);
+  const period = h >= 12 ? 'PM' : 'AM';
+  const h12 = h % 12 || 12;
+  return `${h12}:${m} ${period}`;
+}
+
+function unfoldICS(text: string): string {
+  return text.replace(/\r\n[ \t]/g, '').replace(/\n[ \t]/g, '');
+}
+
+function getICSProp(lines: string[], prop: string): string {
+  for (const line of lines) {
+    if (line.toUpperCase().startsWith(prop.toUpperCase() + ':') || line.toUpperCase().startsWith(prop.toUpperCase() + ';')) {
+      const colonIdx = line.indexOf(':');
+      return colonIdx >= 0 ? line.slice(colonIdx + 1).replace(/\\n/g, '\n').replace(/\\,/g, ',').replace(/\\;/g, ';').replace(/\\\\/g, '\\').trim() : '';
+    }
+  }
+  return '';
+}
+
+export function parseICS(text: string): ImportedJob[] {
+  const unfolded = unfoldICS(text);
+  const rawBlocks = unfolded.split(/BEGIN:VEVENT/i).slice(1);
+  const jobs: ImportedJob[] = [];
+
+  for (const block of rawBlocks) {
+    const endIdx = block.search(/END:VEVENT/i);
+    const content = endIdx >= 0 ? block.slice(0, endIdx) : block;
+    const lines = content.split(/\r?\n/).filter(l => l.trim());
+
+    const job = defaultJob('ics');
+    job.rawData = content;
+
+    const summary    = getICSProp(lines, 'SUMMARY');
+    const location   = getICSProp(lines, 'LOCATION');
+    const description = getICSProp(lines, 'DESCRIPTION');
+    const dtStart    = getICSProp(lines, 'DTSTART');
+    const dtEnd      = getICSProp(lines, 'DTEND');
+
+    // Parse date/time
+    if (dtStart) {
+      job.appointmentDate = parseICSDate(dtStart);
+      const t = parseICSTime(dtStart);
+      if (t) job.appointmentTime = t;
+    }
+    if (dtEnd) {
+      const endTime = parseICSTime(dtEnd);
+      if (endTime && job.appointmentTime) {
+        job.timeWindow = `${job.appointmentTime} – ${endTime}`;
+        job.appointmentTime = '';
+      }
+    }
+
+    // Location → address
+    if (location) job.address = location.replace(/\\n/g, ', ').trim();
+
+    // Summary: try "Customer - Task" or "Customer | Task" splits
+    if (summary) {
+      const splitMatch = summary.match(/^(.+?)\s*[-–|]\s*(.+)$/);
+      if (splitMatch) {
+        job.customer = splitMatch[1].trim();
+        job.complaint = splitMatch[2].trim();
+      } else {
+        job.customer = summary.trim();
+      }
+    }
+
+    // Description: extract phone, job number, complaint, notes
+    if (description) {
+      const phoneMatch = description.match(/(\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4})/);
+      if (phoneMatch) job.phone = phoneMatch[1];
+
+      const jobNumMatch = description.match(/(?:job|wo|work\s*order|dispatch|ticket)\s*#?\s*:?\s*([A-Z0-9\-]+)/i);
+      if (jobNumMatch) job.jobNumber = jobNumMatch[1];
+
+      const complaintMatch = description.match(/(?:complaint|symptom|issue|problem|task|work|description)\s*:?\s*(.+?)(?:\n|$)/i);
+      if (complaintMatch && !job.complaint) job.complaint = complaintMatch[1].trim();
+
+      if (!job.notes) {
+        job.notes = description.replace(/\\n/g, '\n').trim().slice(0, 500);
+      }
+    }
+
+    // Infer job type and priority from all text
+    const allText = [summary, description, location].filter(Boolean).join(' ');
+    job.jobType = guessJobType(allText);
+    job.priority = guessPriority(allText);
+    if (job.priority === 'pm') job.priority = 'pm';
+
+    if (!job.customer) job.customer = summary || 'Calendar Event';
 
     jobs.push(job);
   }

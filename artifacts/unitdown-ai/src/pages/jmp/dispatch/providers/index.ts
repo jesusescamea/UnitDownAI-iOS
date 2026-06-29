@@ -32,6 +32,13 @@ export const PROVIDERS: ProviderDefinition[] = [
     category: 'file',
   },
   {
+    id:       'ics',
+    name:     'Import Calendar File (.ics)',
+    tagline:  'Upload from Google, Apple, or Outlook Calendar',
+    status:   'available',
+    category: 'file',
+  },
+  {
     id:       'pdf',
     name:     'Import PDF',
     tagline:  'Upload a schedule or work order PDF',
@@ -50,22 +57,22 @@ export const PROVIDERS: ProviderDefinition[] = [
   {
     id:       'google_calendar',
     name:     'Google Calendar',
-    tagline:  'Pull jobs from Google Calendar events',
-    status:   'coming_soon',
+    tagline:  'Import via .ics file or paste event text',
+    status:   'available',
     category: 'calendar',
   },
   {
     id:       'apple_calendar',
     name:     'Apple Calendar',
-    tagline:  'Pull jobs from Calendar.app (iOS)',
-    status:   'coming_soon',
+    tagline:  'Import via .ics file or paste event text',
+    status:   'available',
     category: 'calendar',
   },
   {
     id:       'outlook_calendar',
     name:     'Outlook Calendar',
-    tagline:  'Pull jobs via Microsoft Graph',
-    status:   'coming_soon',
+    tagline:  'Import via .ics file, paste, or manual entry',
+    status:   'available',
     category: 'calendar',
   },
   {
