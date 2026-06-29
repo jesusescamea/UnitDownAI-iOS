@@ -222,7 +222,7 @@ export function parseCSV(text: string): ImportedJob[] {
       } else if (field === 'attachments' || field === 'source' || field === 'id' || field === 'rawData' || field === 'importedAt' || field === 'status' || field === 'duplicateOf') {
         // skip
       } else {
-        (job as Record<string, unknown>)[field] = val;
+        (job as unknown as Record<string, unknown>)[field] = val;
       }
     });
 

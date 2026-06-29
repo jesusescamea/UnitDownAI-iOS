@@ -27,6 +27,8 @@ import {
   computeToolsReadiness, toolReadinessBadge,
 } from './toolData';
 import NameplateScannerModal from '../../components/NameplateScannerModal';
+import { DispatchInboxModal } from './dispatch/DispatchInboxModal';
+import { useDispatchInbox } from './dispatch/useDispatchInbox';
 
 interface Props { onStartJob: () => void }
 
@@ -94,6 +96,9 @@ export function DashboardView({ onStartJob }: Props) {
   const [schedToast,      setSchedToast]      = useState<string | null>(null);
   const [prefillDate,     setPrefillDate]      = useState<string | null>(null);
   const [scannerOpen,     setScannerOpen]      = useState(false);
+  const [inboxOpen,       setInboxOpen]        = useState(false);
+  const { pendingJobs, dupJobs } = useDispatchInbox();
+  const inboxBadge = pendingJobs.length + dupJobs.length;
 
   const LS_KEY = 'unitdown_jmp_scheduled_jobs';
 
@@ -454,8 +459,22 @@ export function DashboardView({ onStartJob }: Props) {
               <div className="text-[9px] text-orange-400/80">Checklist</div>
             </div>
           </button>
+          {/* Dispatch Inbox tile */}
+          <button onClick={() => setInboxOpen(true)}
+            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-blue-900/30 border-blue-800 active:scale-95 transition-transform">
+            {inboxBadge > 0 && (
+              <div className="absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-600 text-white">
+                {inboxBadge}
+              </div>
+            )}
+            <FileText size={18} className="text-blue-400" />
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">Dispatch</div>
+              <div className="text-[9px] text-blue-400/80">Inbox</div>
+            </div>
+          </button>
           {[
-            { icon: <Search size={18} />, label: 'Search\nEquipment', color: 'bg-blue-900/40 border-blue-800',     iconColor: 'text-blue-400',  onClick: undefined },
+            { icon: <Search size={18} />, label: 'Search\nEquipment', color: 'bg-gray-900/60 border-gray-800',     iconColor: 'text-gray-400',  onClick: undefined },
             { icon: <Zap size={18} />,    label: 'Scan\nNameplate',   color: 'bg-green-900/40 border-green-800',   iconColor: 'text-green-400', onClick: () => setScannerOpen(true) },
             { icon: <Cpu size={18} />,    label: 'AI\nAssistant',     color: 'bg-purple-900/40 border-purple-800', iconColor: 'text-purple-400', onClick: undefined },
           ].map((a, i) => (
@@ -534,6 +553,15 @@ export function DashboardView({ onStartJob }: Props) {
       <AnimatePresence>
         {toolsOpen && (
           <ToolChecklistModal onClose={() => setToolsOpen(false)} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {inboxOpen && (
+          <DispatchInboxModal
+            onClose={() => setInboxOpen(false)}
+            onStartJob={() => { setInboxOpen(false); onStartJob(); }}
+          />
         )}
       </AnimatePresence>
 
