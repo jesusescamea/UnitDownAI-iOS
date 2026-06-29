@@ -26,6 +26,7 @@ import {
   INITIAL_TOOLS, INITIAL_TOOLS_READINESS,
   computeToolsReadiness, toolReadinessBadge,
 } from './toolData';
+import NameplateScannerModal from '../../components/NameplateScannerModal';
 
 interface Props { onStartJob: () => void }
 
@@ -42,10 +43,6 @@ const SEV_STYLE = {
   low:    { ring: 'border-gray-700',  bg: 'bg-gray-900',     dot: 'bg-gray-500',  label: 'text-gray-400',  badge: 'INFO',  badgeBg: 'bg-gray-800 text-gray-400' },
 };
 
-const CAL_FIRST_DAY = 0;
-const CAL_DAYS = 30;
-const TODAY_DAY = 27;
-
 function buildEventMap(events: CalendarEvent[]) {
   const m = new Map<number, CalendarEvent[]>();
   events.forEach(e => {
@@ -55,9 +52,9 @@ function buildEventMap(events: CalendarEvent[]) {
   return m;
 }
 
-function buildCells(): (number | null)[] {
-  const cells: (number | null)[] = Array(CAL_FIRST_DAY).fill(null);
-  for (let d = 1; d <= CAL_DAYS; d++) cells.push(d);
+function buildCells(firstDay: number, daysInMonth: number): (number | null)[] {
+  const cells: (number | null)[] = Array(firstDay).fill(null);
+  for (let d = 1; d <= daysInMonth; d++) cells.push(d);
   while (cells.length % 7 !== 0) cells.push(null);
   return cells;
 }
@@ -96,6 +93,7 @@ export function DashboardView({ onStartJob }: Props) {
   const [userCalEvents,   setUserCalEvents]   = useState<CalendarEvent[]>([]);
   const [schedToast,      setSchedToast]      = useState<string | null>(null);
   const [prefillDate,     setPrefillDate]      = useState<string | null>(null);
+  const [scannerOpen,     setScannerOpen]      = useState(false);
 
   const LS_KEY = 'unitdown_jmp_scheduled_jobs';
 
@@ -126,9 +124,10 @@ export function DashboardView({ onStartJob }: Props) {
   }
 
   function handleAddJobFromCalendar() {
+    const today = new Date();
     const date = selectedDay
-      ? `2026-06-${String(selectedDay.day).padStart(2, '0')}`
-      : new Date().toISOString().split('T')[0];
+      ? new Date(today.getFullYear(), today.getMonth(), selectedDay.day).toISOString().split('T')[0]
+      : today.toISOString().split('T')[0];
     setPrefillDate(date);
     setWizardOpen(true);
   }
@@ -163,6 +162,7 @@ export function DashboardView({ onStartJob }: Props) {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white overflow-y-auto pb-24">
+      <div className="max-w-2xl mx-auto">
 
       {/* ── Header ──────────────────────────────────────────────── */}
       <div className="bg-gray-900 border-b border-gray-800 px-4 pt-12 pb-4">
@@ -192,7 +192,7 @@ export function DashboardView({ onStartJob }: Props) {
       <div className="px-4 pt-4">
         <CalendarCard
           events={[...realCalEvents, ...userCalEvents]}
-          today={TODAY_DAY}
+          currentDate={now}
           jobsToday={allJobs.length}
           onDayTap={(day, evts) => setSelectedDay({ day, events: evts })}
           onExpand={() => setCalFullScreen(true)}
@@ -455,12 +455,12 @@ export function DashboardView({ onStartJob }: Props) {
             </div>
           </button>
           {[
-            { icon: <Phone size={18} />,  label: 'Emergency\nCall',   color: 'bg-red-900/40 border-red-800',       iconColor: 'text-red-400' },
-            { icon: <Search size={18} />, label: 'Search\nEquipment', color: 'bg-blue-900/40 border-blue-800',     iconColor: 'text-blue-400' },
-            { icon: <Zap size={18} />,    label: 'Scan\nNameplate',   color: 'bg-green-900/40 border-green-800',   iconColor: 'text-green-400' },
-            { icon: <Cpu size={18} />,    label: 'AI\nAssistant',     color: 'bg-purple-900/40 border-purple-800', iconColor: 'text-purple-400' },
+            { icon: <Phone size={18} />,  label: 'Emergency\nCall',   color: 'bg-red-900/40 border-red-800',       iconColor: 'text-red-400',   onClick: undefined },
+            { icon: <Search size={18} />, label: 'Search\nEquipment', color: 'bg-blue-900/40 border-blue-800',     iconColor: 'text-blue-400',  onClick: undefined },
+            { icon: <Zap size={18} />,    label: 'Scan\nNameplate',   color: 'bg-green-900/40 border-green-800',   iconColor: 'text-green-400', onClick: () => setScannerOpen(true) },
+            { icon: <Cpu size={18} />,    label: 'AI\nAssistant',     color: 'bg-purple-900/40 border-purple-800', iconColor: 'text-purple-400', onClick: undefined },
           ].map((a, i) => (
-            <button key={i} className={`flex flex-col items-center gap-2 py-4 rounded-2xl border ${a.color} active:scale-95 transition-transform`}>
+            <button key={i} onClick={a.onClick} className={`flex flex-col items-center gap-2 py-4 rounded-2xl border ${a.color} active:scale-95 transition-transform`}>
               <div className={a.iconColor}>{a.icon}</div>
               <span className="text-[10px] text-gray-300 font-medium text-center leading-tight whitespace-pre-line">{a.label}</span>
             </button>
@@ -489,7 +489,7 @@ export function DashboardView({ onStartJob }: Props) {
       <AnimatePresence>
         {calFullScreen && (
           <FullScreenCalendar
-            events={[...realCalEvents, ...userCalEvents]} today={TODAY_DAY}
+            events={[...realCalEvents, ...userCalEvents]} currentDate={now}
             onClose={() => setCalFullScreen(false)}
             onDayTap={(d, e) => { setCalFullScreen(false); setSelectedDay({ day: d, events: e }); }}
           />
@@ -679,7 +679,6 @@ export function DashboardView({ onStartJob }: Props) {
                     className="w-full bg-blue-700 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2">
                     Start Job <ChevronRight size={16} />
                   </button>
-                  <div className="text-center text-[10px] text-gray-600">Full workflow prototype: JM-2026-0047 only</div>
                 </div>
               )}
             </div>
@@ -721,6 +720,15 @@ export function DashboardView({ onStartJob }: Props) {
           </motion.div>
         )}
       </AnimatePresence>
+
+      {/* ── Nameplate Scanner ──────────────────────────────────────── */}
+      {scannerOpen && (
+        <NameplateScannerModal
+          onClose={() => setScannerOpen(false)}
+          onCapture={(_blob: Blob, _url: string) => { setScannerOpen(false); }}
+        />
+      )}
+      </div>{/* /max-w-2xl */}
     </div>
   );
 }
@@ -852,14 +860,18 @@ function AiDayBrief({ jobCount = 0, jobs = [] }: { jobCount?: number; jobs?: Tod
 // ─── Compact Calendar Card ─────────────────────────────────────────────────────
 const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-function CalendarCard({ events, today, jobsToday, onDayTap, onExpand, onAddJob }: {
-  events: CalendarEvent[]; today: number; jobsToday: number;
+function CalendarCard({ events, currentDate, jobsToday, onDayTap, onExpand, onAddJob }: {
+  events: CalendarEvent[]; currentDate: Date; jobsToday: number;
   onDayTap: (day: number, events: CalendarEvent[]) => void;
   onExpand: () => void;
   onAddJob: () => void;
 }) {
+  const today = currentDate.getDate();
+  const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
+  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+  const monthYear = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const eventMap = buildEventMap(events);
-  const cells = buildCells();
+  const cells = buildCells(firstDay, daysInMonth);
   const rows: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
 
@@ -871,7 +883,7 @@ function CalendarCard({ events, today, jobsToday, onDayTap, onExpand, onAddJob }
       <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
         <div className="flex items-center gap-2">
           <CalIcon size={12} className="text-blue-400" />
-          <span className="text-xs font-bold text-white tracking-wide">June 2026</span>
+          <span className="text-xs font-bold text-white tracking-wide">{monthYear}</span>
         </div>
         <div className="flex items-center gap-3">
           <button onClick={onAddJob} className="flex items-center gap-1 text-[10px] font-semibold text-blue-400 hover:text-blue-300 active:scale-95 transition-all">
@@ -940,14 +952,18 @@ function CalendarCard({ events, today, jobsToday, onDayTap, onExpand, onAddJob }
 }
 
 // ─── Full-Screen Calendar Modal ────────────────────────────────────────────────
-function FullScreenCalendar({ events, today, onClose, onDayTap }: {
-  events: CalendarEvent[]; today: number;
+function FullScreenCalendar({ events, currentDate, onClose, onDayTap }: {
+  events: CalendarEvent[]; currentDate: Date;
   onClose: () => void;
   onDayTap: (day: number, evts: CalendarEvent[]) => void;
 }) {
+  const today = currentDate.getDate();
+  const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
+  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+  const monthYear = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
   const [activeDay, setActiveDay] = useState<number | null>(today);
   const eventMap = buildEventMap(events);
-  const cells = buildCells();
+  const cells = buildCells(firstDay, daysInMonth);
   const rows: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
   const activeDayEvents = activeDay ? (eventMap.get(activeDay) ?? []) : [];
@@ -958,7 +974,7 @@ function FullScreenCalendar({ events, today, onClose, onDayTap }: {
       <div className="px-4 pt-12 pb-4 border-b border-gray-800 flex items-center justify-between flex-shrink-0">
         <div>
           <div className="text-xs text-gray-500 mb-0.5">Full Calendar</div>
-          <h2 className="text-xl font-bold">June 2026</h2>
+          <h2 className="text-xl font-bold">{monthYear}</h2>
         </div>
         <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center">
           <X size={18} className="text-gray-400" />
@@ -967,7 +983,7 @@ function FullScreenCalendar({ events, today, onClose, onDayTap }: {
       <div className="flex-1 overflow-y-auto">
         <div className="flex items-center justify-between px-4 py-3">
           <button className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center"><ChevronLeft size={16} className="text-gray-400" /></button>
-          <span className="text-sm font-bold text-white">June 2026</span>
+          <span className="text-sm font-bold text-white">{monthYear}</span>
           <button className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center"><ChevronRight size={16} className="text-gray-400" /></button>
         </div>
         <div className="grid grid-cols-7 px-3 mb-1">
@@ -1009,7 +1025,7 @@ function FullScreenCalendar({ events, today, onClose, onDayTap }: {
         </div>
         {activeDay !== null && (
           <div className="px-4 pb-8">
-            <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">June {activeDay}</div>
+            <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">{monthYear} {activeDay}</div>
             {activeDayEvents.length === 0 ? (
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 text-center">
                 <div className="text-gray-500 text-sm">No scheduled work</div>

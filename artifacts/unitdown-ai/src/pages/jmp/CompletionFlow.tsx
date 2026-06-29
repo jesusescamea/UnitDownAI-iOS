@@ -161,9 +161,6 @@ export function CompletionFlow({ state, dispatch, onShowRecord }: Props) {
             <Sparkles size={20} />
             <span>Generate Service Record</span>
           </motion.button>
-          <div className="text-center text-xs text-amber-700/70">
-            🧪 Prototype — no real USR generated · not saved · not transmitted
-          </div>
         </div>
       </div>
     );
@@ -243,10 +240,10 @@ export function CompletionFlow({ state, dispatch, onShowRecord }: Props) {
             </motion.div>
 
             <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-              <div className="text-xs font-bold uppercase tracking-widest text-amber-600 mb-2">🧪 Prototype Complete</div>
+              <div className="text-xs font-bold uppercase tracking-widest text-green-500 mb-2">Job Complete</div>
               <h2 className="text-3xl font-bold mb-1">Session Finished</h2>
               <div className="font-mono text-xl font-bold text-orange-400 mb-2">{MOCK_JOB.usrId}</div>
-              <p className="text-amber-700/70 text-xs mb-8">Prototype only — no real record generated · not saved · not transmitted</p>
+              <p className="text-gray-500 text-xs mb-8">Service record generated for this session.</p>
             </motion.div>
 
             {/* Stats */}

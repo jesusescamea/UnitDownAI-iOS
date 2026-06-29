@@ -1397,7 +1397,7 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
             <Camera size={48} className="text-gray-600 mb-4" />
             <h3 className="text-xl font-bold text-white mb-2">Barcode Scanning</h3>
             <p className="text-gray-400 text-center text-sm leading-relaxed mb-6">
-              Barcode scanning is coming soon. Select the part manually from the inventory list for this prototype.
+              Barcode scanning is coming soon. Select the part manually from the inventory list.
             </p>
             <button onClick={() => { setScanOpen(false); setTab('inventory'); }}
               className="bg-teal-700 text-white font-bold px-6 py-3 rounded-2xl flex items-center gap-2">
@@ -1469,7 +1469,7 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
                 <div className="absolute bottom-3 right-3 w-5 h-5 border-b-2 border-r-2 border-purple-500 rounded-br" />
                 <Building2 size={32} className="text-gray-600" />
               </div>
-              <div className="text-xs font-bold uppercase tracking-wider text-purple-400 mb-2">Future Feature</div>
+              <div className="text-xs font-bold uppercase tracking-wider text-purple-400 mb-2">Coming Soon</div>
               <h3 className="text-xl font-bold text-white mb-2 text-center">AI Shelf Scanner</h3>
               <div className="space-y-2 mb-6 w-full max-w-xs">
                 {[

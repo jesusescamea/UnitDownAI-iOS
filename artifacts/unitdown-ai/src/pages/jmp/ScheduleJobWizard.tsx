@@ -435,10 +435,9 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
           ))}
         </div>
 
-        {/* Prototype label */}
         <div className="mt-2 flex items-center gap-1.5">
-          <div className="w-1.5 h-1.5 rounded-full bg-amber-400" />
-          <span className="text-[9px] text-amber-400/70 font-medium">Prototype — saved locally to this browser</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-gray-500" />
+          <span className="text-[9px] text-gray-500 font-medium">Saved to this device</span>
         </div>
       </div>
 
@@ -582,7 +581,6 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                       <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 flex-1">
                         Saved Sites — {data.businessName}
                       </span>
-                      <span className="text-[9px] bg-amber-900/40 text-amber-400 border border-amber-800/50 px-1.5 py-0.5 rounded-full font-medium">prototype</span>
                     </div>
                     {savedSites.map(site => {
                       const isSelected = selectedSiteId === site.id;

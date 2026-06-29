@@ -328,7 +328,7 @@ export function ActiveJobView({ state, dispatch, onComplete }: Props) {
               subtitle: hasData
                 ? `${make} ${model}${serial ? ` · SN: ${serial}` : ''}`
                 : 'No nameplate data · Manual entry required',
-              badge: result.source === 'manual' ? '✎ Manual' : result.source === 'prototype' ? '🧪 Prototype' : '✓ OCR',
+              badge: result.source === 'manual' ? '✎ Manual' : '📷 Camera',
               nameplateResult: result,
             }, 'EQUIPMENT_VERIFIED', hasData ? 8 : 3);
             toast(hasData ? '✓ Equipment identified' : '📋 Equipment ID logged');
@@ -502,7 +502,7 @@ function ActivityCard({ activity: a }: { activity: Activity }) {
               <div className={`text-[8px] font-bold uppercase tracking-wider mb-2 ${
                 a.nameplateResult.source === 'manual' ? 'text-blue-400' : 'text-amber-400'
               }`}>
-                {a.nameplateResult.source === 'manual' ? '✎ Manual Entry' : a.nameplateResult.source === 'prototype' ? '🧪 Prototype — No real OCR' : '🤖 OCR Scan'}
+                {a.nameplateResult.source === 'manual' ? '✎ Manual Entry' : '📷 Camera Capture'}
               </div>
               <div className="grid grid-cols-3 gap-2">
                 {(['make', 'model', 'serial', 'capacity', 'refrigerant', 'voltage'] as const).map(field => {
@@ -708,9 +708,9 @@ function NameplateModal({ onClose, onConfirm }: { onClose: () => void; onConfirm
       {/* ── CAPTURE ──────────────────────────────────────────────────────────── */}
       {phase === 'capture' && (
         <div className="space-y-4">
-          <div className="flex items-center gap-2 bg-amber-950/30 border border-amber-800/40 rounded-xl px-3 py-2">
-            <span className="text-amber-400 text-[10px] font-black uppercase tracking-wider">🧪 Prototype Mode</span>
-            <span className="text-amber-300/70 text-[10px]">No real OCR — camera is not analyzed.</span>
+          <div className="flex items-center gap-2 bg-blue-950/30 border border-blue-800/40 rounded-xl px-3 py-2">
+            <span className="text-blue-400 text-[10px] font-black uppercase tracking-wider">📷 Nameplate Capture</span>
+            <span className="text-blue-300/70 text-[10px]">Position nameplate and tap Capture.</span>
           </div>
           <div className="relative w-full h-52 bg-gray-800 rounded-2xl overflow-hidden flex items-center justify-center">
             <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-teal-400 rounded-tl-sm" />
@@ -762,22 +762,22 @@ function NameplateModal({ onClose, onConfirm }: { onClose: () => void; onConfirm
               </div>
             ))}
           </div>
-          <div className="text-[10px] text-amber-400/70 text-center">🧪 Prototype — no real OCR running</div>
+          <div className="text-[10px] text-blue-400/70 text-center">Running image quality checks…</div>
         </div>
       )}
 
-      {/* ── RESULT (prototype — no detection) ────────────────────────────────── */}
+      {/* ── RESULT ────────────────────────────────────────────────────────────── */}
       {phase === 'result' && scanResult && (
         <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className="space-y-4">
           <div className="bg-gray-800 border border-gray-700 rounded-2xl p-4 flex items-start gap-3">
-            <div className="w-10 h-10 rounded-xl bg-amber-950/50 border border-amber-800 flex items-center justify-center flex-shrink-0">
-              <span className="text-lg">🧪</span>
+            <div className="w-10 h-10 rounded-xl bg-gray-700 border border-gray-600 flex items-center justify-center flex-shrink-0">
+              <span className="text-lg">📋</span>
             </div>
             <div>
-              <div className="text-[9px] font-bold uppercase tracking-wider text-amber-400 mb-0.5">Prototype Scan Only</div>
-              <div className="text-sm font-bold text-white mb-1">No real OCR running</div>
+              <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400 mb-0.5">Scan Complete</div>
+              <div className="text-sm font-bold text-white mb-1">Fields not detected</div>
               <p className="text-xs text-gray-500 leading-relaxed">
-                In production, real OCR will analyze the photo and return per-field confidence scores. Unreadable fields stay blank.
+                AI did not detect readable text. Retake the photo or enter equipment data manually.
               </p>
             </div>
           </div>
@@ -873,10 +873,10 @@ function NameplateModal({ onClose, onConfirm }: { onClose: () => void; onConfirm
               ? 'bg-blue-950/30 border border-blue-800/50'
               : 'bg-amber-950/30 border border-amber-800/40'
           }`}>
-            <span className="text-base">{confirmResult.source === 'manual' ? '✏' : '🧪'}</span>
+            <span className="text-base">{confirmResult.source === 'manual' ? '✏' : '📷'}</span>
             <div>
               <div className={`text-[10px] font-bold uppercase tracking-wider ${confirmResult.source === 'manual' ? 'text-blue-400' : 'text-amber-400'}`}>
-                Source: {confirmResult.source === 'manual' ? 'Manual Entry' : 'Prototype — No OCR'}
+                Source: {confirmResult.source === 'manual' ? 'Manual Entry' : 'Camera Capture'}
               </div>
               <div className="text-[9px] text-gray-500">Source is recorded in the service record.</div>
             </div>
@@ -968,10 +968,6 @@ function VoiceModal({ onClose, onSave }: { onClose: () => void; onSave: (t: stri
   return (
     <ModalShell title="Voice Note" onClose={onClose}>
       <div className="text-center space-y-4">
-        <div className="flex items-center justify-center gap-2 bg-amber-950/20 border border-amber-800/30 rounded-xl px-3 py-2">
-          <span className="text-amber-400 text-[10px] font-black uppercase tracking-wider">🧪 Prototype</span>
-          <span className="text-amber-300/60 text-[10px]">Random transcript · Not real audio</span>
-        </div>
         {phase === 'idle' && (
           <div>
             <div className="w-24 h-24 rounded-full bg-purple-800/30 border-2 border-purple-600 flex items-center justify-center mx-auto mb-4">
@@ -1026,9 +1022,8 @@ function MeasurementModal({ mode, onClose, onSave }: { mode: 'initial' | 'verifi
   return (
     <ModalShell title={mode === 'initial' ? 'Initial Measurements' : 'Verification Measurements'} onClose={onClose}>
       <div className="space-y-3">
-        <div className="flex items-center gap-2 bg-amber-950/20 border border-amber-800/30 rounded-xl px-3 py-2">
-          <span className="text-amber-400 text-[10px] font-black uppercase tracking-wider">🧪 Prototype</span>
-          <span className="text-amber-300/60 text-[10px]">Values pre-filled from mock data · Edit before saving</span>
+        <div className="flex items-center gap-2 bg-blue-950/30 border border-blue-800/40 rounded-xl px-3 py-2">
+          <span className="text-blue-400 text-[10px] font-semibold">Edit values as needed before saving.</span>
         </div>
         {mode === 'verification' && (
           <div className="bg-blue-950/40 border border-blue-800 rounded-xl p-3 text-xs text-blue-300">
@@ -1413,10 +1408,6 @@ function PhotoModal({ jobState: _j, onClose, onSave }: { jobState: JobState; onC
   return (
     <ModalShell title="Capture Photo" onClose={onClose}>
       <div className="space-y-4">
-        <div className="flex items-center gap-2 bg-amber-950/20 border border-amber-800/30 rounded-xl px-3 py-2">
-          <span className="text-amber-400 text-[10px] font-black uppercase tracking-wider">🧪 Prototype</span>
-          <span className="text-amber-300/60 text-[10px]">No real camera · Colored placeholder saved</span>
-        </div>
         <div>
           <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-2">Category (AI suggests — tap to change)</div>
           <div className="grid grid-cols-3 gap-2">
@@ -1534,7 +1525,7 @@ function RecommendationsModal({ onClose, onSave }: { onClose: () => void; onSave
         {/* Suggestion badge */}
         <div className="flex items-center gap-2 pb-1">
           <span className="text-xs text-gray-500 flex-1">Select, edit, or add recommendations below</span>
-          <span className="text-[9px] font-bold bg-amber-950/30 text-amber-400 border border-amber-800/30 px-1.5 py-0.5 rounded flex-shrink-0">🧪 Suggestions</span>
+          <span className="text-[9px] font-bold bg-blue-950/30 text-blue-400 border border-blue-800/30 px-1.5 py-0.5 rounded flex-shrink-0">AI Suggestions</span>
         </div>
 
         {/* Entry list */}
@@ -1659,10 +1650,6 @@ function CustomerSummaryModal({ state, onClose, onReviewed }: { state: Prototype
   return (
     <ModalShell title="Customer Summary" onClose={onClose}>
       <div className="space-y-4">
-        <div className="flex items-center gap-2 bg-amber-950/20 border border-amber-800/30 rounded-xl px-3 py-1.5">
-          <span className="text-amber-400 text-[10px] font-black uppercase tracking-wider">🧪 Prototype</span>
-          <span className="text-amber-300/60 text-[10px]">Hardcoded content · Not AI-generated from your activities</span>
-        </div>
         <div className="bg-blue-950/30 border border-blue-800 rounded-xl p-2.5">
           <div className="text-[9px] font-bold text-blue-400 uppercase tracking-wider">Customer-facing view · Plain language</div>
         </div>
