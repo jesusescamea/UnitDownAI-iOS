@@ -1,0 +1,253 @@
+Production Bug Fix Sprint — Dashboard Quick Actions + Offline Mode
+
+Do not change:
+- Bundle ID
+- Authentication
+- Clerk
+- Apple IAP
+- Stripe
+- Version/build numbers
+- Database schema unless absolutely necessary
+
+The UnitDown 2.0 dashboard is live, but several actions are incomplete or dead. Also, offline mode must work as a core field feature, not as a future idea.
+
+==================================================
+ISSUE 1 — Search Equipment is a dead button
+==================================================
+
+Fix Search Equipment.
+
+Required behavior:
+- Open a production-quality Equipment Search modal/sheet.
+- Search real equipment records using the existing Equipment/Records API.
+- Search by:
+  - Customer
+  - Site
+  - Unit nickname
+  - Manufacturer
+  - Model
+  - Serial
+  - Equipment type
+  - Location
+
+Display:
+- Customer
+- Site
+- Unit name
+- Manufacturer
+- Model
+- Health/status badge if available
+
+Tap result:
+- Navigate to /records/:id
+
+Support:
+- Loading state
+- Empty state
+- No results state
+- Retry on API failure
+- Full-screen mobile sheet
+- Dark mode
+
+==================================================
+ISSUE 2 — AI Assistant is a dead button
+==================================================
+
+Fix AI Assistant.
+
+Required behavior:
+- Open a full-screen AI Assistant.
+- Reuse the existing production diagnostic AI/backend.
+- Do not create a separate AI system.
+
+Assistant should support:
+- General HVAC troubleshooting
+- Fault explanations
+- Sequence of operation
+- Refrigerant questions
+- Electrical questions
+- Controls
+- Parts questions
+- UnitDown feature questions
+
+Example prompts:
+- "I'm at a Lennox RTU. What should I check next?"
+- "Explain low suction."
+- "What does error 238 mean?"
+- "Walk me through economizer operation."
+- "What should my superheat be?"
+- "What meter should I grab?"
+
+Interface:
+- Conversation history
+- Suggested prompts
+- Typing/loading state
+- Clear conversation
+- Voice input button if available, otherwise disabled with clear label
+- Photo attach button if available, otherwise disabled with clear label
+
+==================================================
+ISSUE 3 — Offline Mode must actually work
+==================================================
+
+Offline is a core HVAC field requirement.
+
+Technicians often work on rooftops, mechanical rooms, basements, hospitals, warehouses, and remote sites with poor reception.
+
+UnitDown must allow the tech to keep working with no reception.
+
+Required behavior:
+
+1. Add an Offline Mode quick-access control
+Place it where techs can reach it quickly:
+- bottom quick-jump button
+OR
+- persistent bottom bar
+OR
+- dashboard Quick Action
+
+Label:
+Offline Mode
+
+2. Offline Mode should not just be a screen.
+The app should automatically detect offline/online status using navigator.onLine and network request failures.
+
+3. When offline:
+User can still input:
+- job notes
+- voice notes/transcripts if local recording is available
+- measurements
+- parts used
+- recommendations
+- photos if local storage supports it
+- completion notes
+- customer summary drafts
+- equipment observations
+- model/serial/unit info manually
+
+4. Store offline entries locally.
+Use the existing IndexedDB/offline queue if available.
+If one already exists, wire the dashboard/job flow to it.
+Do not create a duplicate offline system if JobMode already has one.
+
+5. Show sync status clearly:
+- Offline — saving locally
+- X items pending sync
+- Syncing...
+- Synced
+- Sync failed — retry
+
+6. When reception returns:
+- Automatically sync queued items.
+- Preserve original timestamps.
+- Preserve original job association.
+- Do not duplicate records.
+- If sync fails, keep items queued and show retry.
+
+7. Job Mode:
+Ensure offline works inside /job and /job/:id.
+The tech should be able to proceed as if reception still existed.
+
+8. Dashboard:
+Show an Offline Mode status indicator:
+- Online
+- Offline
+- Pending sync count
+
+9. Add manual sync button:
+Sync Now
+
+10. Never block field input because of missing reception.
+If an API call fails:
+- save locally
+- queue for sync
+- tell user it will sync later
+
+==================================================
+ISSUE 4 — Scan Nameplate
+==================================================
+
+Verify Scan Nameplate launches production OCR flow.
+
+If OCR is available:
+- open real scanner
+- run real extraction
+- require confirmation before saving
+
+If unavailable:
+- show honest unavailable screen
+- no dead button
+
+==================================================
+ISSUE 5 — Audit all quick actions
+==================================================
+
+Dashboard Quick Actions:
+- My Van
+- Tool Checklist
+- Search Equipment
+- Scan Nameplate
+- AI Assistant
+- Offline Mode
+
+For each:
+- Works
+- Or clearly says Coming Soon/Unavailable
+- No dead taps
+- No fake prototype behavior
+
+==================================================
+TESTING
+==================================================
+
+Test:
+
+1. Online mode
+- All quick actions open correctly
+
+2. Offline mode
+- Turn network off
+- Open active job
+- Add note
+- Add measurement
+- Add recommendation
+- Add part used
+- Add photo if available
+- Finish or save progress
+- Confirm entries remain after refresh
+- Turn network back on
+- Confirm pending items sync
+
+3. Sync status
+- Pending count updates
+- Sync Now works
+- No duplicates after sync
+
+Run:
+- frontend typecheck
+- backend typecheck
+- shared/lib typecheck
+- frontend build
+- backend build
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report:
+
+1. Files changed
+2. Search Equipment fix
+3. AI Assistant fix
+4. Offline Mode implementation
+5. Whether existing IndexedDB queue was reused
+6. What works offline
+7. What syncs when online returns
+8. Scan Nameplate status
+9. Dead buttons removed/fixed
+10. Typecheck results
+11. Build results
+12. Remaining blockers before App Store Build 46
+
+Success condition:
+A technician can keep using UnitDown in the field with no reception, continue entering job information, and have everything sync automatically when reception returns.
