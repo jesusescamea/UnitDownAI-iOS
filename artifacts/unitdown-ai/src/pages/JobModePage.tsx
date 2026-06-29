@@ -60,7 +60,7 @@ function JobsListScreen({ onStartNew, onResume }: JobsListScreenProps) {
   }, [pendingJobIds, loadPendingJobs]);
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
+    <div className="min-h-screen bg-gray-950 text-white pb-14 sm:pb-0">
       <AppNav active="job" />
       {/* Header */}
       <div className="bg-gray-900 border-b border-gray-800 px-4 pt-5 pb-5">

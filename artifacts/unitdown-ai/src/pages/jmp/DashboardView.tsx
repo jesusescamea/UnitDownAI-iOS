@@ -197,19 +197,25 @@ export function DashboardView({ onStartJob }: Props) {
       <div className="max-w-2xl mx-auto">
 
       {/* ── Header ──────────────────────────────────────────────── */}
-      <div className="bg-gray-900 border-b border-gray-800 px-4 pt-4 pb-4">
-        <div className="flex items-start justify-between">
-          <div>
-            <div className="text-gray-500 text-xs mb-0.5">{greeting},</div>
-            <h1 className="text-2xl font-bold leading-tight">{displayName}</h1>
-            <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
+      <div className="px-4 pt-4 pb-3 border-b border-gray-800/60">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[10px] font-bold uppercase tracking-widest text-gray-600 mb-0.5">{greeting}</div>
+            <h1 className="text-xl font-extrabold text-white leading-tight truncate">{displayName}</h1>
+            <div className="flex items-center gap-1.5 mt-1 text-[11px] text-gray-500 flex-wrap">
               <span>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
               <span className="text-gray-700">·</span>
               <span>{timeStr}</span>
+              {allJobs.length > 0 && (
+                <>
+                  <span className="text-gray-700">·</span>
+                  <span className="text-blue-400/90 font-semibold">{allJobs.length} job{allJobs.length !== 1 ? 's' : ''} today</span>
+                </>
+              )}
             </div>
           </div>
           <button onClick={() => setAccountOpen(true)}
-            className="w-12 h-12 rounded-2xl bg-blue-700 flex items-center justify-center font-bold text-white text-lg flex-shrink-0 active:scale-95 transition-transform">
+            className="w-10 h-10 rounded-2xl bg-blue-700 flex items-center justify-center font-bold text-white text-sm flex-shrink-0 active:scale-95 transition-transform">
             {initials}
           </button>
         </div>
@@ -320,9 +326,94 @@ export function DashboardView({ onStartJob }: Props) {
         )}
       </div>
 
+      {/* ── Start Work ───────────────────────────────────────────── */}
+      <div className="px-4 pt-5">
+        <SectionHeader title="Start Work" />
+        <div className="grid grid-cols-3 gap-2">
+          {/* My Van — parts tile */}
+          <button onClick={() => setVanOpen(true)}
+            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-teal-900/40 border-teal-700 active:scale-95 transition-transform">
+            <div className={`absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+              INITIAL_READINESS >= 90 ? 'bg-green-600 text-white' :
+              INITIAL_READINESS >= 75 ? 'bg-yellow-500 text-gray-900' :
+                                        'bg-red-600 text-white'
+            }`}>{INITIAL_READINESS}%</div>
+            <svg width="20" height="15" viewBox="0 0 28 21" fill="none"
+              stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
+              className="text-teal-300">
+              <path d="M1 14 L1 7 L8 2 L25 2 L27 7 L27 14 Z" />
+              <line x1="8" y1="2" x2="8" y2="14" />
+              <rect x="9.5" y="3.5" width="6" height="4.5" rx="0.6" />
+              <circle cx="6.5" cy="17" r="2.5" />
+              <circle cx="21.5" cy="17" r="2.5" />
+              <path d="M1 14 L4 14 M9 14 L19 14 M24 14 L27 14" />
+            </svg>
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">My Van</div>
+              <div className="text-[9px] text-teal-400/80">Parts</div>
+            </div>
+          </button>
+          {/* Tool Checklist tile */}
+          <button onClick={() => setToolsOpen(true)}
+            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-orange-900/40 border-orange-800 active:scale-95 transition-transform">
+            <div className={`absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full ${
+              INITIAL_TOOLS_READINESS >= 90 ? 'bg-green-600 text-white' :
+              INITIAL_TOOLS_READINESS >= 75 ? 'bg-yellow-500 text-gray-900' :
+                                              'bg-red-600 text-white'
+            }`}>{INITIAL_TOOLS_READINESS}%</div>
+            <Wrench size={18} className="text-orange-400" />
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">Tool</div>
+              <div className="text-[9px] text-orange-400/80">Checklist</div>
+            </div>
+          </button>
+          {/* Dispatch Inbox tile */}
+          <button onClick={() => setInboxOpen(true)}
+            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-blue-900/30 border-blue-800 active:scale-95 transition-transform">
+            {inboxBadge > 0 && (
+              <div className="absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-600 text-white">
+                {inboxBadge}
+              </div>
+            )}
+            <FileText size={18} className="text-blue-400" />
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">Dispatch</div>
+              <div className="text-[9px] text-blue-400/80">Inbox</div>
+            </div>
+          </button>
+          {/* Search Equipment */}
+          <button onClick={() => setSearchOpen(true)}
+            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-blue-900/20 border-blue-900/60 active:scale-95 transition-transform">
+            <Search size={18} className="text-blue-400" />
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">Search</div>
+              <div className="text-[9px] text-blue-400/80">Equipment</div>
+            </div>
+          </button>
+          {/* Scan Nameplate */}
+          <button onClick={() => setNameplateOpen(true)}
+            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-green-900/40 border-green-800 active:scale-95 transition-transform">
+            <Zap size={18} className="text-green-400" />
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">Scan</div>
+              <div className="text-[9px] text-green-400/80">Nameplate</div>
+            </div>
+          </button>
+          {/* AI Assistant */}
+          <button onClick={() => setAssistantOpen(true)}
+            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-purple-900/40 border-purple-800 active:scale-95 transition-transform">
+            <Cpu size={18} className="text-purple-400" />
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">AI</div>
+              <div className="text-[9px] text-purple-400/80">Assistant</div>
+            </div>
+          </button>
+        </div>
+      </div>
+
       {/* ── Equipment Intelligence ───────────────────────────────── */}
       <div className="px-4 pt-5">
-        <SectionHeader title="Equipment Intelligence" subtitle="AI-assisted pattern analysis" />
+        <SectionHeader title="Equipment" subtitle="AI-assisted pattern analysis" />
         {realEquipment.length === 0 ? (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
             <div className="text-2xl mb-2">🔍</div>
@@ -444,92 +535,6 @@ export function DashboardView({ onStartJob }: Props) {
         </div>
         )}
       </div>
-
-      {/* ── Quick Actions ────────────────────────────────────────── */}
-      <div className="px-4 pt-5">
-        <SectionHeader title="Quick Actions" />
-        <div className="grid grid-cols-3 gap-2">
-          {/* My Van — parts tile */}
-          <button onClick={() => setVanOpen(true)}
-            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-teal-900/40 border-teal-700 active:scale-95 transition-transform">
-            <div className={`absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full ${
-              INITIAL_READINESS >= 90 ? 'bg-green-600 text-white' :
-              INITIAL_READINESS >= 75 ? 'bg-yellow-500 text-gray-900' :
-                                        'bg-red-600 text-white'
-            }`}>{INITIAL_READINESS}%</div>
-            <svg width="20" height="15" viewBox="0 0 28 21" fill="none"
-              stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"
-              className="text-teal-300">
-              <path d="M1 14 L1 7 L8 2 L25 2 L27 7 L27 14 Z" />
-              <line x1="8" y1="2" x2="8" y2="14" />
-              <rect x="9.5" y="3.5" width="6" height="4.5" rx="0.6" />
-              <circle cx="6.5" cy="17" r="2.5" />
-              <circle cx="21.5" cy="17" r="2.5" />
-              <path d="M1 14 L4 14 M9 14 L19 14 M24 14 L27 14" />
-            </svg>
-            <div className="text-center">
-              <div className="text-[10px] text-gray-200 font-bold leading-tight">My Van</div>
-              <div className="text-[9px] text-teal-400/80">Parts</div>
-            </div>
-          </button>
-          {/* Tool Checklist tile */}
-          <button onClick={() => setToolsOpen(true)}
-            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-orange-900/40 border-orange-800 active:scale-95 transition-transform">
-            <div className={`absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full ${
-              INITIAL_TOOLS_READINESS >= 90 ? 'bg-green-600 text-white' :
-              INITIAL_TOOLS_READINESS >= 75 ? 'bg-yellow-500 text-gray-900' :
-                                              'bg-red-600 text-white'
-            }`}>{INITIAL_TOOLS_READINESS}%</div>
-            <Wrench size={18} className="text-orange-400" />
-            <div className="text-center">
-              <div className="text-[10px] text-gray-200 font-bold leading-tight">Tool</div>
-              <div className="text-[9px] text-orange-400/80">Checklist</div>
-            </div>
-          </button>
-          {/* Dispatch Inbox tile */}
-          <button onClick={() => setInboxOpen(true)}
-            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-blue-900/30 border-blue-800 active:scale-95 transition-transform">
-            {inboxBadge > 0 && (
-              <div className="absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-600 text-white">
-                {inboxBadge}
-              </div>
-            )}
-            <FileText size={18} className="text-blue-400" />
-            <div className="text-center">
-              <div className="text-[10px] text-gray-200 font-bold leading-tight">Dispatch</div>
-              <div className="text-[9px] text-blue-400/80">Inbox</div>
-            </div>
-          </button>
-          {/* Search Equipment */}
-          <button onClick={() => setSearchOpen(true)}
-            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-blue-900/20 border-blue-900/60 active:scale-95 transition-transform">
-            <Search size={18} className="text-blue-400" />
-            <div className="text-center">
-              <div className="text-[10px] text-gray-200 font-bold leading-tight">Search</div>
-              <div className="text-[9px] text-blue-400/80">Equipment</div>
-            </div>
-          </button>
-          {/* Scan Nameplate */}
-          <button onClick={() => setNameplateOpen(true)}
-            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-green-900/40 border-green-800 active:scale-95 transition-transform">
-            <Zap size={18} className="text-green-400" />
-            <div className="text-center">
-              <div className="text-[10px] text-gray-200 font-bold leading-tight">Scan</div>
-              <div className="text-[9px] text-green-400/80">Nameplate</div>
-            </div>
-          </button>
-          {/* AI Assistant */}
-          <button onClick={() => setAssistantOpen(true)}
-            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-purple-900/40 border-purple-800 active:scale-95 transition-transform">
-            <Cpu size={18} className="text-purple-400" />
-            <div className="text-center">
-              <div className="text-[10px] text-gray-200 font-bold leading-tight">AI</div>
-              <div className="text-[9px] text-purple-400/80">Assistant</div>
-            </div>
-          </button>
-        </div>
-      </div>
-
 
       {/* ═══ Modals ════════════════════════════════════════════════ */}
 
