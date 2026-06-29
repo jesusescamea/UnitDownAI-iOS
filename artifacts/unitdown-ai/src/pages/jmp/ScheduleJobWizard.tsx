@@ -169,13 +169,7 @@ interface SavedCustomerRecord {
   email:        string;
 }
 
-const SAVED_CUSTOMERS: SavedCustomerRecord[] = [
-  { id: 'cust-SMP', businessName: 'Summit Medical Plaza',  contactName: 'Sarah Johnson', phone: '(214) 555-0100', email: 'sarah@summitmedical.com' },
-  { id: 'cust-NDC', businessName: 'Northgate Data Center', contactName: 'Mike Torres',   phone: '(972) 555-0233', email: 'mtorres@northgatedc.com' },
-  { id: 'cust-ROP', businessName: 'Ridgeline Office Park',  contactName: 'Dana Williams', phone: '(469) 555-0181', email: 'dwilliams@ridgelineop.com' },
-  { id: 'cust-PMC', businessName: 'Parkway Medical Center', contactName: 'James Lee',     phone: '(214) 555-0340', email: 'jlee@parkwaymed.com' },
-  { id: 'cust-LT',  businessName: 'Lakeside Tower',         contactName: 'Rachel Burns',  phone: '(972) 555-0422', email: 'rburns@lakesidetower.com' },
-];
+const SAVED_CUSTOMERS: SavedCustomerRecord[] = [];
 
 interface SavedSiteRecord {
   id:             string;
@@ -185,25 +179,7 @@ interface SavedSiteRecord {
   accessNotes:    string;
 }
 
-const SAVED_SITES_BY_CUSTOMER: Record<string, SavedSiteRecord[]> = {
-  'cust-SMP': [
-    { id: 'site-SMP-1', siteName: 'Main Building',      serviceAddress: '4521 Medical Drive', cityState: 'Dallas, TX 75201',   accessNotes: 'Badge required at main entrance. Roof hatch unlocked after 7 AM.' },
-    { id: 'site-SMP-2', siteName: 'North Campus Annex', serviceAddress: '4533 Medical Drive', cityState: 'Dallas, TX 75201',   accessNotes: 'Park in Lot C. Check in with security.' },
-  ],
-  'cust-NDC': [
-    { id: 'site-NDC-1', siteName: 'Data Center — Building 1', serviceAddress: '8800 Northgate Blvd', cityState: 'Plano, TX 75025',    accessNotes: 'Escort required. Call Mike on arrival.' },
-  ],
-  'cust-ROP': [
-    { id: 'site-ROP-1', siteName: 'Building A — West Tower', serviceAddress: '1100 Ridgeline Pkwy', cityState: 'Irving, TX 75063',   accessNotes: 'Roof access via stairwell 3. Key on file.' },
-    { id: 'site-ROP-2', siteName: 'Building B — East Tower', serviceAddress: '1120 Ridgeline Pkwy', cityState: 'Irving, TX 75063',   accessNotes: '' },
-  ],
-  'cust-PMC': [
-    { id: 'site-PMC-1', siteName: 'Main Hospital',      serviceAddress: '2200 Parkway Blvd',  cityState: 'Garland, TX 75042',  accessNotes: 'Facilities entrance on south side.' },
-  ],
-  'cust-LT': [
-    { id: 'site-LT-1',  siteName: 'Tower — Lobby Level', serviceAddress: '500 Lakeside Dr',   cityState: 'Addison, TX 75001',  accessNotes: 'Sign in with concierge.' },
-  ],
-};
+const SAVED_SITES_BY_CUSTOMER: Record<string, SavedSiteRecord[]> = {};
 
 function getSavedSites(customerId: string | null): SavedSiteRecord[] {
   if (!customerId) return [];

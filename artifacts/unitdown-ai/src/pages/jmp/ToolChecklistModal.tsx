@@ -1,19 +1,12 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { useUser } from '@clerk/clerk-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle, AlertTriangle, XCircle, ChevronRight } from 'lucide-react';
 import {
   INITIAL_TOOLS, ALL_TOOL_CATEGORIES,
-  computeToolsReadiness, computeOverallToolsReadiness, toolReadinessBadge,
+  computeOverallToolsReadiness, toolReadinessBadge,
   type ToolItem, type ToolCategory, type ToolStatus,
 } from './toolData';
-
-// Re-export job info for tools (job IDs match vanData JOB_INFO)
-const JOB_IDS = ['summit', 'northgate', 'ridgeline'];
-const JOB_META: Record<string, { abbr: string; dotColor: string }> = {
-  summit:    { abbr: 'Summit Medical', dotColor: 'bg-red-500'   },
-  northgate: { abbr: 'Northgate',      dotColor: 'bg-blue-500'  },
-  ridgeline: { abbr: 'Ridgeline',      dotColor: 'bg-green-500' },
-};
 
 const CATEGORY_ICONS: Record<ToolCategory, string> = {
   Electrical:   '⚡',
@@ -76,25 +69,72 @@ function ReadinessRing({ score, label }: { score: number; label: string }) {
 export function ToolChecklistModal({ onClose }: Props) {
   const [tools,    setTools]   = useState<ToolItem[]>(() => INITIAL_TOOLS.map(t => ({ ...t })));
   const [expanded, setExpanded] = useState<ToolCategory | null>(null);
-  const [jobDetail, setJobDetail] = useState<string | null>(null);
 
+  const { user } = useUser();
   const overallScore = useMemo(() => computeOverallToolsReadiness(tools), [tools]);
-  const jobScores    = useMemo(() => ({
-    summit:    computeToolsReadiness(tools, 'summit'),
-    northgate: computeToolsReadiness(tools, 'northgate'),
-    ridgeline: computeToolsReadiness(tools, 'ridgeline'),
-  }), [tools]);
+
+  // Load persisted tool statuses on mount
+  useEffect(() => {
+    const uid = user?.id;
+    if (!uid) return;
+    (async () => {
+      try {
+        const resp = await fetch(`/api/van/tools?clientId=${encodeURIComponent(uid)}`);
+        if (!resp.ok) return;
+        const { items } = await resp.json() as { items: Array<{ id: string; hasItem: boolean }> };
+        if (items.length === 0) {
+          await fetch('/api/van/tools/bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              clientId: uid,
+              items: INITIAL_TOOLS.map(t => ({
+                id: t.id,
+                toolName: t.name,
+                category: t.category,
+                hasItem: t.status === 'loaded',
+              })),
+            }),
+          });
+        } else {
+          const byId = Object.fromEntries(items.map(i => [i.id, i.hasItem]));
+          setTools(prev => prev.map(t => {
+            if (!Object.prototype.hasOwnProperty.call(byId, t.id)) return t;
+            return { ...t, status: byId[t.id] ? 'loaded' : t.status === 'loaded' ? 'missing' : t.status };
+          }));
+        }
+      } catch { /* offline */ }
+    })();
+  }, [user?.id]);
 
   function cycleStatus(id: string) {
+    const uid = user?.id;
     setTools(prev => prev.map(t => {
       if (t.id !== id) return t;
       const next: ToolStatus = t.status === 'loaded' ? 'missing' : t.status === 'missing' ? 'recommended' : 'loaded';
+      if (uid) {
+        fetch(`/api/van/tools/${encodeURIComponent(id)}?clientId=${encodeURIComponent(uid)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hasItem: next === 'loaded' }),
+        }).catch(() => {});
+      }
       return { ...t, status: next };
     }));
   }
 
   function markAllLoaded() {
     setTools(prev => prev.map(t => ({ ...t, status: 'loaded' })));
+    const uid = user?.id;
+    if (uid) {
+      tools.forEach(t => {
+        fetch(`/api/van/tools/${encodeURIComponent(t.id)}?clientId=${encodeURIComponent(uid)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ hasItem: true }),
+        }).catch(() => {});
+      });
+    }
   }
 
   const missingCount = tools.filter(t => t.status === 'missing').length;
@@ -113,9 +153,8 @@ export function ToolChecklistModal({ onClose }: Props) {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-white">Tool Checklist</h2>
-              <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-amber-800/60 border border-amber-600/50 text-amber-300 rounded-full">Beta</span>
             </div>
-            <div className="text-[10px] text-gray-500">Checklist resets on refresh · Persistence coming soon</div>
+            <div className="text-[10px] text-gray-500">Synced to your account</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -137,29 +176,11 @@ export function ToolChecklistModal({ onClose }: Props) {
           {/* Readiness rings */}
           <div className="bg-gray-900 border border-gray-800 rounded-3xl p-5">
             <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-4">Tools Readiness</div>
-            <div className="flex items-center justify-center gap-2">
+            <div className="flex flex-col items-center gap-3">
               <ReadinessRing score={overallScore} label="Overall" />
-              <div className="flex-1 space-y-2.5 pl-2">
-                {Object.entries(jobScores).map(([jid, s]) => {
-                  const j = JOB_META[jid];
-                  const b = toolReadinessBadge(s);
-                  const ring = s >= 85 ? '#22c55e' : s >= 65 ? '#eab308' : '#ef4444';
-                  return (
-                    <div key={jid}>
-                      <div className="flex items-center justify-between mb-0.5">
-                        <div className="flex items-center gap-1.5">
-                          <div className={`w-1.5 h-1.5 rounded-full ${j.dotColor}`} />
-                          <span className="text-[11px] text-gray-300 font-medium">{j.abbr}</span>
-                        </div>
-                        <span className={`text-[11px] font-bold ${b.color}`}>{b.dot} {s}%</span>
-                      </div>
-                      <div className="h-1 bg-gray-800 rounded-full overflow-hidden">
-                        <div className="h-full rounded-full transition-all" style={{ width: `${s}%`, backgroundColor: ring }} />
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
+              <p className="text-[11px] text-gray-500 text-center">
+                Assign jobs to see per-job tool readiness.
+              </p>
             </div>
           </div>
 
@@ -172,18 +193,12 @@ export function ToolChecklistModal({ onClose }: Props) {
                   {missingCount} tool{missingCount !== 1 ? 's' : ''} not loaded
                 </span>
               </div>
-              {tools.filter(t => t.status === 'missing').map(t => {
-                const reqJobs = JOB_IDS.filter(j => t.requiredFor.includes(j));
-                return (
-                  <div key={t.id} className="flex items-center gap-1.5 text-xs text-red-300/80 mb-0.5 pl-1">
-                    <XCircle size={10} className="flex-shrink-0" />
-                    <span>{t.name}</span>
-                    {reqJobs.length > 0 && (
-                      <span className="text-red-600 ml-1">— required for {reqJobs.map(j => JOB_META[j]?.abbr).join(', ')}</span>
-                    )}
-                  </div>
-                );
-              })}
+              {tools.filter(t => t.status === 'missing').map(t => (
+                <div key={t.id} className="flex items-center gap-1.5 text-xs text-red-300/80 mb-0.5 pl-1">
+                  <XCircle size={10} className="flex-shrink-0" />
+                  <span>{t.name}</span>
+                </div>
+              ))}
             </div>
           )}
 
@@ -220,41 +235,23 @@ export function ToolChecklistModal({ onClose }: Props) {
                   {isOpen && (
                     <motion.div initial={{ height: 0 }} animate={{ height: 'auto' }} exit={{ height: 0 }} className="overflow-hidden">
                       <div className="border-t border-gray-800">
-                        {catTools.map((tool, idx) => {
-                          const reqJobs = JOB_IDS.filter(j => tool.requiredFor.includes(j));
-                          const recJobs = JOB_IDS.filter(j => tool.recommendedFor.includes(j));
-                          return (
-                            <div key={tool.id}
-                              className={`px-4 py-3.5 flex items-start gap-3 ${idx < catTools.length - 1 ? 'border-b border-gray-800' : ''}`}>
-                              <StatusIcon status={tool.status} />
-                              <div className="flex-1 min-w-0">
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-semibold text-white leading-snug">{tool.name}</div>
-                                    {tool.note && (
-                                      <div className="text-[10px] text-gray-500 mt-0.5 leading-relaxed">{tool.note}</div>
-                                    )}
-                                    {(reqJobs.length > 0 || recJobs.length > 0) && (
-                                      <div className="flex flex-wrap gap-1 mt-1.5">
-                                        {reqJobs.map(j => (
-                                          <span key={j} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-red-900/40 text-red-300 border border-red-800">
-                                            Req · {JOB_META[j]?.abbr}
-                                          </span>
-                                        ))}
-                                        {recJobs.map(j => (
-                                          <span key={j} className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-yellow-900/40 text-yellow-300 border border-yellow-800">
-                                            Rec · {JOB_META[j]?.abbr}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    )}
-                                  </div>
-                                  <StatusPill status={tool.status} onCycle={() => cycleStatus(tool.id)} />
+                        {catTools.map((tool, idx) => (
+                          <div key={tool.id}
+                            className={`px-4 py-3.5 flex items-start gap-3 ${idx < catTools.length - 1 ? 'border-b border-gray-800' : ''}`}>
+                            <StatusIcon status={tool.status} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-semibold text-white leading-snug">{tool.name}</div>
+                                  {tool.note && (
+                                    <div className="text-[10px] text-gray-500 mt-0.5 leading-relaxed">{tool.note}</div>
+                                  )}
                                 </div>
+                                <StatusPill status={tool.status} onCycle={() => cycleStatus(tool.id)} />
                               </div>
                             </div>
-                          );
-                        })}
+                          </div>
+                        ))}
                       </div>
                     </motion.div>
                   )}

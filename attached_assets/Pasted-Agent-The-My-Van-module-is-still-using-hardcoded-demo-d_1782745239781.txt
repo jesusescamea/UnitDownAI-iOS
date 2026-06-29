@@ -1,0 +1,321 @@
+Agent,
+
+The My Van module is still using hardcoded demo data.
+
+This is unacceptable for production.
+
+The screen is still showing:
+
+- "Good morning, Marcus"
+- Marcus's readiness
+- Marcus's jobs
+- Marcus's inventory
+- Summit Medical Plaza
+- CRAC examples
+- Demo weather
+- Demo AI insights
+- Demo inventory
+- Demo readiness
+- Beta badge
+- "Persistence coming soon"
+
+This entire module must be converted from demo data to user-specific data.
+
+==================================================
+GOAL
+==================================================
+
+Completely eliminate ALL Marcus/demo/mock data from the project.
+
+The Van module must always belong to the currently authenticated user.
+
+No exceptions.
+
+==================================================
+REMOVE FROM ENTIRE PROJECT
+==================================================
+
+Search the ENTIRE repository for:
+
+Marcus
+marcus
+Summit Medical
+CRAC-3
+Humidifier Canister
+R-410A Refrigerant
+91°F
+Readiness 74%
+Jobs Today 3
+Medical Plaza
+Demo inventory
+Mock inventory
+Sample inventory
+Beta
+Persistence coming soon
+Fake weather
+Placeholder van
+Lorem
+Example technician
+Hardcoded technician
+
+Delete or replace every occurrence.
+
+==================================================
+USER OWNERSHIP
+==================================================
+
+My Van must be linked to:
+
+Authenticated User ID
+
+NOT
+
+Device
+Session
+Demo profile
+Hardcoded JSON
+
+The owner should come directly from authentication.
+
+Example:
+
+Jesus Escamea
+
+should display:
+
+Good morning, Jesus
+
+or
+
+Good morning, Jesus Escamea
+
+Never Marcus.
+
+==================================================
+VAN DATA
+==================================================
+
+Every user owns their own:
+
+Van Inventory
+Tool Inventory
+Restock List
+Readiness
+Weather
+Job preparation
+AI Brief
+Field Insights
+Parts
+Consumables
+
+No shared demo state.
+
+==================================================
+IF A NEW USER
+==================================================
+
+When no inventory exists:
+
+Show:
+
+Good morning, <User>
+
+Welcome to My Van.
+
+Let's build your inventory.
+
+Buttons:
+
+Add First Tool
+
+Add First Part
+
+Import Existing Inventory
+
+Scan Inventory
+
+Never populate fake inventory.
+
+==================================================
+AI BRIEF
+==================================================
+
+Generate from REAL user information.
+
+Examples:
+
+Today's jobs
+
+Today's weather
+
+Today's scheduled equipment
+
+Required refrigerants
+
+Required filters
+
+Special tools
+
+Recent callbacks
+
+Follow-ups
+
+Open service records
+
+If insufficient data exists:
+
+Display:
+
+"No scheduled jobs today."
+
+"No inventory alerts."
+
+"Your van is ready."
+
+Not demo text.
+
+==================================================
+WEATHER
+==================================================
+
+Use:
+
+User location
+
+or
+
+Today's first scheduled job
+
+Never use fake temperatures.
+
+==================================================
+READINESS
+==================================================
+
+Calculate from:
+
+Inventory completeness
+
+Today's jobs
+
+Missing tools
+
+Missing refrigerant
+
+Open follow-ups
+
+Vehicle checklist
+
+Not random percentages.
+
+==================================================
+REMOVE BETA
+==================================================
+
+Delete:
+
+BETA badge
+
+unless there is an actual feature flag controlling beta access.
+
+Production users should not see Beta.
+
+==================================================
+REMOVE
+==================================================
+
+"Persistence coming soon"
+
+Persistence must exist.
+
+Inventory must save.
+
+If persistence already exists:
+
+Delete the message.
+
+If not:
+
+Implement persistence.
+
+==================================================
+DATABASE
+==================================================
+
+Inventory tables must belong to:
+
+user_id
+
+Every query:
+
+WHERE user_id=currentUser.id
+
+Never shared.
+
+==================================================
+AUDIT
+==================================================
+
+Search for:
+
+Marcus
+
+Summit Medical
+
+Medical Plaza
+
+Demo
+
+Mock
+
+Placeholder
+
+Sample
+
+Lorem
+
+Beta
+
+Coming Soon
+
+Fake weather
+
+Hardcoded inventory
+
+There should be ZERO user-facing references remaining.
+
+==================================================
+VERIFY
+==================================================
+
+Test:
+
+User A
+
+adds inventory.
+
+User B
+
+logs in.
+
+User B should see:
+
+Empty inventory.
+
+User A logs back in.
+
+User A should see ONLY their inventory.
+
+==================================================
+RETURN
+==================================================
+
+Provide:
+
+• Files changed
+• Demo data removed
+• Database changes
+• Authentication linkage
+• Inventory persistence verification
+• Screenshots proving Marcus is completely gone
+• Confirmation that My Van now belongs exclusively to the authenticated user

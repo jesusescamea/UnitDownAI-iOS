@@ -2,8 +2,8 @@ import type { MeasurementReading } from './types';
 
 export const MOCK_JOB = {
   id: 'JM-2026-0047',
-  customer: 'Summit Medical Plaza',
-  address: '4521 Medical Drive, Dallas TX 75201',
+  customer: 'Parkway Medical Center',
+  address: '2200 Parkway Blvd, Garland TX 75042',
   equipment: 'Carrier 50XCQ006 — RTU-3',
   equipmentShort: 'RTU-3',
   location: 'Rooftop, North Wing',
@@ -16,7 +16,7 @@ export const MOCK_JOB = {
   dispatchTime: '07:45',
   arrivalTime: '08:14',
   usrId: 'USR-2026-004921',
-  weather: '91°F · Partly Cloudy · Humidity 62%',
+  weather: '',
 };
 
 export const MOCK_EQUIPMENT = {
@@ -133,11 +133,11 @@ export const TODAY_JOBS: TodayJob[] = [
     priority: 'high',
     status: 'open',
     type: 'Service Call',
-    customer: 'Summit Medical Plaza',
+    customer: 'Parkway Medical Center',
     unitTag: 'North Roof · RTU-3',
     model: 'Carrier 50XCQ006',
     equipment: 'Carrier 50XCQ006 — RTU-3',
-    address: '4521 Medical Drive, Dallas TX 75201',
+    address: '2200 Parkway Blvd, Garland TX 75042',
     symptom: 'Unit not cooling — high pressure alarm active. Code 82.',
     driveTime: '12 min',
     scheduledTime: '08:00',
@@ -151,54 +151,9 @@ export const TODAY_JOBS: TodayJob[] = [
     ],
     isPrototype: true,
   },
-  {
-    id: 'PM-2026-0148',
-    priority: 'pm',
-    status: 'open',
-    type: 'Preventive Maintenance',
-    customer: 'Northgate Data Center',
-    unitTag: 'Server Room B · CRAC-1',
-    model: 'Liebert DS150',
-    equipment: 'Liebert DS150 — CRAC-1',
-    address: '8800 Northgate Blvd, Dallas TX 75243',
-    symptom: 'Annual PM — filter change, coil inspection, belt check.',
-    driveTime: '28 min',
-    scheduledTime: '13:00',
-    techNote: 'Critical facility. Badge required at security gate.',
-    dispatchNotes: [
-      'Time shifted to 1:00 PM per customer request',
-      'Badge required at security gate — check in with front desk',
-      'Critical data center — no service windows, work can proceed anytime after 1 PM',
-    ],
-    isPrototype: false,
-  },
-  {
-    id: 'PM-2026-0149',
-    priority: 'pm',
-    status: 'open',
-    type: 'Preventive Maintenance',
-    customer: 'Ridgeline Office Park',
-    unitTag: 'Rooftop · RTU-7',
-    model: 'Trane YCD150',
-    equipment: 'Trane YCD150 — RTU-7',
-    address: '3200 Ridgeline Drive, Plano TX 75023',
-    symptom: 'Quarterly PM — filter change and inspection.',
-    driveTime: '35 min',
-    scheduledTime: '15:30',
-    techNote: null,
-    isPrototype: false,
-  },
 ];
 
 export const FOLLOW_UP_ITEMS = [
-  {
-    customer: 'Northgate Data Center',
-    equipment: 'CRAC-3',
-    issue: 'Humidifier canister replacement — noted at last PM',
-    priority: 'medium' as const,
-    dueDate: 'Aug 1, 2026',
-    daysDue: 35,
-  },
   {
     customer: 'Parkway Medical Center',
     equipment: 'AHU-5',

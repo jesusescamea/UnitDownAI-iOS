@@ -366,9 +366,8 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-lg font-bold text-white">My Van — Parts</h2>
-              <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 bg-amber-800/60 border border-amber-600/50 text-amber-300 rounded-full">Beta</span>
             </div>
-            <div className="text-[10px] text-gray-500">Inventory resets on refresh · Persistence coming soon</div>
+            <div className="text-[10px] text-gray-500">Synced to your account</div>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -428,7 +427,9 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
                     </div>
                     <div className="text-left">
                       <div className="text-[9px] font-bold uppercase tracking-wider text-orange-400">Morning AI Brief</div>
-                      <div className="text-sm font-bold text-white">Good morning, {morningBrief.techName}</div>
+                      <div className="text-sm font-bold text-white">
+                        {new Date().getHours() < 12 ? 'Good morning' : new Date().getHours() < 17 ? 'Good afternoon' : 'Good evening'}, {user?.firstName || user?.username || 'Technician'}
+                      </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">

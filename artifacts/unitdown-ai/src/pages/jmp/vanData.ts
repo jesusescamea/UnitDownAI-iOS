@@ -198,23 +198,15 @@ export function readinessBadge(score: number): {
 
 // ─── Job info ─────────────────────────────────────────────────────────────────
 
-export const JOB_INFO: Record<string, { name: string; abbr: string; dotColor: string }> = {
-  summit:    { name: 'Summit Medical Plaza',  abbr: 'Summit Medical', dotColor: 'bg-red-500'   },
-  northgate: { name: 'Northgate Data Center', abbr: 'Northgate',      dotColor: 'bg-blue-500'  },
-  ridgeline: { name: 'Ridgeline Office Park', abbr: 'Ridgeline',      dotColor: 'bg-green-500' },
-};
+export const JOB_INFO: Record<string, { name: string; abbr: string; dotColor: string }> = {};
 
-export const TODAY_JOB_IDS: Record<string, string> = {
-  'JM-2026-0047': 'summit',
-  'PM-2026-0148': 'northgate',
-  'PM-2026-0149': 'ridgeline',
-};
+export const TODAY_JOB_IDS: Record<string, string> = {};
 
 export function getJobVanId(jobId: string): string {
   return TODAY_JOB_IDS[jobId] ?? jobId;
 }
 
-const TODAY_VAN_JOBS = ['summit', 'northgate', 'ridgeline'];
+const TODAY_VAN_JOBS: string[] = [];
 
 // ─── AI route comparison ──────────────────────────────────────────────────────
 
@@ -283,16 +275,7 @@ export function aiRouteComparison(inventory: InventoryItem[]): RouteComparison {
 
 export const AI_STOCK_LIST: {
   item: string; reason: string; ok: 'ready' | 'low' | 'missing';
-}[] = [
-  { item: 'Foam Coil Cleaner',        reason: 'Summit Medical condenser cleaning',          ok: 'ready'   },
-  { item: 'R-410A (full cylinder)',    reason: 'Potential charge work at Summit',            ok: 'low'     },
-  { item: 'Humidifier Canister',       reason: 'Northgate CRAC-3 scheduled PM',              ok: 'missing' },
-  { item: '35/5 Dual Capacitor (×2)', reason: 'RTU-3 repeated capacitor history',           ok: 'low'     },
-  { item: 'Belt A-40',                reason: 'AHU-5 belt inspection at Ridgeline',         ok: 'ready'   },
-  { item: '3A Control Fuses (×10)',   reason: 'Common on all three sites — stock is empty', ok: 'missing' },
-  { item: 'Condenser Fan Motor',      reason: 'RTU-3 suspected root cause — avoid return',  ok: 'missing' },
-  { item: 'High-Pressure Switch',     reason: 'RTU-3 repeated high-pressure lockouts',      ok: 'missing' },
-];
+}[] = [];
 
 // ─── Parts Inventory ──────────────────────────────────────────────────────────
 
@@ -304,13 +287,13 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     category: 'Refrigerant', qty: 1, minQty: 2, unit: 'cylinder',
     requiredFor: ['summit'], recommendedFor: [], niceToHaveFor: [],
     lastUsed: 'Jun 26', usagePattern: 'Used on most refrigerant calls',
-    aiRec: 'Summit Medical RTU-3 has high-pressure history — carry a full cylinder.',
+    aiRec: 'High-pressure call history — carry a full cylinder for any refrigerant work.',
     aiTags: ['Fast Moving', 'Requires EPA Certification', 'Seasonal'],
     substitutes: [{ name: 'R-454B', compatible: false, note: 'Different pressure rating — do not interchange.' }],
     usageHistory: [
-      { date: 'Jun 26', qty: 1, site: 'Summit Medical Plaza' },
+      { date: 'Jun 26', qty: 1, site: 'Commercial HVAC Job' },
       { date: 'Jun 12', qty: 1, site: 'Westfield Office Tower' },
-      { date: 'May 30', qty: 1, site: 'Summit Medical Plaza' },
+      { date: 'May 30', qty: 1, site: 'Commercial HVAC Job' },
     ],
   },
   {
@@ -345,11 +328,11 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     supplierName: 'Ferguson HVAC', supplierAvailability: 'In Stock', supplierPrice: 12.50, pickupTimeMin: 15, universalAlternative: 'Genteq Z97F9835',
     substitutes: [{ name: '40/5 MFD Dual Run', compatible: false, note: 'Different rating — confirm nameplate before substituting.' }],
     usageHistory: [
-      { date: 'Jun 26', qty: 1, site: 'Summit Medical Plaza' },
-      { date: 'Jun 18', qty: 1, site: 'Summit Medical Plaza' },
+      { date: 'Jun 26', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'Jun 18', qty: 1, site: 'Commercial HVAC Job' },
       { date: 'Jun 10', qty: 1, site: 'Parkway Clinic' },
-      { date: 'Jun 4',  qty: 1, site: 'Summit Medical Plaza' },
-      { date: 'May 27', qty: 1, site: 'Northgate Data Center' },
+      { date: 'Jun 4',  qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'May 27', qty: 1, site: 'Commercial HVAC Job' },
     ],
   },
   {
@@ -358,7 +341,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: [], recommendedFor: [], niceToHaveFor: ['summit'],
     lastUsed: 'Jun 24', aiRec: 'Good stock.',
     usageHistory: [
-      { date: 'Jun 24', qty: 1, site: 'Ridgeline Office Park' },
+      { date: 'Jun 24', qty: 1, site: 'Commercial HVAC Job' },
       { date: 'Jun 15', qty: 1, site: 'Westfield Office Tower' },
     ],
   },
@@ -396,9 +379,9 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     aiRec: 'RTU-3 contactor history shows arcing. Replacement likely today.',
     aiTags: ['High Failure Item', 'Fast Moving'],
     usageHistory: [
-      { date: 'Jun 21', qty: 1, site: 'Summit Medical Plaza' },
-      { date: 'Jun 8',  qty: 1, site: 'Ridgeline Office Park' },
-      { date: 'May 30', qty: 1, site: 'Summit Medical Plaza' },
+      { date: 'Jun 21', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'Jun 8',  qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'May 30', qty: 1, site: 'Commercial HVAC Job' },
     ],
   },
   {
@@ -422,11 +405,11 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     id: 'relay-time-delay', name: 'Time-Delay Relay (5-min)',
     category: 'Relays', qty: 2, minQty: 2, unit: 'each',
     requiredFor: [], recommendedFor: ['northgate'], niceToHaveFor: [],
-    lastUsed: 'Jun 20', aiRec: 'Used frequently on CRAC units at Northgate.',
+    lastUsed: 'Jun 20', aiRec: 'Used frequently on CRAC units — keep stock above minimum.',
     aiTags: ['Fast Moving'],
     usageHistory: [
-      { date: 'Jun 20', qty: 1, site: 'Northgate Data Center' },
-      { date: 'May 15', qty: 1, site: 'Northgate Data Center' },
+      { date: 'Jun 20', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'May 15', qty: 1, site: 'Commercial HVAC Job' },
     ],
   },
   {
@@ -450,8 +433,8 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     lastUsed: 'Jun 18', aiRec: 'Carry as a spare — frequent failure after high-pressure events.',
     aiTags: ['Critical Spare'],
     usageHistory: [
-      { date: 'Jun 18', qty: 1, site: 'Summit Medical Plaza' },
-      { date: 'May 10', qty: 1, site: 'Northgate Data Center' },
+      { date: 'Jun 18', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'May 10', qty: 1, site: 'Commercial HVAC Job' },
     ],
   },
   {
@@ -482,7 +465,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     category: 'Motors', qty: 0, minQty: 1, unit: 'each',
     requiredFor: [], recommendedFor: ['ridgeline'], niceToHaveFor: [],
     lastUsed: 'Jun 2',
-    aiRec: 'Out of stock. AHU-5 vibration trend could lead to motor replacement at Ridgeline.',
+    aiRec: 'Out of stock. Vibration trends on belt-drive AHUs often precede motor replacement.',
     aiTags: ['High Value', 'Large Item', 'Long Lead Time'],
   },
 
@@ -516,8 +499,8 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     aiRec: 'AHU-5 vibration trend indicates bearing wear. Carry at least two.',
     aiTags: ['Long Lead Time'],
     usageHistory: [
-      { date: 'Jun 18', qty: 2, site: 'Ridgeline Office Park' },
-      { date: 'May 22', qty: 2, site: 'Ridgeline Office Park' },
+      { date: 'Jun 18', qty: 2, site: 'Commercial HVAC Job' },
+      { date: 'May 22', qty: 2, site: 'Commercial HVAC Job' },
     ],
   },
   {
@@ -539,19 +522,19 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     category: 'Belts', qty: 2, minQty: 1, unit: 'each',
     requiredFor: ['ridgeline'], recommendedFor: [], niceToHaveFor: [],
     lastUsed: 'Jun 20', usagePattern: 'AHU-5 confirmed belt size',
-    aiRec: 'Stocked and ready for Ridgeline AHU-5.',
+    aiRec: 'Stocked and ready for belt-drive AHU service.',
     aiTags: ['Fast Moving'],
     usageHistory: [
-      { date: 'Jun 20', qty: 1, site: 'Ridgeline Office Park' },
-      { date: 'May 22', qty: 1, site: 'Ridgeline Office Park' },
-      { date: 'Apr 15', qty: 1, site: 'Ridgeline Office Park' },
+      { date: 'Jun 20', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'May 22', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'Apr 15', qty: 1, site: 'Commercial HVAC Job' },
     ],
   },
   {
     id: 'belt-b52', name: 'Belt B-52',
     category: 'Belts', qty: 0, minQty: 1, unit: 'each',
     requiredFor: [], recommendedFor: ['ridgeline'], niceToHaveFor: [],
-    lastUsed: 'Jun 5', aiRec: 'Out of stock. Carry as backup for Ridgeline.',
+    lastUsed: 'Jun 5', aiRec: 'Out of stock. Carry as a backup on AHU calls.',
     substitutes: [
       { name: 'Belt B-54', compatible: false, note: 'Too long — will slip under tension.' },
       { name: 'Belt B-51', compatible: false, note: 'Too short — may not fit over sheaves.' },
@@ -576,19 +559,19 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     id: 'filter-20x20', name: '20×20×1 Air Filter',
     category: 'Filters', qty: 6, minQty: 4, unit: 'each',
     requiredFor: ['ridgeline'], recommendedFor: [], niceToHaveFor: [],
-    lastUsed: 'Jun 20', aiRec: 'Adequate for Ridgeline PM.',
+    lastUsed: 'Jun 20', aiRec: 'Adequate stock for PM calls.',
     substitutes: [{ name: '20×25×1 (trim to fit)', compatible: false, note: 'Can be trimmed but leaves a gap — replace ASAP.' }],
     usageHistory: [
-      { date: 'Jun 20', qty: 4, site: 'Ridgeline Office Park' },
-      { date: 'May 22', qty: 4, site: 'Ridgeline Office Park' },
-      { date: 'Apr 18', qty: 4, site: 'Ridgeline Office Park' },
+      { date: 'Jun 20', qty: 4, site: 'Commercial HVAC Job' },
+      { date: 'May 22', qty: 4, site: 'Commercial HVAC Job' },
+      { date: 'Apr 18', qty: 4, site: 'Commercial HVAC Job' },
     ],
   },
   {
     id: 'filter-16x25', name: '16×25×1 Air Filter',
     category: 'Filters', qty: 2, minQty: 4, unit: 'each',
     requiredFor: [], recommendedFor: ['northgate'], niceToHaveFor: [],
-    lastUsed: 'Jun 15', aiRec: 'Below minimum. Restock before Northgate call.',
+    lastUsed: 'Jun 15', aiRec: 'Below minimum. Restock before your next commercial call.',
     substitutes: [{ name: '16×20×1', compatible: false, note: 'Too short — leaves unfiltered bypass gap.' }],
   },
   {
@@ -615,10 +598,10 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     supplierName: 'Ferguson HVAC', supplierAvailability: 'In Stock', supplierPrice: 0.85, pickupTimeMin: 15,
     substitutes: [{ name: '3A Time-Delay Fuse', compatible: true, note: 'Confirm fast-blow vs time-delay before installing.' }],
     usageHistory: [
-      { date: 'Jun 23', qty: 3, site: 'Northgate Data Center' },
-      { date: 'Jun 15', qty: 2, site: 'Summit Medical Plaza' },
-      { date: 'Jun 8',  qty: 2, site: 'Summit Medical Plaza' },
-      { date: 'Jun 1',  qty: 2, site: 'Northgate Data Center' },
+      { date: 'Jun 23', qty: 3, site: 'Commercial HVAC Job' },
+      { date: 'Jun 15', qty: 2, site: 'Commercial HVAC Job' },
+      { date: 'Jun 8',  qty: 2, site: 'Commercial HVAC Job' },
+      { date: 'Jun 1',  qty: 2, site: 'Commercial HVAC Job' },
     ],
   },
   {
@@ -670,8 +653,8 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     requiredFor: [], recommendedFor: ['northgate'], niceToHaveFor: [],
     lastUsed: 'Jun 17', aiRec: 'Common on CRAC units. Good stock.',
     usageHistory: [
-      { date: 'Jun 17', qty: 1, site: 'Northgate Data Center' },
-      { date: 'Jun 2',  qty: 2, site: 'Northgate Data Center' },
+      { date: 'Jun 17', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'Jun 2',  qty: 2, site: 'Commercial HVAC Job' },
     ],
   },
   {
@@ -693,13 +676,13 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     category: 'Chemicals', qty: 2, minQty: 2, unit: 'can',
     requiredFor: ['summit'], recommendedFor: ['ridgeline'], niceToHaveFor: [],
     lastUsed: 'Jun 26',
-    aiRec: 'Required for Summit Medical condenser cleaning.',
+    aiRec: 'Essential for condenser coil cleaning — stock before commercial PM calls.',
     aiTags: ['Fast Moving', 'Seasonal'],
     usageHistory: [
-      { date: 'Jun 26', qty: 1, site: 'Summit Medical Plaza' },
-      { date: 'Jun 20', qty: 1, site: 'Ridgeline Office Park' },
-      { date: 'Jun 12', qty: 1, site: 'Summit Medical Plaza' },
-      { date: 'Jun 5',  qty: 1, site: 'Northgate Data Center' },
+      { date: 'Jun 26', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'Jun 20', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'Jun 12', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'Jun 5',  qty: 1, site: 'Commercial HVAC Job' },
     ],
   },
   {
@@ -712,7 +695,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     id: 'evap-treatment', name: 'Evaporator Coil Treatment',
     category: 'Chemicals', qty: 1, minQty: 1, unit: 'gallon',
     requiredFor: [], recommendedFor: ['northgate'], niceToHaveFor: [],
-    lastUsed: 'Jun 16', aiRec: 'Recommended for Northgate CRAC evaporator coil PM.',
+    lastUsed: 'Jun 16', aiRec: 'Recommended for CRAC unit evaporator coil PM.',
   },
   {
     id: 'leak-spray', name: 'Leak Detection Spray',
@@ -726,7 +709,7 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     id: 'drain-tabs', name: 'Drain Pan Treatment Tablets',
     category: 'Drain Parts', qty: 12, minQty: 6, unit: 'each',
     requiredFor: [], recommendedFor: ['ridgeline'], niceToHaveFor: [],
-    lastUsed: 'Jun 20', aiRec: 'Adequate. Drop two per drain pan during Ridgeline PM.',
+    lastUsed: 'Jun 20', aiRec: 'Adequate. Drop two tablets per drain pan during PM visits.',
   },
   {
     id: 'drain-trap', name: 'Condensate Trap (PVC)',
@@ -746,14 +729,14 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
     id: 'humidifier-canister', name: 'Humidifier Canister',
     category: 'Controls', qty: 0, minQty: 1, unit: 'each',
     requiredFor: ['northgate'], recommendedFor: [], niceToHaveFor: [],
-    lastUsed: 'May 30', usagePattern: 'Scheduled PM every 90 days at Northgate',
-    aiRec: "Required for today's CRAC-3 PM. This call cannot be completed without it.",
+    lastUsed: 'May 30', usagePattern: 'Scheduled PM every 90 days on CRAC units',
+    aiRec: 'Required for CRAC unit humidifier PM. This call cannot be completed without it.',
     aiTags: ['OEM Only', 'Long Lead Time'],
     supplierName: 'Liebert Distributor', supplierAvailability: 'Special Order', supplierPrice: 89.00, pickupTimeMin: 180, oemPartNumber: 'LB-106898G1',
     substitutes: [{ name: 'Universal humidifier canister', compatible: false, note: 'Confirm electrode spacing — Liebert DS spacing is non-standard.' }],
     usageHistory: [
-      { date: 'May 30', qty: 1, site: 'Northgate Data Center' },
-      { date: 'Mar 1',  qty: 1, site: 'Northgate Data Center' },
+      { date: 'May 30', qty: 1, site: 'Commercial HVAC Job' },
+      { date: 'Mar 1',  qty: 1, site: 'Commercial HVAC Job' },
     ],
   },
   {
@@ -965,7 +948,6 @@ export function generateRestockSections(inventory: InventoryItem[]): RestockSect
 // ─── Morning Brief ────────────────────────────────────────────────────────────
 
 export interface MorningBrief {
-  techName:       string;
   todayReadiness: number;
   jobCount:       number;
   highestRiskJob: string;
@@ -1016,26 +998,32 @@ export function generateMorningBrief(
     )
     .map(i => ({ name: i.name, reason: 'Not required for any scheduled job today' }));
 
-  const r410qty = inventory.find(i => i.id === 'r410a')?.qty ?? 0;
+  const missingCount = inventory.filter(i => itemStatus(i) === 'missing').length;
+  const lowCount     = inventory.filter(i => itemStatus(i) === 'low').length;
+  const capLow       = inventory.filter(i => i.category === 'Capacitors' && itemStatus(i) !== 'ready').length;
+  const refLow       = inventory.filter(i => i.category === 'Refrigerant' && itemStatus(i) !== 'ready').length;
 
-  const aiInsights: string[] = [
-    'RTU-3 has failed Code 82 on three previous visits — prior condenser cleaning did not resolve root cause.',
-    "Today's 91°F will drive elevated head pressures. Expect high-pressure lockouts.",
-    `Only ${r410qty} R-410A cylinder on hand — Summit Medical requires a full cylinder minimum.`,
-    'Heat stress accelerates capacitor failure. Carry extra 35/5 and 40/5 dual-run caps.',
-    '3A control fuses are depleted — common replacement across all three sites today.',
-  ];
+  const aiInsights: string[] = [];
+  if (missingCount > 0)
+    aiInsights.push(`${missingCount} part${missingCount !== 1 ? 's' : ''} are out of stock — restock before dispatch.`);
+  if (lowCount > 0)
+    aiInsights.push(`${lowCount} part${lowCount !== 1 ? 's' : ''} are below minimum stock level.`);
+  if (capLow > 0)
+    aiInsights.push('Capacitor stock is low — most common summer failure part across all units.');
+  if (refLow > 0)
+    aiInsights.push('Refrigerant stock is below minimum — ensure adequate supply before refrigerant calls.');
+  if (aiInsights.length === 0)
+    aiInsights.push('Van inventory is well stocked and ready for dispatch.');
 
   return {
-    techName:       'Marcus',
     todayReadiness,
-    jobCount:       3,
-    highestRiskJob: highestRiskJobName,
+    jobCount:       0,
+    highestRiskJob: '',
     highestRisk:    computeReturnTripRisk(highestRiskScore),
     mustGrab,
     leaveBehind,
-    weatherNote:    '91°F · Partly Cloudy · SW 8 mph',
-    tempF:          91,
+    weatherNote:    '',
+    tempF:          0,
     aiInsights,
   };
 }
