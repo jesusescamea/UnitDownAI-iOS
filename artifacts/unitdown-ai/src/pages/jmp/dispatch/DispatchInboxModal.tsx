@@ -5,6 +5,7 @@ import {
   AlertTriangle, Edit2, Trash2, ClipboardList, Upload,
   FileText, Copy, Camera, Calendar, Mail, Zap, RefreshCw,
   Check, SkipForward, GitMerge, ChevronDown, FileUp,
+  AlertCircle, Settings, WifiOff,
 } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import type { ImportedJob, ProviderType } from './types';
@@ -23,7 +24,16 @@ type Screen =
   | 'csv'
   | 'ics'
   | 'calendar_alt'
+  | 'pdf'
+  | 'scan'
+  | 'email_alt'
+  | 'dispatch_alt'
+  | 'custom_api'
   | 'edit';
+
+type CalendarProvider  = 'google_calendar' | 'apple_calendar' | 'outlook_calendar';
+type EmailProvider     = 'gmail' | 'outlook_email';
+type DispatchPlatform  = 'servicetitan' | 'fieldedge' | 'housecall_pro';
 
 // ─── Priority config ──────────────────────────────────────────────────────────
 const PRIORITY_CONFIG = {
@@ -71,7 +81,6 @@ function importedJobToResult(job: ImportedJob, techName: string): ScheduleWizard
 
   const title    = `${job.customer} — ${job.jobType || 'Service Call'}`;
   const dayNum   = new Date(scheduledDate + 'T00:00:00').getDate();
-
   const calEvent: CalendarEvent = { day: dayNum, type: calEventType, label: title };
 
   return { job: todayJob, calEvent, isToday, scheduledMs, title };
@@ -123,6 +132,33 @@ function ScreenHeader({ title, subtitle, onBack }: { title: string; subtitle?: s
         {subtitle && <div className="text-[10px] text-gray-500">{subtitle}</div>}
       </div>
     </div>
+  );
+}
+
+// ─── Reusable fallback option button ─────────────────────────────────────────
+function FallbackBtn({
+  icon, iconColor, title, sub, onClick,
+}: {
+  icon: React.ReactNode;
+  iconColor: string;
+  title: string;
+  sub: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="w-full flex items-center gap-4 bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3.5 text-left active:bg-gray-800 transition-colors"
+    >
+      <div className={`w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 ${iconColor}`}>
+        {icon}
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-white">{title}</div>
+        <div className="text-[10px] text-gray-500">{sub}</div>
+      </div>
+      <ChevronRight size={14} className="text-gray-600" />
+    </button>
   );
 }
 
@@ -191,7 +227,6 @@ function JobCard({
         {job.phone && (
           <div className="text-[10px] text-gray-500 font-mono">{job.phone}</div>
         )}
-
         <div className="flex items-center gap-1 pt-0.5">
           <ProviderIcon id={job.source} size={10} />
           <span className="text-[9px] text-gray-600">{PROVIDERS.find(p => p.id === job.source)?.name ?? job.source}</span>
@@ -318,7 +353,6 @@ function CSVScreen({ onParsed, onBack }: { onParsed: (jobs: ImportedJob[]) => vo
             Export a .csv from ServiceTitan, Housecall Pro, FieldEdge, or any scheduling tool. Common columns detected automatically.
           </p>
         </div>
-
         <button
           onClick={() => fileRef.current?.click()}
           className="w-full border-2 border-dashed border-gray-700 rounded-2xl py-10 flex flex-col items-center gap-3 active:border-blue-500 transition-colors"
@@ -329,7 +363,6 @@ function CSVScreen({ onParsed, onBack }: { onParsed: (jobs: ImportedJob[]) => vo
         </button>
         <input ref={fileRef} type="file" accept=".csv,text/csv" className="hidden"
           onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-
         <div className="bg-gray-900 border border-gray-800 rounded-xl px-3 py-2.5">
           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Recognized column names</div>
           <div className="flex flex-wrap gap-1">
@@ -338,7 +371,6 @@ function CSVScreen({ onParsed, onBack }: { onParsed: (jobs: ImportedJob[]) => vo
             ))}
           </div>
         </div>
-
         {loading && <p className="text-xs text-blue-400 text-center">Reading file…</p>}
         {error && <p className="text-xs text-red-400">{error}</p>}
       </div>
@@ -379,8 +411,8 @@ function ICSScreen({ onParsed, onBack }: { onParsed: (jobs: ImportedJob[]) => vo
           <div className="space-y-1.5">
             {[
               { app: 'Google Calendar', step: 'Event → ⋮ → Export → .ics' },
-              { app: 'Apple Calendar', step: 'File → Export → Export…' },
-              { app: 'Outlook',        step: 'Event → … → Forward as iCalendar' },
+              { app: 'Apple Calendar',  step: 'File → Export → Export…' },
+              { app: 'Outlook',         step: 'Event → … → Forward as iCalendar' },
             ].map(({ app, step }) => (
               <div key={app} className="flex items-start gap-2">
                 <Calendar size={10} className="text-purple-400 flex-shrink-0 mt-0.5" />
@@ -392,7 +424,6 @@ function ICSScreen({ onParsed, onBack }: { onParsed: (jobs: ImportedJob[]) => vo
             ))}
           </div>
         </div>
-
         <button
           onClick={() => fileRef.current?.click()}
           className="w-full border-2 border-dashed border-purple-800/60 rounded-2xl py-10 flex flex-col items-center gap-3 active:border-purple-500 transition-colors"
@@ -403,7 +434,6 @@ function ICSScreen({ onParsed, onBack }: { onParsed: (jobs: ImportedJob[]) => vo
         </button>
         <input ref={fileRef} type="file" accept=".ics,.ical,text/calendar" className="hidden"
           onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-
         {loading && <p className="text-xs text-purple-400 text-center">Reading calendar file…</p>}
         {error && <p className="text-xs text-red-400">{error}</p>}
       </div>
@@ -411,33 +441,212 @@ function ICSScreen({ onParsed, onBack }: { onParsed: (jobs: ImportedJob[]) => vo
   );
 }
 
+// ─── PDF screen ───────────────────────────────────────────────────────────────
+// Attempts text extraction from the binary PDF. Works for text-based PDFs;
+// falls back gracefully for image/scanned PDFs.
+
+function extractTextFromPDF(bytes: ArrayBuffer): string {
+  const uint8 = new Uint8Array(bytes);
+  const chars: string[] = [];
+  for (let i = 0; i < uint8.length; i++) {
+    const c = uint8[i];
+    if ((c >= 32 && c <= 126) || c === 9 || c === 10 || c === 13) {
+      chars.push(String.fromCharCode(c));
+    } else {
+      chars.push(' ');
+    }
+  }
+  const raw = chars.join('');
+  const segments = raw.match(/[ -~\t\n\r]{6,}/g) ?? [];
+  return segments
+    .map(s => s.trim())
+    .filter(s => s.length >= 5 && /[a-zA-Z]{2,}/.test(s))
+    .join('\n');
+}
+
+function PDFScreen({
+  onParsed, onBack, onSelectPaste, onSelectCSV, onSelectICS, onSelectManual,
+}: {
+  onParsed:      (jobs: ImportedJob[]) => void;
+  onBack:        () => void;
+  onSelectPaste:  () => void;
+  onSelectCSV:    () => void;
+  onSelectICS:    () => void;
+  onSelectManual: () => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showFallback, setShowFallback] = useState(false);
+
+  function handleFile(file: File) {
+    const name = file.name.toLowerCase();
+    if (!name.endsWith('.pdf') && file.type !== 'application/pdf') {
+      setError('Please select a .pdf file.'); return;
+    }
+    setLoading(true); setError('');
+    const reader = new FileReader();
+    reader.onload = e => {
+      const bytes = e.target?.result as ArrayBuffer;
+      const text = extractTextFromPDF(bytes);
+      setLoading(false);
+      if (text.length > 150) {
+        const parsed = parsePastedText(text);
+        if (parsed.length > 0) { onParsed(parsed); return; }
+      }
+      setShowFallback(true);
+    };
+    reader.onerror = () => { setLoading(false); setShowFallback(true); };
+    reader.readAsArrayBuffer(file);
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <ScreenHeader title="Import PDF" subtitle="Upload a schedule or work order PDF" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        {!showFallback ? (
+          <>
+            <div className="bg-red-950/20 border border-red-800/30 rounded-xl px-3 py-2.5">
+              <p className="text-[10px] text-red-300 leading-relaxed">
+                Upload a PDF schedule, work order, or dispatch sheet. Text-based PDFs are extracted automatically. Image-based or scanned PDFs will prompt you to use an alternative method.
+              </p>
+            </div>
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="w-full border-2 border-dashed border-gray-700 rounded-2xl py-12 flex flex-col items-center gap-3 active:border-red-500 transition-colors"
+            >
+              <FileText size={32} className="text-red-400" />
+              <div className="text-sm font-semibold text-gray-400">Tap to select PDF file</div>
+              <div className="text-[10px] text-gray-600">Text-based PDFs recommended</div>
+            </button>
+            <input ref={fileRef} type="file" accept=".pdf,application/pdf" className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+            {loading && <p className="text-xs text-blue-400 text-center">Extracting text from PDF…</p>}
+            {error && <p className="text-xs text-red-400">{error}</p>}
+          </>
+        ) : (
+          <>
+            <div className="bg-amber-950/25 border border-amber-800/40 rounded-xl px-4 py-3">
+              <div className="flex items-center gap-2 mb-1">
+                <AlertCircle size={14} className="text-amber-400 flex-shrink-0" />
+                <p className="text-xs font-semibold text-amber-400">This PDF can't be read automatically</p>
+              </div>
+              <p className="text-[10px] text-gray-400 leading-relaxed">
+                Scanned, image-based, or encrypted PDFs require OCR which isn't available in this version. Use one of these methods to import your schedule now — all will get your jobs into the inbox today.
+              </p>
+            </div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Choose an alternative:</p>
+            <div className="space-y-2">
+              <FallbackBtn icon={<Copy size={16} className="text-blue-300" />} iconColor="bg-blue-900/30" title="Paste Schedule" sub="Copy text from the PDF and paste it here" onClick={onSelectPaste} />
+              <FallbackBtn icon={<FileText size={16} className="text-gray-300" />} iconColor="bg-gray-800" title="Import CSV" sub="If you have a CSV export from your platform" onClick={onSelectCSV} />
+              <FallbackBtn icon={<FileUp size={16} className="text-purple-300" />} iconColor="bg-purple-900/30" title="Calendar File (.ics)" sub="Export from calendar app instead" onClick={onSelectICS} />
+              <FallbackBtn icon={<Plus size={16} className="text-green-300" />} iconColor="bg-green-900/30" title="Manual Entry" sub="Enter job details by hand" onClick={onSelectManual} />
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Scan screen ──────────────────────────────────────────────────────────────
+// Accepts a photo, shows preview. OCR is not available client-side —
+// explains clearly and offers productive alternatives.
+
+function ScanScreen({
+  onBack, onSelectPaste, onSelectCSV, onSelectICS, onSelectManual,
+}: {
+  onBack:         () => void;
+  onSelectPaste:  () => void;
+  onSelectCSV:    () => void;
+  onSelectICS:    () => void;
+  onSelectManual: () => void;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [preview, setPreview] = useState<string | null>(null);
+
+  function handleFile(file: File) {
+    const url = URL.createObjectURL(file);
+    setPreview(url);
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <ScreenHeader title="Scan Schedule" subtitle="Photograph a printed dispatch sheet" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        <div className="bg-amber-950/25 border border-amber-800/40 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <WifiOff size={13} className="text-amber-400 flex-shrink-0" />
+            <p className="text-xs font-semibold text-amber-400">OCR not available in this version</p>
+          </div>
+          <p className="text-[10px] text-gray-400 leading-relaxed">
+            Automatic text recognition from photos requires an AI service that isn't configured. You can photograph the schedule for reference, then use one of the methods below to import jobs today.
+          </p>
+        </div>
+
+        <button
+          onClick={() => fileRef.current?.click()}
+          className="w-full border-2 border-dashed border-gray-700 rounded-2xl py-8 flex flex-col items-center gap-3 active:border-gray-500 transition-colors"
+        >
+          <Camera size={28} className="text-gray-500" />
+          <div className="text-sm font-semibold text-gray-400">
+            {preview ? 'Tap to retake' : 'Take or upload a photo'}
+          </div>
+          <div className="text-[10px] text-gray-600">For your reference — not auto-processed</div>
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
+        />
+
+        {preview && (
+          <div className="rounded-xl overflow-hidden border border-gray-700">
+            <img src={preview} alt="Schedule" className="w-full object-contain max-h-48" />
+          </div>
+        )}
+
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Import the schedule using:</p>
+        <div className="space-y-2">
+          <FallbackBtn icon={<Copy size={16} className="text-blue-300" />} iconColor="bg-blue-900/30" title="Paste Schedule" sub="Type or copy text from the schedule" onClick={onSelectPaste} />
+          <FallbackBtn icon={<FileText size={16} className="text-gray-300" />} iconColor="bg-gray-800" title="Import CSV" sub="If you have a digital version of this schedule" onClick={onSelectCSV} />
+          <FallbackBtn icon={<FileUp size={16} className="text-purple-300" />} iconColor="bg-purple-900/30" title="Calendar File (.ics)" sub="Export from your calendar app" onClick={onSelectICS} />
+          <FallbackBtn icon={<Plus size={16} className="text-green-300" />} iconColor="bg-green-900/30" title="Manual Entry" sub="Enter job details from the printed sheet" onClick={onSelectManual} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Calendar alternative screen ──────────────────────────────────────────────
-// Shown when user taps Google/Apple/Outlook Calendar.
-// Explains no direct sync, offers: ICS upload, Paste, or Manual Job.
 
-type CalendarProvider = 'google_calendar' | 'apple_calendar' | 'outlook_calendar';
-
-const CALENDAR_INFO: Record<CalendarProvider, { name: string; instructions: string }> = {
+const CALENDAR_INFO: Record<CalendarProvider, {
+  name: string;
+  authNote: string;
+  instructions: string;
+}> = {
   google_calendar: {
     name: 'Google Calendar',
-    instructions: 'Open the event → tap ⋮ → Export → Download .ics file. Or copy event text and paste below.',
+    authNote: 'Direct Google Calendar sync requires Google OAuth, which is not configured in this environment.',
+    instructions: 'Open the event in Google Calendar → tap ⋮ → Export → Download the .ics file. Or open the event, copy all the details, and paste below.',
   },
   apple_calendar: {
     name: 'Apple Calendar',
-    instructions: 'Open Calendar app → tap the event → tap Edit → tap Share → Save .ics to Files. Or copy event text and paste below.',
+    authNote: 'Apple Calendar does not support direct web sync. Tap the event in the Calendar app to export or copy it.',
+    instructions: 'Open Calendar → tap the event → tap Edit → tap Share → Save .ics to Files. Or copy event details and paste below.',
   },
   outlook_calendar: {
     name: 'Outlook Calendar',
-    instructions: 'Open the event → tap … → Forward as iCalendar. Or open event, copy all details, and paste below.',
+    authNote: 'Microsoft authentication is not configured. Direct Outlook Calendar sync requires Microsoft Graph API credentials.',
+    instructions: 'Open the event in Outlook → tap … → Forward as iCalendar → open the attachment and save the .ics file. Or copy all event details and paste below.',
   },
 };
 
 function CalendarAltScreen({
-  provider,
-  onSelectICS,
-  onSelectPaste,
-  onSelectManual,
-  onBack,
+  provider, onSelectICS, onSelectPaste, onSelectManual, onBack,
 }: {
   provider:       CalendarProvider;
   onSelectICS:    () => void;
@@ -451,11 +660,12 @@ function CalendarAltScreen({
     <div className="flex flex-col h-full">
       <ScreenHeader title={`Import from ${info.name}`} onBack={onBack} />
       <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
-        <div className="bg-amber-950/25 border border-amber-800/40 rounded-xl px-4 py-3">
-          <p className="text-xs font-semibold text-amber-400 mb-1">Direct sync not connected yet</p>
-          <p className="text-[10px] text-gray-400 leading-relaxed">
-            Live {info.name} sync is coming soon. For now, import your jobs using one of these methods:
-          </p>
+        <div className="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertCircle size={13} className="text-gray-400 flex-shrink-0" />
+            <p className="text-xs font-semibold text-gray-300">Direct sync not available</p>
+          </div>
+          <p className="text-[10px] text-gray-500 leading-relaxed">{info.authNote}</p>
         </div>
 
         <div className="bg-blue-950/20 border border-blue-800/30 rounded-xl px-4 py-3">
@@ -463,48 +673,295 @@ function CalendarAltScreen({
           <p className="text-[10px] text-gray-400 leading-relaxed">{info.instructions}</p>
         </div>
 
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Import your schedule today:</p>
         <div className="space-y-2">
-          <button
-            onClick={onSelectICS}
-            className="w-full flex items-center gap-4 bg-gray-900 border border-purple-800/50 rounded-2xl px-4 py-4 text-left active:bg-gray-800 transition-colors"
-          >
-            <div className="w-10 h-10 rounded-xl bg-purple-900/40 flex items-center justify-center flex-shrink-0">
-              <FileUp size={18} className="text-purple-300" />
-            </div>
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-white">Upload .ics File</div>
-              <div className="text-[10px] text-gray-500">Export from calendar app, then upload here</div>
-            </div>
-            <ChevronRight size={14} className="text-gray-600" />
-          </button>
+          <FallbackBtn icon={<FileUp size={18} className="text-purple-300" />} iconColor="bg-purple-900/30" title="Upload .ics File" sub="Export from calendar app, then upload here" onClick={onSelectICS} />
+          <FallbackBtn icon={<Copy size={18} className="text-blue-300" />} iconColor="bg-blue-900/30" title="Paste Event Text" sub="Open event, copy details, paste into UnitDown" onClick={onSelectPaste} />
+          <FallbackBtn icon={<Plus size={18} className="text-green-300" />} iconColor="bg-green-900/30" title="Enter Manually" sub="Type job details by hand" onClick={onSelectManual} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
-          <button
-            onClick={onSelectPaste}
-            className="w-full flex items-center gap-4 bg-gray-900 border border-blue-800/50 rounded-2xl px-4 py-4 text-left active:bg-gray-800 transition-colors"
-          >
-            <div className="w-10 h-10 rounded-xl bg-blue-900/40 flex items-center justify-center flex-shrink-0">
-              <Copy size={18} className="text-blue-300" />
-            </div>
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-white">Paste Event Text</div>
-              <div className="text-[10px] text-gray-500">Open event, copy details, paste into UnitDown</div>
-            </div>
-            <ChevronRight size={14} className="text-gray-600" />
-          </button>
+// ─── Email alternative screen ─────────────────────────────────────────────────
 
-          <button
-            onClick={onSelectManual}
-            className="w-full flex items-center gap-4 bg-gray-900 border border-green-800/50 rounded-2xl px-4 py-4 text-left active:bg-gray-800 transition-colors"
-          >
-            <div className="w-10 h-10 rounded-xl bg-green-900/40 flex items-center justify-center flex-shrink-0">
-              <Plus size={18} className="text-green-300" />
+const EMAIL_INFO: Record<EmailProvider, {
+  name: string;
+  authNote: string;
+  pasteHint: string;
+}> = {
+  gmail: {
+    name: 'Gmail',
+    authNote: 'Direct Gmail inbox access requires Google OAuth, which is not configured. To connect Gmail sync, contact UnitDown support.',
+    pasteHint: 'Open the dispatch email in Gmail → select all → copy → paste into UnitDown.',
+  },
+  outlook_email: {
+    name: 'Outlook Email',
+    authNote: 'Outlook inbox access requires Microsoft Graph API authentication, which is not configured. Full email sync requires Microsoft credentials.',
+    pasteHint: 'Open the dispatch email in Outlook → Ctrl+A → Ctrl+C → paste into UnitDown. Or forward as iCalendar and upload the .ics file.',
+  },
+};
+
+function EmailAltScreen({
+  provider, onSelectPaste, onSelectICS, onSelectManual, onBack,
+}: {
+  provider:      EmailProvider;
+  onSelectPaste:  () => void;
+  onSelectICS:    () => void;
+  onSelectManual: () => void;
+  onBack:         () => void;
+}) {
+  const info = EMAIL_INFO[provider];
+
+  return (
+    <div className="flex flex-col h-full">
+      <ScreenHeader title={`Import from ${info.name}`} onBack={onBack} />
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        <div className="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertCircle size={13} className="text-gray-400 flex-shrink-0" />
+            <p className="text-xs font-semibold text-gray-300">Authentication not configured</p>
+          </div>
+          <p className="text-[10px] text-gray-500 leading-relaxed">{info.authNote}</p>
+        </div>
+
+        <div className="bg-blue-950/20 border border-blue-800/30 rounded-xl px-4 py-3">
+          <p className="text-[10px] text-blue-300 font-semibold mb-1">Import dispatch emails today</p>
+          <p className="text-[10px] text-gray-400 leading-relaxed">{info.pasteHint}</p>
+        </div>
+
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Get jobs into the inbox now:</p>
+        <div className="space-y-2">
+          <FallbackBtn icon={<Copy size={18} className="text-blue-300" />} iconColor="bg-blue-900/30" title="Paste Dispatch Email" sub="Copy email text, paste here — AI extracts jobs" onClick={onSelectPaste} />
+          <FallbackBtn icon={<FileUp size={18} className="text-purple-300" />} iconColor="bg-purple-900/30" title="Calendar File (.ics)" sub="If the email has a calendar attachment" onClick={onSelectICS} />
+          <FallbackBtn icon={<Plus size={18} className="text-green-300" />} iconColor="bg-green-900/30" title="Manual Entry" sub="Enter job details from the email" onClick={onSelectManual} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Dispatch platform alternative screen ─────────────────────────────────────
+
+const DISPATCH_INFO: Record<DispatchPlatform, {
+  name:          string;
+  apiNote:       string;
+  csvExportPath: string;
+  pasteHint:     string;
+}> = {
+  servicetitan: {
+    name:          'ServiceTitan',
+    apiNote:       'ServiceTitan API integration requires OAuth 2.0 credentials and a ServiceTitan developer account. Contact UnitDown support to set up direct sync.',
+    csvExportPath: 'ServiceTitan: Reports → Schedule → select date range → Export as CSV',
+    pasteHint:     'Copy job details from the dispatch board or email and paste them.',
+  },
+  fieldedge: {
+    name:          'FieldEdge',
+    apiNote:       'FieldEdge API integration requires API credentials from your FieldEdge account manager. Contact UnitDown support to configure.',
+    csvExportPath: 'FieldEdge: Schedule tab → select jobs → Export to CSV',
+    pasteHint:     'Copy job details from FieldEdge dispatch and paste them.',
+  },
+  housecall_pro: {
+    name:          'Housecall Pro',
+    apiNote:       'Housecall Pro API requires an active subscription and API key from Settings → Integrations. Contact UnitDown support to set up.',
+    csvExportPath: 'Housecall Pro: Reporting → Jobs → set date filter → Export CSV',
+    pasteHint:     'Copy job details from Housecall Pro and paste them.',
+  },
+};
+
+function DispatchAltScreen({
+  platform, onSelectCSV, onSelectPaste, onSelectManual, onBack,
+}: {
+  platform:       DispatchPlatform;
+  onSelectCSV:    () => void;
+  onSelectPaste:  () => void;
+  onSelectManual: () => void;
+  onBack:         () => void;
+}) {
+  const info = DISPATCH_INFO[platform];
+
+  return (
+    <div className="flex flex-col h-full">
+      <ScreenHeader title={`Import from ${info.name}`} onBack={onBack} />
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+        <div className="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3">
+          <div className="flex items-center gap-2 mb-1">
+            <AlertCircle size={13} className="text-gray-400 flex-shrink-0" />
+            <p className="text-xs font-semibold text-gray-300">API setup required for live sync</p>
+          </div>
+          <p className="text-[10px] text-gray-500 leading-relaxed">{info.apiNote}</p>
+        </div>
+
+        <div className="bg-blue-950/20 border border-blue-800/30 rounded-xl px-4 py-3 space-y-2">
+          <p className="text-[10px] text-blue-300 font-semibold">Export jobs from {info.name} today</p>
+          <div className="flex items-start gap-2">
+            <FileText size={11} className="text-blue-400 flex-shrink-0 mt-0.5" />
+            <p className="text-[10px] text-gray-400 leading-relaxed">{info.csvExportPath}</p>
+          </div>
+          <div className="flex items-start gap-2">
+            <Copy size={11} className="text-blue-400 flex-shrink-0 mt-0.5" />
+            <p className="text-[10px] text-gray-400 leading-relaxed">{info.pasteHint}</p>
+          </div>
+        </div>
+
+        <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Import jobs now:</p>
+        <div className="space-y-2">
+          <FallbackBtn icon={<FileText size={18} className="text-gray-300" />} iconColor="bg-gray-800" title="Import CSV" sub={`Export from ${info.name}, upload here`} onClick={onSelectCSV} />
+          <FallbackBtn icon={<Copy size={18} className="text-blue-300" />} iconColor="bg-blue-900/30" title="Paste Dispatch Text" sub="Copy from dispatch email or board, paste here" onClick={onSelectPaste} />
+          <FallbackBtn icon={<Plus size={18} className="text-green-300" />} iconColor="bg-green-900/30" title="Manual Entry" sub="Enter job details by hand" onClick={onSelectManual} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Custom API setup wizard ──────────────────────────────────────────────────
+
+interface CustomAPIConfig {
+  name:         string;
+  baseUrl:      string;
+  token:        string;
+  authType:     'bearer' | 'apikey' | 'basic';
+  jobsEndpoint: string;
+  savedAt:      string;
+}
+
+function CustomAPIScreen({ onBack, onSelectCSV, onSelectPaste, onSelectManual }: {
+  onBack:         () => void;
+  onSelectCSV:    () => void;
+  onSelectPaste:  () => void;
+  onSelectManual: () => void;
+}) {
+  const [name,         setName]         = useState('');
+  const [baseUrl,      setBaseUrl]      = useState('https://');
+  const [token,        setToken]        = useState('');
+  const [authType,     setAuthType]     = useState<'bearer' | 'apikey' | 'basic'>('bearer');
+  const [jobsEndpoint, setJobsEndpoint] = useState('/jobs');
+  const [saved,        setSaved]        = useState(false);
+  const [testing,      setTesting]      = useState(false);
+  const [testMsg,      setTestMsg]      = useState('');
+
+  const inputCls = 'w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500 transition-colors';
+
+  function Field({ label, children }: { label: string; children: React.ReactNode }) {
+    return (
+      <div>
+        <label className="block text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">{label}</label>
+        {children}
+      </div>
+    );
+  }
+
+  async function handleTest() {
+    if (!baseUrl || !jobsEndpoint) { setTestMsg('Enter a base URL and endpoint first.'); return; }
+    setTesting(true); setTestMsg('');
+    try {
+      const url = baseUrl.replace(/\/$/, '') + jobsEndpoint;
+      const headers: Record<string, string> = {};
+      if (authType === 'bearer') headers['Authorization'] = `Bearer ${token}`;
+      else if (authType === 'apikey') headers['X-API-Key'] = token;
+      else if (authType === 'basic') headers['Authorization'] = `Basic ${btoa(token)}`;
+      const res = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+      if (res.ok) {
+        setTestMsg(`✓ Connected — HTTP ${res.status}`);
+      } else {
+        setTestMsg(`✗ HTTP ${res.status} — check credentials`);
+      }
+    } catch {
+      setTestMsg('✗ Connection failed — check URL and network');
+    } finally {
+      setTesting(false);
+    }
+  }
+
+  function handleSave() {
+    const config: CustomAPIConfig = {
+      name: name || 'Custom API',
+      baseUrl, token, authType, jobsEndpoint,
+      savedAt: new Date().toISOString(),
+    };
+    try {
+      const existing: CustomAPIConfig[] = JSON.parse(localStorage.getItem('unitdown_custom_apis') ?? '[]');
+      existing.push(config);
+      localStorage.setItem('unitdown_custom_apis', JSON.stringify(existing));
+    } catch { /* localStorage unavailable */ }
+    setSaved(true);
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <ScreenHeader title="Custom API" subtitle="Connect any dispatch system via REST" onBack={onBack} />
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+        <div className="bg-purple-950/20 border border-purple-800/30 rounded-xl px-3 py-2.5">
+          <p className="text-[10px] text-purple-300 leading-relaxed">
+            Configure a REST API connection to any scheduling system. Configuration is saved locally. Full backend activation requires UnitDown support.
+          </p>
+        </div>
+
+        {saved ? (
+          <div className="bg-green-950/20 border border-green-800/40 rounded-xl px-4 py-5 text-center">
+            <CheckCircle size={24} className="text-green-400 mx-auto mb-2" />
+            <p className="text-sm font-bold text-green-300 mb-1">Configuration saved locally</p>
+            <p className="text-[10px] text-gray-500 leading-relaxed">
+              Your API config is stored on this device. Share it with the UnitDown team to activate live sync. Use the options below to import jobs in the meantime.
+            </p>
+          </div>
+        ) : (
+          <>
+            <Field label="Integration Name">
+              <input className={inputCls} value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Our Dispatch System" />
+            </Field>
+            <Field label="Base URL">
+              <input className={inputCls} value={baseUrl} onChange={e => setBaseUrl(e.target.value)} placeholder="https://api.example.com" />
+            </Field>
+            <div className="grid grid-cols-2 gap-2">
+              <Field label="Auth Type">
+                <select className={inputCls} value={authType} onChange={e => setAuthType(e.target.value as 'bearer' | 'apikey' | 'basic')}>
+                  <option value="bearer">Bearer Token</option>
+                  <option value="apikey">API Key</option>
+                  <option value="basic">Basic Auth</option>
+                </select>
+              </Field>
+              <Field label="Jobs Endpoint">
+                <input className={inputCls} value={jobsEndpoint} onChange={e => setJobsEndpoint(e.target.value)} placeholder="/jobs" />
+              </Field>
             </div>
-            <div className="flex-1">
-              <div className="text-sm font-semibold text-white">Enter Manually</div>
-              <div className="text-[10px] text-gray-500">Type job details by hand</div>
+            <Field label="API Token / Key">
+              <input className={inputCls} type="password" value={token} onChange={e => setToken(e.target.value)} placeholder="Paste your token or key" />
+            </Field>
+
+            {testMsg && (
+              <p className={`text-[10px] font-semibold ${testMsg.startsWith('✓') ? 'text-green-400' : 'text-red-400'}`}>
+                {testMsg}
+              </p>
+            )}
+
+            <div className="flex gap-2">
+              <button
+                onClick={handleTest}
+                disabled={testing}
+                className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-700 rounded-xl py-2.5 text-xs font-semibold text-gray-300 active:bg-gray-700 transition-colors disabled:opacity-50"
+              >
+                <Settings size={13} className={testing ? 'animate-spin' : ''} />
+                {testing ? 'Testing…' : 'Test Connection'}
+              </button>
+              <button
+                onClick={handleSave}
+                disabled={!name.trim() && !baseUrl.trim()}
+                className="flex-1 bg-white text-gray-950 font-bold rounded-xl py-2.5 text-xs active:scale-[0.98] transition-transform disabled:opacity-40"
+              >
+                Save Config
+              </button>
             </div>
-            <ChevronRight size={14} className="text-gray-600" />
-          </button>
+          </>
+        )}
+
+        <div className="border-t border-gray-800 pt-4 space-y-2">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Import jobs while you set this up:</p>
+          <FallbackBtn icon={<FileText size={16} className="text-gray-300" />} iconColor="bg-gray-800" title="Import CSV" sub="Export a CSV from your scheduling system" onClick={onSelectCSV} />
+          <FallbackBtn icon={<Copy size={16} className="text-blue-300" />} iconColor="bg-blue-900/30" title="Paste Schedule" sub="Copy and paste your dispatch text" onClick={onSelectPaste} />
+          <FallbackBtn icon={<Plus size={16} className="text-green-300" />} iconColor="bg-green-900/30" title="Manual Entry" sub="Enter job details by hand" onClick={onSelectManual} />
         </div>
       </div>
     </div>
@@ -629,42 +1086,31 @@ function SourcesScreen({ onSelect, onBack }: { onSelect: (id: ProviderType) => v
                 {CATEGORY_LABELS[cat] ?? cat}
               </div>
               <div className="space-y-1.5">
-                {catProviders.map(p => {
-                  const isAvailable = p.status === 'available';
-                  return (
-                    <button
-                      key={p.id}
-                      disabled={!isAvailable}
-                      onClick={() => isAvailable && onSelect(p.id)}
-                      className={`w-full flex items-center gap-3 bg-gray-900 border rounded-2xl px-4 py-3 text-left transition-colors ${
-                        isAvailable
-                          ? 'border-gray-700 active:bg-gray-800 cursor-pointer'
-                          : 'border-gray-800 opacity-40 cursor-not-allowed'
-                      }`}
-                    >
-                      <div className="w-8 h-8 rounded-xl bg-gray-800 flex items-center justify-center flex-shrink-0">
-                        <ProviderIcon id={p.id} size={16} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="text-sm font-semibold text-white">{p.name}</div>
-                        <div className="text-[10px] text-gray-500">{p.tagline}</div>
-                      </div>
-                      {isAvailable
-                        ? <ChevronRight size={14} className="text-gray-600 flex-shrink-0" />
-                        : <span className="text-[9px] text-gray-600 border border-gray-700 px-1.5 py-0.5 rounded-full flex-shrink-0">Soon</span>
-                      }
-                    </button>
-                  );
-                })}
+                {catProviders.map(p => (
+                  <button
+                    key={p.id}
+                    onClick={() => onSelect(p.id)}
+                    className="w-full flex items-center gap-3 bg-gray-900 border border-gray-700 rounded-2xl px-4 py-3 text-left active:bg-gray-800 transition-colors cursor-pointer"
+                  >
+                    <div className="w-8 h-8 rounded-xl bg-gray-800 flex items-center justify-center flex-shrink-0">
+                      <ProviderIcon id={p.id} size={16} />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-white">{p.name}</div>
+                      <div className="text-[10px] text-gray-500">{p.tagline}</div>
+                    </div>
+                    <ChevronRight size={14} className="text-gray-600 flex-shrink-0" />
+                  </button>
+                ))}
               </div>
             </div>
           );
         })}
 
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 mt-2">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Coming in future releases</div>
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">On the roadmap</div>
           <div className="flex flex-wrap gap-1">
-            {['ServiceTitan', 'FieldEdge', 'Successware', 'Service Fusion', 'Lennox Dispatch', 'Carrier ServiceBench', 'Trane', 'Daikin', 'Gmail sync', 'Outlook Email sync', 'SMS parsing'].map(f => (
+            {['Successware', 'Service Fusion', 'Lennox Dispatch', 'Carrier ServiceBench', 'Trane TechAssist', 'SMS parsing', 'Daikin Connect'].map(f => (
               <span key={f} className="text-[9px] bg-gray-800 text-gray-500 border border-gray-700 px-1.5 py-0.5 rounded">{f}</span>
             ))}
           </div>
@@ -676,8 +1122,8 @@ function SourcesScreen({ onSelect, onBack }: { onSelect: (id: ProviderType) => v
 
 // ─── Main modal ───────────────────────────────────────────────────────────────
 interface Props {
-  onClose:       () => void;
-  onStartJob:    () => void;
+  onClose:        () => void;
+  onStartJob:     () => void;
   onJobAccepted?: (result: ScheduleWizardResult) => void;
 }
 
@@ -690,13 +1136,15 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
     addJobs, updateJob, updateStatus, removeJob, acceptAll, clearAccepted,
   } = useDispatchInbox();
 
-  const [screen,        setScreen]        = useState<Screen>('inbox');
-  const [editingJob,    setEditingJob]    = useState<ImportedJob | null>(null);
-  const [isNewJob,      setIsNewJob]      = useState(false);
-  const [calendarFor,   setCalendarFor]   = useState<CalendarProvider>('google_calendar');
-  const [inboxFilter,   setInboxFilter]   = useState<'all' | 'pending' | 'accepted'>('all');
+  const [screen,           setScreen]          = useState<Screen>('inbox');
+  const [editingJob,       setEditingJob]       = useState<ImportedJob | null>(null);
+  const [isNewJob,         setIsNewJob]         = useState(false);
+  const [calendarFor,      setCalendarFor]      = useState<CalendarProvider>('google_calendar');
+  const [emailFor,         setEmailFor]         = useState<EmailProvider>('gmail');
+  const [dispatchPlatform, setDispatchPlatform] = useState<DispatchPlatform>('servicetitan');
+  const [inboxFilter,      setInboxFilter]      = useState<'all' | 'pending' | 'accepted'>('all');
 
-  // ── Accept a single job — marks in inbox + fires schedule callback ──────────
+  // ── Accept a single job ────────────────────────────────────────────────────
   function handleAccept(job: ImportedJob) {
     updateStatus(job.id, 'accepted');
     onJobAccepted?.(importedJobToResult(job, techName));
@@ -718,12 +1166,20 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
 
   // ── Source selection ───────────────────────────────────────────────────────
   function handleSourceSelect(id: ProviderType) {
-    if (id === 'paste')  { setScreen('paste');  return; }
-    if (id === 'csv')    { setScreen('csv');    return; }
-    if (id === 'ics')    { setScreen('ics');    return; }
+    if (id === 'paste')    { setScreen('paste');  return; }
+    if (id === 'csv')      { setScreen('csv');    return; }
+    if (id === 'ics')      { setScreen('ics');    return; }
+    if (id === 'pdf')      { setScreen('pdf');    return; }
+    if (id === 'scan_ocr') { setScreen('scan');   return; }
     if (id === 'google_calendar')  { setCalendarFor('google_calendar');  setScreen('calendar_alt'); return; }
     if (id === 'apple_calendar')   { setCalendarFor('apple_calendar');   setScreen('calendar_alt'); return; }
     if (id === 'outlook_calendar') { setCalendarFor('outlook_calendar'); setScreen('calendar_alt'); return; }
+    if (id === 'gmail')         { setEmailFor('gmail');         setScreen('email_alt'); return; }
+    if (id === 'outlook_email') { setEmailFor('outlook_email'); setScreen('email_alt'); return; }
+    if (id === 'servicetitan')  { setDispatchPlatform('servicetitan');  setScreen('dispatch_alt'); return; }
+    if (id === 'fieldedge')     { setDispatchPlatform('fieldedge');     setScreen('dispatch_alt'); return; }
+    if (id === 'housecall_pro') { setDispatchPlatform('housecall_pro'); setScreen('dispatch_alt'); return; }
+    if (id === 'custom_api')    { setScreen('custom_api'); return; }
     if (id === 'manual') {
       const blank: ImportedJob = {
         id:              `DI-${Date.now()}`,
@@ -769,35 +1225,97 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
 
   const unreadCount = pendingJobs.length + dupJobs.length;
 
+  // ── Shared navigation callbacks for fallback screens ──────────────────────
+  const goCSV     = () => setScreen('csv');
+  const goPaste   = () => setScreen('paste');
+  const goICS     = () => setScreen('ics');
+  const goManual  = () => handleSourceSelect('manual');
+  const goSources = () => setScreen('sources');
+
   return (
     <motion.div
       initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 z-50 flex flex-col bg-gray-950"
     >
-      {/* ── Paste ────────────────────────────────────────────────────────── */}
-      {screen === 'paste' && <PasteScreen onParsed={handleParsed} onBack={() => setScreen('sources')} />}
+      {/* ── Paste ─────────────────────────────────────────────────────────── */}
+      {screen === 'paste' && <PasteScreen onParsed={handleParsed} onBack={goSources} />}
 
-      {/* ── CSV ──────────────────────────────────────────────────────────── */}
-      {screen === 'csv' && <CSVScreen onParsed={handleParsed} onBack={() => setScreen('sources')} />}
+      {/* ── CSV ───────────────────────────────────────────────────────────── */}
+      {screen === 'csv' && <CSVScreen onParsed={handleParsed} onBack={goSources} />}
 
-      {/* ── ICS ──────────────────────────────────────────────────────────── */}
-      {screen === 'ics' && <ICSScreen onParsed={handleParsed} onBack={() => setScreen('sources')} />}
+      {/* ── ICS ───────────────────────────────────────────────────────────── */}
+      {screen === 'ics' && <ICSScreen onParsed={handleParsed} onBack={goSources} />}
 
-      {/* ── Calendar alt ─────────────────────────────────────────────────── */}
-      {screen === 'calendar_alt' && (
-        <CalendarAltScreen
-          provider={calendarFor}
-          onSelectICS={() => setScreen('ics')}
-          onSelectPaste={() => setScreen('paste')}
-          onSelectManual={() => handleSourceSelect('manual')}
-          onBack={() => setScreen('sources')}
+      {/* ── PDF ───────────────────────────────────────────────────────────── */}
+      {screen === 'pdf' && (
+        <PDFScreen
+          onParsed={handleParsed}
+          onBack={goSources}
+          onSelectPaste={goPaste}
+          onSelectCSV={goCSV}
+          onSelectICS={goICS}
+          onSelectManual={goManual}
         />
       )}
 
-      {/* ── Sources ──────────────────────────────────────────────────────── */}
+      {/* ── Scan ──────────────────────────────────────────────────────────── */}
+      {screen === 'scan' && (
+        <ScanScreen
+          onBack={goSources}
+          onSelectPaste={goPaste}
+          onSelectCSV={goCSV}
+          onSelectICS={goICS}
+          onSelectManual={goManual}
+        />
+      )}
+
+      {/* ── Calendar alt ──────────────────────────────────────────────────── */}
+      {screen === 'calendar_alt' && (
+        <CalendarAltScreen
+          provider={calendarFor}
+          onSelectICS={goICS}
+          onSelectPaste={goPaste}
+          onSelectManual={goManual}
+          onBack={goSources}
+        />
+      )}
+
+      {/* ── Email alt ─────────────────────────────────────────────────────── */}
+      {screen === 'email_alt' && (
+        <EmailAltScreen
+          provider={emailFor}
+          onSelectPaste={goPaste}
+          onSelectICS={goICS}
+          onSelectManual={goManual}
+          onBack={goSources}
+        />
+      )}
+
+      {/* ── Dispatch alt ──────────────────────────────────────────────────── */}
+      {screen === 'dispatch_alt' && (
+        <DispatchAltScreen
+          platform={dispatchPlatform}
+          onSelectCSV={goCSV}
+          onSelectPaste={goPaste}
+          onSelectManual={goManual}
+          onBack={goSources}
+        />
+      )}
+
+      {/* ── Custom API ────────────────────────────────────────────────────── */}
+      {screen === 'custom_api' && (
+        <CustomAPIScreen
+          onBack={goSources}
+          onSelectCSV={goCSV}
+          onSelectPaste={goPaste}
+          onSelectManual={goManual}
+        />
+      )}
+
+      {/* ── Sources ───────────────────────────────────────────────────────── */}
       {screen === 'sources' && <SourcesScreen onSelect={handleSourceSelect} onBack={() => setScreen('inbox')} />}
 
-      {/* ── Edit / Manual ────────────────────────────────────────────────── */}
+      {/* ── Edit / Manual ─────────────────────────────────────────────────── */}
       {screen === 'edit' && editingJob && (
         <EditJobScreen
           job={editingJob}
@@ -807,7 +1325,7 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
         />
       )}
 
-      {/* ── Inbox ────────────────────────────────────────────────────────── */}
+      {/* ── Inbox ─────────────────────────────────────────────────────────── */}
       {screen === 'inbox' && (
         <>
           <div className="bg-gray-900 border-b border-gray-800 px-4 pt-12 pb-3 flex-shrink-0">
