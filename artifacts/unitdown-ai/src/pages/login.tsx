@@ -114,7 +114,7 @@ export default function LoginPage() {
         signIn.authenticateWithRedirect({
           strategy: "oauth_apple",
           redirectUrl: `${window.location.origin}/sso-callback`,
-          redirectUrlComplete: "/",
+          redirectUrlComplete: "/dashboard",
         }),
         20_000
       );
@@ -142,7 +142,7 @@ export default function LoginPage() {
         signIn.authenticateWithRedirect({
           strategy: "oauth_google",
           redirectUrl: `${window.location.origin}/sso-callback`,
-          redirectUrlComplete: "/",
+          redirectUrlComplete: "/dashboard",
         }),
         20_000
       );
@@ -207,7 +207,7 @@ export default function LoginPage() {
       );
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        navigate("/");
+        navigate("/dashboard");
       } else {
         setError("Sign-in could not be completed. Please request a new code and try again.");
       }
@@ -256,7 +256,7 @@ export default function LoginPage() {
           );
           if (result.status === "complete") {
             await setActive({ session: result.createdSessionId });
-            navigate("/");
+            navigate("/dashboard");
             return;
           }
         }
@@ -270,7 +270,7 @@ export default function LoginPage() {
       // Activate a local demo session. No Clerk required. Reviewer enters the
       // app directly as a Pro user. sessionStorage is cleared on tab close.
       activateDemoSession(email.trim().toLowerCase());
-      navigate("/");
+      navigate("/dashboard");
       return;
     }
 
@@ -301,7 +301,7 @@ export default function LoginPage() {
       );
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        navigate("/");
+        navigate("/dashboard");
       } else if (result.status === "needs_first_factor") {
         // Account exists but Clerk needs an additional first-factor verification
         // (e.g. email code). Surface the send-code option so the user can proceed.
@@ -381,7 +381,7 @@ export default function LoginPage() {
         setStep("reset-password");
       } else if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        navigate("/");
+        navigate("/dashboard");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -408,7 +408,7 @@ export default function LoginPage() {
       );
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
-        navigate("/");
+        navigate("/dashboard");
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "";
@@ -430,7 +430,7 @@ export default function LoginPage() {
       setStep("email");
     } else if (step === "reset-code") setStep("forgot");
     else if (step === "reset-password") setStep("reset-code");
-    else navigate("/");
+    else navigate("/dashboard");
   };
 
   const stepTitle: Record<Step, string> = {

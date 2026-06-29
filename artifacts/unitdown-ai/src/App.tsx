@@ -26,6 +26,8 @@ import UnitFormPage from "./pages/UnitFormPage";
 import UnitDetailPage from "./pages/UnitDetailPage";
 import DiagnosticLogDetailPage from "./pages/DiagnosticLogDetailPage";
 import NotFound from "./pages/not-found";
+import FieldHubDashboard from "./pages/FieldHubDashboard";
+import PricingPage from "./pages/PricingPage";
 import DevEquipmentPreview from "./pages/DevEquipmentPreview";
 import JobModePrototype from "./pages/JobModePrototype";
 import DevJobPreview from "./pages/DevJobPreview";
@@ -1042,7 +1044,7 @@ function AdminView() {
     if (!isLoaded) return;
     const email = user?.primaryEmailAddress?.emailAddress?.trim().toLowerCase() ?? "";
     if (!ADMIN_EMAILS.has(email)) {
-      navigate("/");
+      navigate("/dashboard");
     }
   }, [isLoaded, user, navigate]);
 
@@ -1064,7 +1066,7 @@ function AdminView() {
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <button
-              onClick={() => navigate("/")}
+              onClick={() => navigate("/dashboard")}
               className="flex items-center gap-2 text-slate-600 hover:text-blue-600 transition-colors font-semibold text-sm"
               data-testid="admin-back-home"
             >
@@ -3343,7 +3345,7 @@ function Home() {
               <h3 className="text-[11px] font-extrabold text-slate-300 uppercase tracking-widest">Platform</h3>
               <nav className="space-y-2.5" aria-label="Platform links">
                 {[
-                  { label: "AI Diagnostics",        action: () => navigate("/") },
+                  { label: "AI Diagnostics",        action: () => navigate("/diagnose") },
                   { label: "Field Hub",              action: () => navigate("/records") },
                   { label: "Equipment Records",      action: () => navigate("/records") },
                   { label: "Diagnostic History",     action: () => navigate("/account") },
@@ -3467,6 +3469,38 @@ function Home() {
   );
 }
 
+// ─── RootRoute ──────────────────────────────────────────────────────────────────
+// Auth-aware entry: signed-in users land on /dashboard; guests see the public
+// diagnostic landing page (Home). This lets the old Home continue serving its
+// purpose as a marketing/diagnostic page for unauthenticated visitors.
+
+function RootRoute() {
+  const { isSignedIn, isLoaded } = useUser();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (isLoaded && isSignedIn) {
+      navigate("/dashboard", { replace: true } as Parameters<typeof navigate>[1]);
+    }
+  }, [isLoaded, isSignedIn, navigate]);
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+        <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center animate-pulse">
+          <ThermometerSnowflake className="w-5 h-5 text-white" />
+        </div>
+      </div>
+    );
+  }
+
+  if (isSignedIn) {
+    return null;
+  }
+
+  return <Home />;
+}
+
 // ─── App ────────────────────────────────────────────────────────────────────────
 
 function App() {
@@ -3476,7 +3510,10 @@ function App() {
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
           <JobModeProvider>
             <Switch>
-              <Route path="/" component={Home} />
+              <Route path="/" component={RootRoute} />
+              <Route path="/dashboard" component={FieldHubDashboard} />
+              <Route path="/diagnose" component={Home} />
+              <Route path="/pricing" component={PricingPage} />
               <Route path="/admin" component={AdminView} />
               <Route path="/terms" component={TermsPage} />
               <Route path="/privacy" component={PrivacyPage} />

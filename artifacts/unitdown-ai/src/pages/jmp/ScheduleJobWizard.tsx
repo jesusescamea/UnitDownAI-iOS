@@ -14,6 +14,10 @@ export interface ScheduleWizardResult {
   job: TodayJob;
   calEvent: CalendarEvent;
   isToday: boolean;
+  /** Full Unix timestamp (ms) for the scheduled date — use this to persist to the API. */
+  scheduledMs: number;
+  /** Human-readable job title derived from customer + job type — suitable as the event title. */
+  title: string;
 }
 
 interface Props {
@@ -390,7 +394,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
       label: `${job.customer} — ${effectiveJobType}`,
     };
 
-    onCreate({ job, calEvent, isToday });
+    onCreate({ job, calEvent, isToday, scheduledMs: selectedDate.getTime(), title: calEvent.label });
   }
 
   const StepIcon = STEPS[step].icon;
