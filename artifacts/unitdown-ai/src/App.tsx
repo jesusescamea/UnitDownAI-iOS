@@ -34,6 +34,7 @@ import DevJobPreview from "./pages/DevJobPreview";
 import DevJobRecordPreview from "./pages/DevJobRecordPreview";
 import { JobModePage } from "./pages/JobModePage";
 import { ServiceRecordPage } from "./pages/ServiceRecordPage";
+import { LandingPage } from "./pages/LandingPage";
 import { JobModeProvider } from "./context/JobModeContext";
 import InstallPromptBanner from "./components/InstallPromptBanner";
 import { ActiveJobBanner } from "./components/job/ActiveJobBanner";
@@ -3498,7 +3499,7 @@ function RootRoute() {
     return null;
   }
 
-  return <Home />;
+  return <LandingPage />;
 }
 
 // ─── App ────────────────────────────────────────────────────────────────────────
