@@ -1,0 +1,274 @@
+Dispatch Inbox is currently showing too many sources as Coming Soon.
+
+We need to make the practical sources actually work now.
+
+Do not change:
+- Bundle ID
+- auth
+- Apple IAP
+- Stripe
+- version/build number
+- existing job mode
+- existing equipment records
+
+Goal:
+Make Dispatch Inbox useful immediately for real field work.
+
+==================================================
+IMPLEMENT NOW
+==================================================
+
+Make these sources functional:
+
+1. Manual Job
+2. Paste Schedule
+3. Import CSV
+4. Google Calendar if browser/device calendar API is available
+5. Apple Calendar if browser/device calendar API is available
+6. Outlook Calendar if browser/device calendar API is available
+
+If direct calendar API access is not available in web/PWA:
+- show a clear explanation
+- provide import alternatives:
+  - Paste schedule
+  - Import CSV
+  - Import ICS file
+
+==================================================
+ADD ICS IMPORT
+==================================================
+
+Add "Import Calendar File (.ics)" as a working source.
+
+Reason:
+Outlook, Google Calendar, and Apple Calendar can export/share .ics files.
+
+ICS parser should extract:
+
+- event title
+- start date/time
+- end date/time
+- location
+- description/notes
+- phone number if present
+- job number if present
+- customer name if inferable
+
+==================================================
+MANUAL JOB
+==================================================
+
+Manual Job should open the existing ScheduleJobWizard or a lightweight job form.
+
+It must allow:
+- customer
+- site/location
+- job number
+- scheduled date
+- scheduled time window
+- job type
+- priority
+- complaint/task
+- notes
+
+Save into the same job system used by Job Mode.
+
+No fake technicians.
+Assign to current logged-in user automatically.
+
+==================================================
+PASTE SCHEDULE
+==================================================
+
+Paste Schedule should work now.
+
+Flow:
+- user pastes schedule email/calendar text
+- parser extracts multiple jobs
+- show Review Imported Jobs
+- user can edit/delete each draft
+- user taps Accept Selected or Accept All
+- accepted jobs save into Job Mode schedule
+
+Parser should detect:
+- job numbers like 2606-37730
+- customer names
+- times
+- dates
+- locations
+- phone numbers
+- job type words: service, PM, survey, warranty, inspection, startup, emergency
+- notes
+
+Do not invent missing fields.
+Mark missing fields as Needs Review.
+
+==================================================
+CSV IMPORT
+==================================================
+
+CSV Import should work now.
+
+Accept common headers:
+- job number
+- job #
+- work order
+- customer
+- site
+- address
+- location
+- date
+- time
+- start
+- end
+- type
+- priority
+- complaint
+- notes
+- phone
+
+Show Review Imported Jobs before saving.
+
+==================================================
+CALENDAR SOURCES
+==================================================
+
+For:
+- Google Calendar
+- Apple Calendar
+- Outlook Calendar
+
+If direct integration is not implemented today:
+
+Do not leave as dead Coming Soon buttons.
+
+Instead, tapping each should open a useful path:
+
+Title:
+Import from Google Calendar / Apple Calendar / Outlook Calendar
+
+Explain:
+Direct sync is not connected yet.
+
+Offer:
+1. Upload .ics calendar file
+2. Paste copied calendar event text
+3. Manual Job
+
+For Outlook specifically:
+Add instructions:
+Open event → copy details → paste into UnitDown
+or export/share .ics file if available.
+
+==================================================
+DISABLED/FUTURE SOURCES
+==================================================
+
+These can remain Coming Soon but must be clearly disabled:
+- Gmail
+- Outlook Email
+- PDF
+- Scan Schedule OCR
+- ServiceTitan
+- FieldEdge
+- Successware
+- Service Fusion
+- Lennox Dispatch
+- Carrier ServiceBench
+- Trane systems
+- Daikin dispatch
+
+Do not show them as clickable if they do nothing.
+
+==================================================
+REVIEW IMPORTED JOBS
+==================================================
+
+Create a consistent review screen for all import sources.
+
+Each draft card:
+- Customer
+- Job number
+- Date
+- Time
+- Location
+- Job type
+- Complaint/task
+- Notes
+- Needs Review badge if required fields are missing
+- Edit
+- Delete
+- Accept checkbox
+
+Actions:
+- Accept Selected
+- Accept All
+- Cancel
+
+==================================================
+SAVE BEHAVIOR
+==================================================
+
+Accepted jobs must save to the real job scheduling system.
+
+Jobs should appear on:
+- dashboard calendar
+- today's jobs if scheduled for today
+- /job list
+- selected future dates if scheduled later
+
+Do not save only to local prototype state unless that is the current production job system.
+If local queue is used, clearly sync it when online.
+
+==================================================
+OFFLINE
+==================================================
+
+If offline:
+- allow paste/manual/CSV imports
+- save imported jobs locally
+- queue sync
+- show pending sync status
+
+==================================================
+TESTING
+==================================================
+
+Test:
+1. Manual Job creates a real scheduled job.
+2. Paste these sample entries:
+
+2606-37730 ; Lowes; serv; 7:00 AM; Lincoln; Vendor meet 10 am; POC 510-472-1230
+2606-07588 ; Best Buy; PM survey; 7:30 AM; North Sac
+
+Expected:
+- 2 draft jobs
+- job numbers extracted
+- customers extracted
+- times extracted
+- locations extracted
+- phone extracted for first job
+- job types inferred
+- Accept All creates 2 jobs
+
+3. CSV import creates draft jobs.
+4. ICS import creates draft jobs.
+5. Google/Apple/Outlook Calendar buttons provide useful import alternatives instead of dead Coming Soon.
+
+Run:
+- frontend typecheck
+- backend typecheck
+- shared/lib typecheck
+- frontend build
+- backend build
+
+Final report:
+- Sources now working
+- Sources still disabled
+- Files changed
+- Parser behavior
+- Save behavior
+- Offline behavior
+- Typecheck result
+- Build result
+- Remaining blockers
