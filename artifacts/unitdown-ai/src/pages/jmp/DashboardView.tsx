@@ -72,12 +72,20 @@ export function DashboardView({ onStartJob }: Props) {
       clerkUser.emailAddresses[0]?.emailAddress ||
       'Field Tech'
     : 'Field Tech';
-  const initials = clerkUser
-    ? [clerkUser.firstName, clerkUser.lastName]
-        .filter(Boolean)
-        .map(n => n![0].toUpperCase())
-        .join('') || '?'
-    : '?';
+  const initials = (() => {
+    if (!clerkUser) return 'UD';
+    const fromName = [clerkUser.firstName, clerkUser.lastName]
+      .filter(Boolean)
+      .map(n => n![0].toUpperCase())
+      .join('');
+    if (fromName) return fromName;
+    const email = clerkUser.emailAddresses[0]?.emailAddress ?? '';
+    if (!email) return 'UD';
+    const local = email.split('@')[0];
+    const parts = local.split(/[._\-+]/).filter(Boolean);
+    if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+    return parts[0]?.[0]?.toUpperCase() ?? 'UD';
+  })();
 
   const [selectedJob,     setSelectedJob]     = useState<TodayJob | null>(null);
   const [selectedDay,     setSelectedDay]     = useState<{ day: number; events: CalendarEvent[] } | null>(null);
@@ -102,29 +110,40 @@ export function DashboardView({ onStartJob }: Props) {
 
   const LS_KEY = 'unitdown_jmp_scheduled_jobs';
 
+  const todayStr = new Date().toISOString().split('T')[0];
+
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
       if (!raw) return;
-      const records = JSON.parse(raw) as Array<{ job: TodayJob; calEvent: CalendarEvent; isToday: boolean }>;
-      setUserJobs(records.filter(r => r.isToday).map(r => r.job));
+      const records = JSON.parse(raw) as Array<{ job: TodayJob; calEvent: CalendarEvent; scheduledDate?: string; isToday?: boolean }>;
+      // Filter jobs whose scheduledDate matches today — also handles legacy records that used isToday
+      setUserJobs(records.filter(r => {
+        if (r.scheduledDate) return r.scheduledDate === todayStr;
+        return r.isToday === true;
+      }).map(r => r.job));
       setUserCalEvents(records.map(r => r.calEvent));
     } catch { /* ignore parse errors */ }
   }, []);
 
   function handleJobCreated(result: ScheduleWizardResult) {
+    const scheduledDate = result.job.scheduledDate ?? todayStr;
     try {
       const raw = localStorage.getItem(LS_KEY);
       const records = raw
-        ? (JSON.parse(raw) as Array<{ job: TodayJob; calEvent: CalendarEvent; isToday: boolean }>)
+        ? (JSON.parse(raw) as Array<{ job: TodayJob; calEvent: CalendarEvent; scheduledDate?: string; isToday?: boolean }>)
         : [];
-      records.push({ job: result.job, calEvent: result.calEvent, isToday: result.isToday });
+      records.push({ job: result.job, calEvent: result.calEvent, scheduledDate });
       localStorage.setItem(LS_KEY, JSON.stringify(records));
     } catch { /* ignore write errors */ }
-    if (result.isToday) setUserJobs(prev => [...prev, result.job]);
+    if (scheduledDate === todayStr) setUserJobs(prev => [...prev, result.job]);
     setUserCalEvents(prev => [...prev, result.calEvent]);
     setWizardOpen(false);
-    setSchedToast('Job scheduled');
+    const isToday = scheduledDate === todayStr;
+    const dateLabel = isToday
+      ? 'today'
+      : new Date(scheduledDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    setSchedToast(`Job scheduled for ${dateLabel}`);
     setTimeout(() => setSchedToast(null), 3500);
   }
 

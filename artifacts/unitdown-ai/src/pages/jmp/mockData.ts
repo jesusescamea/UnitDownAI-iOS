@@ -120,6 +120,8 @@ export interface TodayJob {
   symptom: string;
   driveTime: string;
   scheduledTime: string;
+  /** ISO date string (YYYY-MM-DD) for the scheduled date — used to filter Today's Jobs */
+  scheduledDate?: string;
   techNote: string | null;
   dispatchNotes?: string[];
   isPrototype: boolean;

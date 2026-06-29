@@ -377,6 +377,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
       symptom:       data.complaint,
       driveTime:     '—',
       scheduledTime: data.timeWindow,
+      scheduledDate: data.date,
       techNote:      data.notes.trim() || null,
       dispatchNotes: [
         data.accessNotes   && `Access: ${data.accessNotes}`,
