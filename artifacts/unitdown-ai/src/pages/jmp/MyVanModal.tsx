@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect, Component, type ReactNode } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -22,6 +22,44 @@ import {
 
 interface Props { onClose: () => void; onOpenTools?: () => void }
 type Tab = 'overview' | 'inventory' | 'restock';
+
+// ─── In-modal error boundary — prevents global app crash ──────────────────────
+class VanErrorBoundary extends Component<
+  { children: ReactNode; onClose: () => void },
+  { hasError: boolean }
+> {
+  constructor(props: { children: ReactNode; onClose: () => void }) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() { return { hasError: true }; }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div className="flex flex-col items-center justify-center flex-1 px-6 py-12 text-center">
+          <div className="text-4xl mb-4">⚠️</div>
+          <h3 className="text-lg font-bold text-white mb-2">Van inventory could not load</h3>
+          <p className="text-sm text-gray-400 mb-6 leading-relaxed">
+            There was a problem loading your van inventory. Your data is safe.
+          </p>
+          <div className="flex gap-3">
+            <button
+              onClick={() => this.setState({ hasError: false })}
+              className="px-5 py-2.5 bg-teal-700 text-white font-bold rounded-xl text-sm">
+              Retry
+            </button>
+            <button
+              onClick={() => { this.setState({ hasError: false }); this.props.onClose(); }}
+              className="px-5 py-2.5 bg-gray-800 border border-gray-700 text-gray-300 font-bold rounded-xl text-sm">
+              Close
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const TODAY_JOBS = ['summit', 'northgate', 'ridgeline'];
 
@@ -409,6 +447,7 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
       </div>
 
       {/* ── Content ──────────────────────────────────────────────── */}
+      <VanErrorBoundary onClose={onClose}>
       <div className="flex-1 overflow-y-auto">
         <AnimatePresence mode="wait">
 
@@ -558,8 +597,14 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
                 <div className="flex items-center gap-4">
                   <ReadinessRing score={score} />
                   <div className="flex-1 space-y-2.5">
-                    {Object.entries(jobScores).map(([jid, s]) => {
+                    {Object.keys(JOB_INFO).length === 0 ? (
+                      <div className="text-center py-3">
+                        <div className="text-sm text-gray-500 font-semibold">No scheduled jobs today</div>
+                        <div className="text-[10px] text-gray-600 mt-1">Add jobs to see per-job readiness</div>
+                      </div>
+                    ) : Object.entries(jobScores).map(([jid, s]) => {
                       const j = JOB_INFO[jid];
+                      if (!j) return null;
                       const badge = readinessBadge(s);
                       const tScore = toolsReadiness[jid as keyof typeof toolsReadiness];
                       return (
@@ -704,9 +749,16 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
               {/* ── 4. Return Trip Risk — Per Job ────────────────── */}
               <div>
                 <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500 mb-3">Return Trip Risk — Today's Jobs</div>
+                {Object.keys(JOB_INFO).length === 0 ? (
+                  <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
+                    <div className="text-2xl mb-2">📋</div>
+                    <div className="font-semibold text-white mb-1">No scheduled jobs today</div>
+                    <div className="text-xs text-gray-500">Return trip risk analysis appears once jobs are scheduled.</div>
+                  </div>
+                ) : (
                 <div className="space-y-2">
-                  {(['summit', 'northgate', 'ridgeline'] as const).map(jobId => {
-                    const j         = JOB_INFO[jobId];
+                  {(['summit', 'northgate', 'ridgeline'] as const).filter(id => !!JOB_INFO[id]).map(jobId => {
+                    const j         = JOB_INFO[jobId]!;
                     const likelihood = jobLikelihoods[jobId];
                     const risk       = jobRisks[jobId];
                     const partScore  = jobScores[jobId];
@@ -792,6 +844,7 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
                     );
                   })}
                 </div>
+                )}
               </div>
 
               {/* ── 5. Borrow From Another Van ───────────────────── */}
@@ -1012,6 +1065,7 @@ export function MyVanModal({ onClose, onOpenTools }: Props) {
           )}
         </AnimatePresence>
       </div>
+      </VanErrorBoundary>
 
       {/* ─── Item Detail Sheet ──────────────────────────────────── */}
       <AnimatePresence>

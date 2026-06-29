@@ -1,0 +1,183 @@
+Agent,
+
+The My Van button now crashes or fails to open.
+
+Current user-facing error:
+"Something went wrong. UnitDown AI couldn't start. This may be a network or configuration issue."
+
+This started after My Van / demo-data cleanup work.
+
+Fix this immediately.
+
+Do not change:
+- Bundle ID
+- Clerk auth
+- Apple IAP
+- Stripe
+- version/build number
+- pricing
+- unrelated routing
+
+==================================================
+REPRO
+==================================================
+
+1. Log in.
+2. Go to /dashboard.
+3. Tap My Van quick action.
+4. App crashes / shows global error screen.
+
+==================================================
+GOAL
+==================================================
+
+My Van must open reliably.
+
+If no van inventory exists for the logged-in user, show a clean empty state.
+
+Do NOT crash.
+
+Do NOT show Marcus/demo data.
+
+Do NOT show Beta / persistence coming soon.
+
+==================================================
+DEBUG REQUIRED
+==================================================
+
+Inspect:
+- MyVanModal.tsx
+- DashboardView.tsx
+- all My Van imports
+- van inventory hooks
+- van API calls
+- van data initialization
+- user ID handling
+- any recent removal of mock data
+- null/undefined assumptions
+- localStorage parsing
+- readiness calculations
+- morning brief calculations
+
+Find the exact runtime exception.
+
+Likely causes:
+- code expects demo inventory array but now receives undefined
+- readiness calculator assumes todayJobs exists
+- user object undefined
+- van data missing
+- destructuring null
+- unsafe .map/.filter/.reduce on undefined
+- removed mock constants still referenced
+- missing export/import after cleanup
+
+==================================================
+FIX REQUIREMENTS
+==================================================
+
+1. My Van opens for logged-in user.
+
+2. If user has no inventory:
+Show:
+"Your van inventory is empty."
+"Add parts and tools to prepare for jobs."
+
+Buttons:
+- Add Part
+- Add Tool
+- Import Inventory
+
+3. If user has no jobs today:
+Show:
+"No scheduled jobs today."
+Do not show Summit Medical Plaza.
+Do not show fake highest-risk job.
+
+4. If weather unavailable:
+Show:
+"Weather unavailable"
+Do not show fake 91°F.
+
+5. If readiness cannot be calculated:
+Show:
+"Readiness will appear after jobs and inventory are added."
+Do not show fake 74%.
+
+6. All arrays must default safely:
+- inventory = []
+- tools = []
+- todayJobs = []
+- restockItems = []
+- insights = []
+- requiredParts = []
+
+7. All user fields must be safe:
+- displayName fallback to email
+- initials derived from Clerk user/email
+- never Marcus
+
+8. Remove or guard any remaining references to:
+- Marcus
+- Summit Medical Plaza
+- CRAC
+- fake weather
+- demo inventory
+
+9. My Van should be user-owned:
+Use Clerk user.id or current authenticated user ID.
+
+10. If backend persistence is unavailable:
+Still do not crash.
+Use safe local storage fallback tied to user.id.
+
+==================================================
+ERROR BOUNDARY
+==================================================
+
+Do not let one module crash the entire app.
+
+If My Van fails to load:
+Show an in-modal error state:
+"Van inventory could not load."
+Buttons:
+- Retry
+- Start Empty Inventory
+
+Do not trigger global app crash.
+
+==================================================
+TESTING
+==================================================
+
+Test these states:
+
+A. Logged-in user with no van inventory.
+B. Logged-in user with no jobs today.
+C. Logged-in user with inventory.
+D. Offline mode.
+E. Refresh page, open My Van again.
+F. Different user logs in.
+
+Expected:
+- No crash
+- No Marcus
+- No demo data
+- No fake readiness
+- No global error screen
+- My Van opens every time
+
+Run:
+- frontend typecheck
+- backend typecheck
+- shared/lib typecheck
+- frontend build
+- backend build
+
+Final report:
+- Root cause
+- Files changed
+- Crash fixed
+- Empty state behavior
+- User ownership behavior
+- Typecheck results
+- Build results
