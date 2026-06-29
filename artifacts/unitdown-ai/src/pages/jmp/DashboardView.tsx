@@ -26,7 +26,8 @@ import {
   INITIAL_TOOLS, INITIAL_TOOLS_READINESS,
   computeToolsReadiness, toolReadinessBadge,
 } from './toolData';
-import NameplateScannerModal from '../../components/NameplateScannerModal';
+import { NameplateWorkflowModal } from './NameplateWorkflowModal';
+import { UnassignedScansModal }   from './UnassignedScansModal';
 import { DispatchInboxModal } from './dispatch/DispatchInboxModal';
 import { useDispatchInbox } from './dispatch/useDispatchInbox';
 import { EquipmentSearchModal } from './EquipmentSearchModal';
@@ -105,7 +106,8 @@ export function DashboardView({ onStartJob }: Props) {
   const [userCalEvents,   setUserCalEvents]   = useState<CalendarEvent[]>([]);
   const [schedToast,      setSchedToast]      = useState<string | null>(null);
   const [prefillDate,     setPrefillDate]      = useState<string | null>(null);
-  const [scannerOpen,     setScannerOpen]      = useState(false);
+  const [nameplateOpen,   setNameplateOpen]    = useState(false);
+  const [unassignedOpen,  setUnassignedOpen]   = useState(false);
   const [inboxOpen,       setInboxOpen]        = useState(false);
   const [searchOpen,      setSearchOpen]       = useState(false);
   const [assistantOpen,   setAssistantOpen]    = useState(false);
@@ -506,7 +508,7 @@ export function DashboardView({ onStartJob }: Props) {
             </div>
           </button>
           {/* Scan Nameplate */}
-          <button onClick={() => setScannerOpen(true)}
+          <button onClick={() => setNameplateOpen(true)}
             className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-green-900/40 border-green-800 active:scale-95 transition-transform">
             <Zap size={18} className="text-green-400" />
             <div className="text-center">
@@ -785,13 +787,22 @@ export function DashboardView({ onStartJob }: Props) {
         )}
       </AnimatePresence>
 
-      {/* ── Nameplate Scanner ──────────────────────────────────────── */}
-      {scannerOpen && (
-        <NameplateScannerModal
-          onClose={() => setScannerOpen(false)}
-          onCapture={(_blob: Blob, _url: string) => { setScannerOpen(false); }}
-        />
-      )}
+      {/* ── Nameplate Workflow ─────────────────────────────────────── */}
+      <AnimatePresence>
+        {nameplateOpen && (
+          <NameplateWorkflowModal
+            onClose={() => setNameplateOpen(false)}
+            onViewUnassigned={() => setUnassignedOpen(true)}
+          />
+        )}
+      </AnimatePresence>
+
+      {/* ── Unassigned Scans Inbox ─────────────────────────────────── */}
+      <AnimatePresence>
+        {unassignedOpen && (
+          <UnassignedScansModal onClose={() => setUnassignedOpen(false)} />
+        )}
+      </AnimatePresence>
       </div>{/* /max-w-2xl */}
     </div>
   );
