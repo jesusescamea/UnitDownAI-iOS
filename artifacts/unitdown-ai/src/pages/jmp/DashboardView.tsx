@@ -29,6 +29,8 @@ import {
 import NameplateScannerModal from '../../components/NameplateScannerModal';
 import { DispatchInboxModal } from './dispatch/DispatchInboxModal';
 import { useDispatchInbox } from './dispatch/useDispatchInbox';
+import { EquipmentSearchModal } from './EquipmentSearchModal';
+import { JmpAiAssistantModal } from './JmpAiAssistantModal';
 
 interface Props { onStartJob: () => void }
 
@@ -105,6 +107,8 @@ export function DashboardView({ onStartJob }: Props) {
   const [prefillDate,     setPrefillDate]      = useState<string | null>(null);
   const [scannerOpen,     setScannerOpen]      = useState(false);
   const [inboxOpen,       setInboxOpen]        = useState(false);
+  const [searchOpen,      setSearchOpen]       = useState(false);
+  const [assistantOpen,   setAssistantOpen]    = useState(false);
   const { pendingJobs, dupJobs } = useDispatchInbox();
   const inboxBadge = pendingJobs.length + dupJobs.length;
 
@@ -492,16 +496,33 @@ export function DashboardView({ onStartJob }: Props) {
               <div className="text-[9px] text-blue-400/80">Inbox</div>
             </div>
           </button>
-          {[
-            { icon: <Search size={18} />, label: 'Search\nEquipment', color: 'bg-gray-900/60 border-gray-800',     iconColor: 'text-gray-400',  onClick: undefined },
-            { icon: <Zap size={18} />,    label: 'Scan\nNameplate',   color: 'bg-green-900/40 border-green-800',   iconColor: 'text-green-400', onClick: () => setScannerOpen(true) },
-            { icon: <Cpu size={18} />,    label: 'AI\nAssistant',     color: 'bg-purple-900/40 border-purple-800', iconColor: 'text-purple-400', onClick: undefined },
-          ].map((a, i) => (
-            <button key={i} onClick={a.onClick} className={`flex flex-col items-center gap-2 py-4 rounded-2xl border ${a.color} active:scale-95 transition-transform`}>
-              <div className={a.iconColor}>{a.icon}</div>
-              <span className="text-[10px] text-gray-300 font-medium text-center leading-tight whitespace-pre-line">{a.label}</span>
-            </button>
-          ))}
+          {/* Search Equipment */}
+          <button onClick={() => setSearchOpen(true)}
+            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-blue-900/20 border-blue-900/60 active:scale-95 transition-transform">
+            <Search size={18} className="text-blue-400" />
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">Search</div>
+              <div className="text-[9px] text-blue-400/80">Equipment</div>
+            </div>
+          </button>
+          {/* Scan Nameplate */}
+          <button onClick={() => setScannerOpen(true)}
+            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-green-900/40 border-green-800 active:scale-95 transition-transform">
+            <Zap size={18} className="text-green-400" />
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">Scan</div>
+              <div className="text-[9px] text-green-400/80">Nameplate</div>
+            </div>
+          </button>
+          {/* AI Assistant */}
+          <button onClick={() => setAssistantOpen(true)}
+            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-purple-900/40 border-purple-800 active:scale-95 transition-transform">
+            <Cpu size={18} className="text-purple-400" />
+            <div className="text-center">
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">AI</div>
+              <div className="text-[9px] text-purple-400/80">Assistant</div>
+            </div>
+          </button>
         </div>
       </div>
 
@@ -581,6 +602,18 @@ export function DashboardView({ onStartJob }: Props) {
             onClose={() => setInboxOpen(false)}
             onStartJob={() => { setInboxOpen(false); onStartJob(); }}
           />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {searchOpen && (
+          <EquipmentSearchModal onClose={() => setSearchOpen(false)} />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {assistantOpen && (
+          <JmpAiAssistantModal onClose={() => setAssistantOpen(false)} />
         )}
       </AnimatePresence>
 
