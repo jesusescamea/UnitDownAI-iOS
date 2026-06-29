@@ -8,11 +8,12 @@ import {
   Zap, CheckCircle, Maximize2, User, Settings, LogOut, ChevronDown,
   TrendingUp, TrendingDown, Minus, Lightbulb, Sparkles,
 } from 'lucide-react';
-import { TODAY_JOBS, MOCK_HISTORY, MOCK_EQUIPMENT, FOLLOW_UP_ITEMS, type TodayJob } from './mockData';
+import { MOCK_HISTORY, MOCK_EQUIPMENT, type TodayJob } from './mockData';
 import {
-  JUNE_EVENTS, EVENT_COLORS, EVENT_LABELS, EQUIPMENT_ATTENTION, OFFICE_MESSAGES,
-  RECENT_ACTIVITY, DASHBOARD_STATS, type CalendarEvent, type EquipmentAttention,
+  EVENT_COLORS, EVENT_LABELS,
+  type CalendarEvent, type EquipmentAttention,
 } from './dashboardData';
+import { useDashboardData } from './useDashboardData';
 import { AiDiagnosticModal } from './AiDiagnosticModal';
 import { MyVanModal } from './MyVanModal';
 import { ToolChecklistModal } from './ToolChecklistModal';
@@ -132,7 +133,8 @@ export function DashboardView({ onStartJob }: Props) {
     setWizardOpen(true);
   }
 
-  const allJobs = [...TODAY_JOBS, ...userJobs];
+  const { realJobs, realCalEvents, realStats, realEquipment, realActivity } = useDashboardData(clerkUser?.id ?? '');
+  const allJobs = [...realJobs, ...userJobs];
 
   const now = new Date();
   const hour = now.getHours();
@@ -179,25 +181,19 @@ export function DashboardView({ onStartJob }: Props) {
             {initials}
           </button>
         </div>
-        <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
-          <span>🌤 91°F · Partly Cloudy</span>
-          <span className="text-gray-700">·</span>
-          <span>💧 62%</span>
-          <span className="text-gray-700">·</span>
-          <span>🌬 SW 8 mph</span>
-        </div>
       </div>
 
       {/* ── AI Morning Brief ─────────────────────────────────────── */}
       <div className="px-4 pt-4">
-        <AiDayBrief jobCount={allJobs.length} />
+        <AiDayBrief jobCount={allJobs.length} jobs={allJobs} />
       </div>
 
       {/* ── Calendar ─────────────────────────────────────────────── */}
       <div className="px-4 pt-4">
         <CalendarCard
-          events={[...JUNE_EVENTS, ...userCalEvents]}
+          events={[...realCalEvents, ...userCalEvents]}
           today={TODAY_DAY}
+          jobsToday={allJobs.length}
           onDayTap={(day, evts) => setSelectedDay({ day, events: evts })}
           onExpand={() => setCalFullScreen(true)}
           onAddJob={handleAddJobFromCalendar}
@@ -210,7 +206,7 @@ export function DashboardView({ onStartJob }: Props) {
           <span className="text-[10px] font-bold uppercase tracking-widest text-gray-500">Overview</span>
         </div>
         <div className="flex gap-2.5 overflow-x-auto px-4 pb-1 snap-x snap-mandatory">
-          {DASHBOARD_STATS.map(s => (
+          {realStats.map(s => (
             <button key={s.id}
               onClick={() => setOverviewFilter(s.id)}
               className={`flex-shrink-0 w-[86px] rounded-2xl border ${s.borderColor} ${s.color} p-3 snap-start text-left active:scale-95 transition-transform`}>
@@ -295,8 +291,15 @@ export function DashboardView({ onStartJob }: Props) {
       {/* ── Equipment Intelligence ───────────────────────────────── */}
       <div className="px-4 pt-5">
         <SectionHeader title="Equipment Intelligence" subtitle="AI-assisted pattern analysis" />
+        {realEquipment.length === 0 ? (
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
+            <div className="text-2xl mb-2">🔍</div>
+            <div className="font-semibold text-white mb-1">No equipment patterns detected yet</div>
+            <div className="text-xs text-gray-500">Patterns will appear as you log diagnostics on saved equipment.</div>
+          </div>
+        ) : (
         <div className="space-y-3">
-          {EQUIPMENT_ATTENTION.map((eq, i) => {
+          {realEquipment.map((eq, i) => {
             const sev = SEV_STYLE[eq.severity];
             return (
               <motion.button key={eq.id}
@@ -361,34 +364,33 @@ export function DashboardView({ onStartJob }: Props) {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* ── Office Messages ──────────────────────────────────────── */}
       <div className="px-4 pt-5">
-        <SectionHeader title="Messages" count={OFFICE_MESSAGES.filter(m => m.unread).length} countLabel="unread" />
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-          {OFFICE_MESSAGES.map((msg, i) => (
-            <div key={msg.id} className={`flex items-start gap-3 px-4 py-3.5 ${i < OFFICE_MESSAGES.length - 1 ? 'border-b border-gray-800' : ''}`}>
-              <div className={`w-2 h-2 rounded-full mt-1.5 flex-shrink-0 ${msg.unread ? 'bg-blue-500' : 'bg-transparent'}`} />
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-0.5">
-                  <span className={`text-xs font-semibold ${msg.unread ? 'text-white' : 'text-gray-400'}`}>{msg.from}</span>
-                  <span className="text-[10px] text-gray-600 ml-auto flex-shrink-0">{msg.time}</span>
-                </div>
-                <p className="text-xs text-gray-400 leading-relaxed">{msg.preview}</p>
-              </div>
-            </div>
-          ))}
+        <SectionHeader title="Messages" countLabel="unread" />
+        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
+          <div className="text-2xl mb-2">💬</div>
+          <div className="font-semibold text-white mb-1">No office messages connected yet</div>
+          <div className="text-xs text-gray-500">Dispatcher messages will appear here once connected.</div>
         </div>
       </div>
 
       {/* ── Recent Activity ──────────────────────────────────────── */}
       <div className="px-4 pt-5">
         <SectionHeader title="Recent Activity" subtitle="Field history" />
+        {realActivity.length === 0 ? (
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
+            <div className="text-2xl mb-2">📋</div>
+            <div className="font-semibold text-white mb-1">No recent activity yet</div>
+            <div className="text-xs text-gray-500">Diagnostic logs and completed jobs will appear here.</div>
+          </div>
+        ) : (
         <div className="relative">
           <div className="absolute left-[11px] top-0 bottom-0 w-px bg-gray-800" />
           <div className="space-y-0">
-            {RECENT_ACTIVITY.map((a, i) => (
+            {realActivity.map((a, i) => (
               <motion.div key={a.id}
                 initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
                 className="flex items-start gap-3 pl-1">
@@ -408,6 +410,7 @@ export function DashboardView({ onStartJob }: Props) {
             ))}
           </div>
         </div>
+        )}
       </div>
 
       {/* ── Quick Actions ────────────────────────────────────────── */}
@@ -486,7 +489,7 @@ export function DashboardView({ onStartJob }: Props) {
       <AnimatePresence>
         {calFullScreen && (
           <FullScreenCalendar
-            events={[...JUNE_EVENTS, ...userCalEvents]} today={TODAY_DAY}
+            events={[...realCalEvents, ...userCalEvents]} today={TODAY_DAY}
             onClose={() => setCalFullScreen(false)}
             onDayTap={(d, e) => { setCalFullScreen(false); setSelectedDay({ day: d, events: e }); }}
           />
@@ -509,6 +512,7 @@ export function DashboardView({ onStartJob }: Props) {
         {overviewFilter && (
           <OverviewFilterSheet
             filterId={overviewFilter}
+            jobs={allJobs}
             onClose={() => setOverviewFilter(null)}
             onSelectJob={job => { setOverviewFilter(null); setSelectedJob(job); }}
           />
@@ -722,55 +726,8 @@ export function DashboardView({ onStartJob }: Props) {
 }
 
 // ─── AI Day Brief ─────────────────────────────────────────────────────────────
-const DAY_ROUTE = [
-  {
-    stop: 1,
-    customer: 'Summit Medical Plaza',
-    unitTag: 'North Roof · RTU-3',
-    model: 'Carrier 50XCQ006',
-    time: '8:00 AM',
-    priority: 'high' as const,
-    badge: 'HIGH PRIORITY',
-    badgeColor: 'bg-amber-500 text-white',
-    risk: 'Code 82 history — 3 lockouts in 12 months',
-    driveFromPrev: null,
-    driveTo: '12 min from shop',
-  },
-  {
-    stop: 2,
-    customer: 'Northgate Data Center',
-    unitTag: 'Server Room B · CRAC-1',
-    model: 'Liebert DS150',
-    time: '1:00 PM',
-    priority: 'pm' as const,
-    badge: 'PM DUE',
-    badgeColor: 'bg-gray-700 text-gray-300',
-    risk: null,
-    driveFromPrev: '~22 min from Summit',
-    driveTo: null,
-  },
-  {
-    stop: 3,
-    customer: 'Ridgeline Office Park',
-    unitTag: 'Rooftop · RTU-7',
-    model: 'Trane YCD150',
-    time: '3:30 PM',
-    priority: 'pm' as const,
-    badge: 'PM DUE',
-    badgeColor: 'bg-gray-700 text-gray-300',
-    risk: null,
-    driveFromPrev: '~18 min from Northgate',
-    driveTo: null,
-  },
-];
 
-
-const DAY_NOTES = [
-  { job: 'Summit Medical', note: 'Recurring Code 82 — condenser cleaning alone has not resolved. Investigate fan performance and refrigerant circuit.' },
-  { job: 'Northgate',      note: 'Time shifted to 1:00 PM per customer. Badge required at security gate.' },
-];
-
-function AiDayBrief({ jobCount = 3 }: { jobCount?: number }) {
+function AiDayBrief({ jobCount = 0, jobs = [] }: { jobCount?: number; jobs?: TodayJob[] }) {
   const [expanded, setExpanded] = useState(false);
 
   return (
@@ -808,54 +765,38 @@ function AiDayBrief({ jobCount = 3 }: { jobCount?: number }) {
                 </div>
               </div>
 
-              {/* Route */}
+              {/* Route — real jobs */}
               <div>
                 <div className="text-[9px] font-bold uppercase tracking-widest text-blue-400/70 mb-2">Route Order</div>
-                <div className="space-y-0">
-                  {DAY_ROUTE.map((stop, i) => (
-                    <div key={i}>
-                      {/* Drive indicator between stops */}
-                      {stop.driveFromPrev && (
-                        <div className="flex items-center gap-2 pl-4 py-1">
-                          <div className="w-px h-3 bg-blue-800/50 mx-1.5" />
-                          <span className="text-[9px] text-blue-400/50">{stop.driveFromPrev}</span>
-                        </div>
-                      )}
-                      <div className="bg-blue-950/40 border border-blue-800/30 rounded-xl p-3">
-                        <div className="flex items-start gap-2.5">
-                          <div className="w-5 h-5 rounded-full bg-blue-700/50 flex items-center justify-center flex-shrink-0 mt-0.5">
-                            <span className="text-[10px] font-bold text-blue-200">{stop.stop}</span>
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                              <span className="font-bold text-white text-sm leading-tight">{stop.customer}</span>
-                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${stop.badgeColor}`}>{stop.badge}</span>
-                              <span className="text-[9px] text-blue-400/60 ml-auto flex-shrink-0">{stop.time}</span>
+                {jobs.length === 0 ? (
+                  <div className="bg-blue-950/30 border border-blue-800/30 rounded-xl px-3 py-3 text-center">
+                    <div className="text-[11px] text-blue-300/60">No jobs scheduled today</div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    {jobs.map((job, i) => {
+                      const style = PRIORITY_STYLE[job.priority];
+                      return (
+                        <div key={job.id} className="bg-blue-950/40 border border-blue-800/30 rounded-xl p-3">
+                          <div className="flex items-start gap-2.5">
+                            <div className="w-5 h-5 rounded-full bg-blue-700/50 flex items-center justify-center flex-shrink-0 mt-0.5">
+                              <span className="text-[10px] font-bold text-blue-200">{i + 1}</span>
                             </div>
-                            <div className="text-[10px] text-blue-300/70 mb-0.5">{stop.unitTag}</div>
-                            <div className="text-[9px] font-mono text-gray-600">{stop.model}</div>
-                            {stop.risk && (
-                              <div className="mt-1.5 flex items-start gap-1.5 text-[10px] text-amber-300/80 bg-amber-950/30 rounded-lg px-2 py-1">
-                                <span className="flex-shrink-0">⚠️</span>
-                                <span>{stop.risk}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                <span className="font-bold text-white text-sm leading-tight">{job.customer}</span>
+                                <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${style.badge}`}>{style.label}</span>
+                                <span className="text-[9px] text-blue-400/60 ml-auto flex-shrink-0">{job.scheduledTime}</span>
                               </div>
-                            )}
-                            {stop.driveTo && (
-                              <div className="mt-1 text-[9px] text-blue-400/50">{stop.driveTo}</div>
-                            )}
+                              <div className="text-[10px] text-blue-300/70 mb-0.5">{job.unitTag}</div>
+                              <div className="text-xs text-gray-400 leading-snug">{job.symptom}</div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              {/* Highest risk callout */}
-              <div className="bg-red-950/40 border border-red-800/40 rounded-xl px-3 py-2.5">
-                <div className="text-[9px] font-bold uppercase tracking-wider text-red-400 mb-1">⚠️ Highest Risk Today</div>
-                <div className="text-sm font-bold text-white">Summit Medical Plaza · RTU-3</div>
-                <div className="text-[10px] text-red-200/70 mt-0.5">Code 82 repeated 3× in 12 months. Condenser cleaning has not resolved the fault — expect deeper diagnostics today.</div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
               {/* Truck stock — live van inventory status */}
@@ -883,18 +824,22 @@ function AiDayBrief({ jobCount = 3 }: { jobCount?: number }) {
                 </div>
               </div>
 
-              {/* Important notes */}
-              <div>
-                <div className="text-[9px] font-bold uppercase tracking-widest text-blue-400/70 mb-2">Important Notes</div>
-                <div className="space-y-2">
-                  {DAY_NOTES.map((n, i) => (
-                    <div key={i} className="flex items-start gap-2.5 bg-gray-800/60 rounded-xl px-3 py-2.5">
-                      <span className="text-[9px] font-bold text-gray-500 uppercase tracking-wider flex-shrink-0 mt-0.5 w-14 leading-snug">{n.job}</span>
-                      <span className="text-[11px] text-gray-300 leading-relaxed">{n.note}</span>
-                    </div>
-                  ))}
+              {/* Dispatch notes from real jobs */}
+              {jobs.some(j => j.dispatchNotes && j.dispatchNotes.length > 0) && (
+                <div>
+                  <div className="text-[9px] font-bold uppercase tracking-widest text-blue-400/70 mb-2">Dispatch Notes</div>
+                  <div className="space-y-2">
+                    {jobs.filter(j => j.dispatchNotes && j.dispatchNotes.length > 0).map(j => (
+                      <div key={j.id} className="bg-gray-800/60 rounded-xl px-3 py-2.5">
+                        <div className="text-[9px] font-bold text-gray-500 uppercase tracking-wider mb-1">{j.customer}</div>
+                        {(j.dispatchNotes ?? []).map((note, ni) => (
+                          <div key={ni} className="text-[11px] text-gray-300 leading-relaxed">{note}</div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
             </div>
           </motion.div>
@@ -907,8 +852,8 @@ function AiDayBrief({ jobCount = 3 }: { jobCount?: number }) {
 // ─── Compact Calendar Card ─────────────────────────────────────────────────────
 const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-function CalendarCard({ events, today, onDayTap, onExpand, onAddJob }: {
-  events: CalendarEvent[]; today: number;
+function CalendarCard({ events, today, jobsToday, onDayTap, onExpand, onAddJob }: {
+  events: CalendarEvent[]; today: number; jobsToday: number;
   onDayTap: (day: number, events: CalendarEvent[]) => void;
   onExpand: () => void;
   onAddJob: () => void;
@@ -918,8 +863,7 @@ function CalendarCard({ events, today, onDayTap, onExpand, onAddJob }: {
   const rows: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
 
-  const jobsToday = TODAY_JOBS.length;
-  const pmsThisWeek = events.filter(e => e.type === 'pm' && e.day >= today && e.day <= today + 7).length + 2;
+  const pmsThisWeek = events.filter(e => e.type === 'pm' && e.day >= today && e.day <= today + 7).length;
   const followups = events.filter(e => e.type === 'followup').length;
 
   return (
@@ -1206,18 +1150,25 @@ function AccountDashboard({
 }
 
 // ─── Overview Filter Sheet ─────────────────────────────────────────────────────
-function OverviewFilterSheet({ filterId, onClose, onSelectJob }: {
+function OverviewFilterSheet({ filterId, jobs, onClose, onSelectJob }: {
   filterId: string;
+  jobs: TodayJob[];
   onClose: () => void;
   onSelectJob: (job: TodayJob) => void;
 }) {
   const config: Record<string, { title: string; subtitle: string; content: React.ReactNode }> = {
     jobs: {
       title: "Today's Jobs",
-      subtitle: `${TODAY_JOBS.length} assigned`,
-      content: (
+      subtitle: jobs.length === 0 ? 'none today' : `${jobs.length} assigned`,
+      content: jobs.length === 0 ? (
+        <div className="text-center py-8">
+          <div className="text-3xl mb-3">☀️</div>
+          <div className="font-semibold text-white mb-1">No jobs scheduled today</div>
+          <div className="text-xs text-gray-500">Jobs created via Job Mode will appear here.</div>
+        </div>
+      ) : (
         <div className="space-y-2">
-          {TODAY_JOBS.map(job => {
+          {jobs.map(job => {
             const style = PRIORITY_STYLE[job.priority];
             return (
               <button key={job.id} onClick={() => onSelectJob(job)}
@@ -1249,10 +1200,16 @@ function OverviewFilterSheet({ filterId, onClose, onSelectJob }: {
     },
     pms: {
       title: 'PMs Due This Week',
-      subtitle: '2 preventive maintenance calls',
-      content: (
+      subtitle: jobs.filter(j => j.priority === 'pm').length === 0 ? 'none scheduled' : `${jobs.filter(j => j.priority === 'pm').length} due`,
+      content: jobs.filter(j => j.priority === 'pm').length === 0 ? (
+        <div className="text-center py-8">
+          <div className="text-3xl mb-3">📅</div>
+          <div className="font-semibold text-white mb-1">No PMs scheduled this week</div>
+          <div className="text-xs text-gray-500">Preventive maintenance jobs will appear here.</div>
+        </div>
+      ) : (
         <div className="space-y-2">
-          {TODAY_JOBS.filter(j => j.priority === 'pm').map(job => (
+          {jobs.filter(j => j.priority === 'pm').map(job => (
             <button key={job.id} onClick={() => onSelectJob(job)}
               className="w-full text-left bg-gray-800 border-l-4 border-l-blue-500 rounded-xl p-3">
               <div className="flex items-center gap-2 mb-1">
@@ -1270,23 +1227,12 @@ function OverviewFilterSheet({ filterId, onClose, onSelectJob }: {
     },
     followups: {
       title: 'Follow-Ups',
-      subtitle: '2 pending — callbacks, quoted repairs, approvals',
+      subtitle: 'callbacks, quoted repairs, approvals',
       content: (
-        <div className="space-y-2">
-          {FOLLOW_UP_ITEMS.map((f, i) => (
-            <div key={i} className={`bg-gray-800 rounded-xl p-3 border-l-4 ${f.priority === 'high' ? 'border-l-amber-500' : 'border-l-gray-600'}`}>
-              <div className="flex items-center gap-2 mb-1">
-                <span className={`text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full ${f.priority === 'high' ? 'bg-amber-900/50 text-amber-400' : 'bg-gray-700 text-gray-400'}`}>
-                  {f.priority === 'high' ? 'HIGH' : 'MEDIUM'}
-                </span>
-                <span className="text-[10px] text-gray-500 ml-auto">Due {f.dueDate}</span>
-              </div>
-              <div className="font-bold text-white text-sm">{f.customer}</div>
-              <div className="text-[10px] text-gray-500">{f.equipment}</div>
-              <div className="text-xs text-gray-400 mt-0.5 leading-snug">{f.issue}</div>
-              <div className="text-[10px] text-amber-400 mt-1">{f.daysDue} days until due</div>
-            </div>
-          ))}
+        <div className="text-center py-8">
+          <div className="text-3xl mb-3">🔁</div>
+          <div className="font-semibold text-white mb-1">No follow-ups yet</div>
+          <div className="text-xs text-gray-500">Follow-up items from completed jobs will appear here.</div>
         </div>
       ),
     },
