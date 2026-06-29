@@ -188,8 +188,8 @@ export default function UnitFormPage() {
   const [duplicates, setDuplicates] = useState<DuplicateEntry[]>([]);
   const [duplicateModalOpen, setDuplicateModalOpen] = useState(false);
 
-  const clientId = getClientId();
-  const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
+  const clientId = clerkUser?.id ?? getClientId();
+  const isLoggedIn = isLoaded && !!clerkUser;
 
   useEffect(() => {
     if (!isLoaded) return;

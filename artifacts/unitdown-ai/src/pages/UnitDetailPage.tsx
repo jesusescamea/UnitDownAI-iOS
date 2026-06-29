@@ -454,8 +454,8 @@ export default function UnitDetailPage() {
   const [addDefaultType, setAddDefaultType] = useState<"note" | "repair" | "maintenance">("note");
   const [editingEvent, setEditingEvent] = useState<TimelineEvent | null>(null);
 
-  const clientId = getClientId();
-  const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
+  const clientId = clerkUser?.id ?? getClientId();
+  const isLoggedIn = isLoaded && !!clerkUser;
 
   // Fetch unit + timeline
   useEffect(() => {

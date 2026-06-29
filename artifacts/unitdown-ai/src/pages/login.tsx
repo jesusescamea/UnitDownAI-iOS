@@ -70,6 +70,7 @@ export default function LoginPage() {
   const [otpCode, setOtpCode] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [googleError, setGoogleError] = useState<string | null>(null);
   const [showSendCode, setShowSendCode] = useState(false);
   // shouldShowAppleSignIn() returns true unconditionally (Apple guideline 4.8 —
   // Sign in with Apple must appear wherever any third-party social login exists).
@@ -131,8 +132,9 @@ export default function LoginPage() {
 
   // ── Google OAuth ──────────────────────────────────────────────────────────────
   const handleGoogle = useCallback(async () => {
+    setGoogleError(null);
     if (!signIn) {
-      setError("Google sign-in is temporarily unavailable. Please try again or use email.");
+      setGoogleError("Google sign-in could not start. Use Apple Sign-In or email code instead.");
       return;
     }
     setError(null);
@@ -149,9 +151,9 @@ export default function LoginPage() {
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       if (msg.toLowerCase().includes("timeout")) {
-        setError("Google sign-in timed out. Please check your connection and try again.");
+        setGoogleError("Google sign-in timed out. Use Apple Sign-In or enter your email below instead.");
       } else {
-        setError("Google sign-in is unavailable right now. Please try again.");
+        setGoogleError("Google sign-in could not start. Use Apple Sign-In or email code instead.");
       }
       setLoading(false);
     }
@@ -554,6 +556,13 @@ export default function LoginPage() {
                     <GoogleIcon />
                     Continue with Google
                   </button>
+
+                  {/* Google-specific failure — shown inline, never blocks Apple or email */}
+                  {googleError && (
+                    <div className="rounded-xl bg-amber-50 border border-amber-200 px-4 py-2.5 text-xs text-amber-800 font-medium leading-snug">
+                      {googleError}
+                    </div>
+                  )}
 
                   <div className="flex items-center gap-3">
                     <div className="flex-1 h-px bg-slate-200" />
