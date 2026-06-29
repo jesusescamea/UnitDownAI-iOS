@@ -1,0 +1,355 @@
+Agent,
+
+Redesign the Diagnose experience and replace the top Diagnose tab with an interactive PT / Superheat / Subcooling tool.
+
+Current issue:
+The Diagnose page still looks like the old public marketing/diagnostic page:
+- Huge hero headline
+- Website-style layout
+- Old diagnostic report layout
+- Duplicate feature tabs
+- Does not feel like UnitDown Field OS 2.0
+
+We need the authenticated app to feel like a technician Field OS, not a website.
+
+Do not change:
+- Bundle ID
+- Clerk auth
+- Apple IAP
+- Stripe
+- version/build number
+- existing diagnosis backend
+- existing saved equipment APIs
+- existing job mode APIs
+
+==================================================
+NAVIGATION CHANGE
+==================================================
+
+Remove "Diagnose" from the top Field OS navigation.
+
+Replace it with:
+
+PT Chart
+
+Top navigation should become:
+
+- Today
+- Jobs
+- PT Chart
+- Equipment
+- Account
+
+Diagnosis should move into the bottom/mobile quick buttons and dashboard quick actions.
+
+Bottom/mobile quick actions should include:
+
+- Start Diagnosis
+- Scan Nameplate
+- Add Job
+- Search Equipment
+- Offline Mode
+- My Van / Tools
+
+Do not remove diagnosis functionality.
+Only move it out of the top tab.
+
+==================================================
+NEW PT CHART PAGE
+==================================================
+
+Create a production PT Chart page at:
+
+/pt-chart
+
+This becomes the top nav replacement for Diagnose.
+
+Purpose:
+Help technicians calculate and verify refrigerant conditions without digital gauges.
+
+Page name:
+PT Chart
+
+Subtitle:
+Pressure-temperature, superheat, subcooling, and charging assistant.
+
+==================================================
+PT CHART FEATURES
+==================================================
+
+The PT Chart page must support:
+
+Refrigerants:
+- R-22
+- R-410A
+- R-32
+- R-454B
+- R-407C
+- R-134a
+- R-404A
+- R-448A
+- R-449A
+- R-1234yf
+- Add extensible structure for more refrigerants later
+
+Inputs:
+- Refrigerant
+- System mode: Cooling / Heating
+- Metering device: TXV / Piston / Capillary / Unknown
+- Outdoor ambient temp
+- Indoor dry bulb
+- Indoor wet bulb
+- Suction pressure
+- Suction line temp
+- Liquid pressure
+- Liquid line temp
+- Return air temp
+- Supply air temp
+- Elevation/location if available
+
+Outputs:
+- Saturated suction temp
+- Actual superheat
+- Target superheat if fixed metering device
+- Saturated condensing temp
+- Actual subcooling
+- Target subcooling if TXV
+- Delta-T
+- Charge interpretation
+- Likely issue
+- What to check next
+
+==================================================
+INTERACTIVE VISUAL
+==================================================
+
+Create a cool-looking interactive chart/graph.
+
+Must include:
+
+- Pressure-to-temperature conversion
+- Superheat bar
+- Subcooling bar
+- Target range bands
+- Charge state indicator:
+  - Normal
+  - Low charge likely
+  - Overcharge likely
+  - Restriction possible
+  - Airflow issue possible
+  - Non-condensables / dirty condenser possible
+- Color-coded result zones
+- Simple tech-readable explanation
+
+No overly academic charts.
+This must be field usable.
+
+==================================================
+AI PT CHART ASSISTANT
+==================================================
+
+Add an AI explanation panel.
+
+It should explain results in technician language.
+
+Examples:
+- "Your superheat is high and subcooling is low. If airflow is verified, low charge is likely."
+- "Subcooling is high while superheat is high. Check restriction, filter drier, metering device, or kinked liquid line."
+- "Delta-T is low with normal pressures. Check airflow, bypass, mixed air, or load conditions."
+
+The assistant should ask for missing information instead of guessing.
+
+==================================================
+DIAGNOSIS PAGE REDESIGN
+==================================================
+
+Redesign /diagnose as a Field OS workflow page.
+
+Remove:
+- Huge marketing hero
+- "Commercial HVAC Intelligence Built for the Field"
+- "Use on the Web"
+- Website-style layout
+- Old horizontal feature nav
+- Any duplicate website navigation
+
+Replace with:
+
+Title:
+Start Diagnosis
+
+Prompt:
+What are you working on?
+
+Main options:
+1. Link to Existing Unit
+2. Quick Check Only
+3. Scan Nameplate First
+4. Continue Recent Diagnosis
+
+Diagnosis input should remain:
+- Type symptoms
+- Voice input if available
+- Attach photo if available
+- Select equipment if available
+
+==================================================
+AFTER DIAGNOSIS RESULT
+==================================================
+
+After diagnosis completes, show UnitDown 2.0 styled result.
+
+Then ask:
+
+What do you want to do with this diagnosis?
+
+Options:
+
+A. Save to Existing Unit
+- Search/select equipment
+- Save diagnosis into that unit timeline
+- Create diagnostic log
+- Link result to service history
+
+B. Create New Unit from This Diagnosis
+- Open new unit flow
+- Prefill manufacturer/model if known
+- Attach diagnosis to new unit
+
+C. Quick Check Only
+- Do not force save
+- Allow copy/share
+- Allow save later
+- Keep in recent quick checks for the user
+
+D. Start Job From Diagnosis
+- Create job prefilled with symptoms and likely cause
+
+==================================================
+RESULT PAGE REQUIREMENTS
+==================================================
+
+The Diagnostic Report page must match UnitDown 2.0.
+
+Remove old feature nav:
+- AI Diagnostics
+- Field Hub
+- Equipment Records
+- Nameplate Scanner
+- Diagnostic History
+- Service Reminders
+- Photo Notes
+- Cross-Device Sync
+
+Use Field OS layout instead:
+- Header
+- Fault summary
+- Confidence
+- Likely causes
+- First checks
+- Meter checks
+- Safety warnings
+- Recommended next steps
+- Save actions
+
+Add sticky action bar:
+- Save to Unit
+- Quick Check
+- Start Job
+- New Diagnosis
+
+==================================================
+QUICK CHECK STORAGE
+==================================================
+
+If user selects Quick Check Only:
+- Save result as recent quick check for authenticated user
+- Do not attach to equipment
+- Allow user to attach later
+- Should persist after refresh
+
+If offline:
+- save locally
+- sync later
+
+==================================================
+SAVED UNIT FLOW
+==================================================
+
+When user saves to existing unit:
+- Save diagnosis into unit timeline
+- Save diagnostic log
+- Show success state:
+  "Saved to [unit/customer]"
+- Offer:
+  Open Unit
+  Start Job
+  New Diagnosis
+
+==================================================
+LIGHT/DARK MODE
+==================================================
+
+Both PT Chart and Diagnose must support:
+- dark mode
+- light mode
+- mobile
+- desktop
+
+Use UnitDown 2.0 styling:
+- blue gradients
+- rounded cards
+- professional spacing
+- clean icons
+- field-first layout
+
+==================================================
+TESTING
+==================================================
+
+Test:
+
+1. Top nav:
+- Diagnose removed
+- PT Chart added
+- PT Chart opens /pt-chart
+
+2. Diagnosis:
+- /diagnose no longer looks like marketing page
+- user can run diagnosis
+- result displays in 2.0 style
+- user can Save to Existing Unit
+- user can Create New Unit
+- user can Quick Check Only
+- user can Start Job From Diagnosis
+
+3. PT Chart:
+- select R-410A
+- enter suction pressure and suction line temp
+- calculate superheat
+- enter liquid pressure and liquid line temp
+- calculate subcooling
+- show interpretation
+- graph updates
+
+4. Offline:
+- quick check saves locally
+- can sync later
+
+Run:
+- frontend typecheck
+- backend typecheck
+- shared/lib typecheck
+- frontend build
+- backend build
+
+Final report:
+- Files changed
+- Navigation changes
+- PT Chart implementation
+- Diagnosis redesign
+- Save-to-unit flow
+- Quick check behavior
+- Offline behavior
+- Typecheck results
+- Build results

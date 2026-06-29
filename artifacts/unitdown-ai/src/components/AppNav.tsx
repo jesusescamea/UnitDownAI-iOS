@@ -5,7 +5,7 @@
  * Mobile (<640px):  Slim sticky top bar (logo + avatar only) + fixed bottom tab bar.
  *
  * One import per authenticated page delivers both bars automatically.
- * Tabs: Today · Jobs · Diagnose · Equipment · Account
+ * Tabs: Today · Jobs · PT Chart · Equipment · Account
  */
 import { useLocation } from "wouter";
 import {
@@ -13,7 +13,7 @@ import {
   LayoutGrid,
   Briefcase,
   Wrench,
-  Stethoscope,
+  Gauge,
   User,
 } from "lucide-react";
 import { useUser } from "@clerk/clerk-react";
@@ -21,8 +21,8 @@ import { useUser } from "@clerk/clerk-react";
 export type AppNavSection =
   | "dashboard"
   | "job"
+  | "pt-chart"
   | "records"
-  | "diagnose"
   | "account";
 
 interface AppNavProps {
@@ -30,11 +30,11 @@ interface AppNavProps {
 }
 
 const TABS = [
-  { id: "dashboard" as AppNavSection, label: "Today",     Icon: LayoutGrid,  path: "/dashboard" },
-  { id: "job"       as AppNavSection, label: "Jobs",      Icon: Briefcase,   path: "/job"       },
-  { id: "diagnose"  as AppNavSection, label: "Diagnose",  Icon: Stethoscope, path: "/diagnose"  },
-  { id: "records"   as AppNavSection, label: "Equipment", Icon: Wrench,      path: "/records"   },
-  { id: "account"   as AppNavSection, label: "Account",   Icon: User,        path: "/account"   },
+  { id: "dashboard" as AppNavSection, label: "Today",    Icon: LayoutGrid, path: "/dashboard" },
+  { id: "job"       as AppNavSection, label: "Jobs",     Icon: Briefcase,  path: "/job"       },
+  { id: "pt-chart"  as AppNavSection, label: "PT Chart", Icon: Gauge,      path: "/pt-chart"  },
+  { id: "records"   as AppNavSection, label: "Equipment",Icon: Wrench,     path: "/records"   },
+  { id: "account"   as AppNavSection, label: "Account",  Icon: User,       path: "/account"   },
 ] as const;
 
 function buildInitials(user: ReturnType<typeof useUser>["user"]): string {
