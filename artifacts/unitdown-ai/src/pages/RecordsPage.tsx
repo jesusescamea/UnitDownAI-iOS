@@ -216,8 +216,8 @@ export default function RecordsPage() {
   const [, navigate] = useLocation();
   const { user: clerkUser, isLoaded } = useUser();
 
-  const clientId = getClientId();
-  const isLoggedIn = isLoaded && !!clerkUser && clientId.startsWith("user_");
+  const clientId = clerkUser?.id ?? getClientId();
+  const isLoggedIn = isLoaded && !!clerkUser;
 
   // State
   const [units, setUnits] = useState<UnitRecord[]>([]);

@@ -1,4 +1,6 @@
 import { useState, useEffect } from 'react';
+import { useUser, useClerk } from '@clerk/clerk-react';
+import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronRight, ChevronLeft, X, Wrench, Calendar as CalIcon, Plus,
@@ -61,6 +63,22 @@ function buildCells(): (number | null)[] {
 
 // ─── Main Dashboard ────────────────────────────────────────────────────────────
 export function DashboardView({ onStartJob }: Props) {
+  const { user: clerkUser } = useUser();
+  const { signOut } = useClerk();
+  const [, navigate] = useLocation();
+
+  const displayName = clerkUser
+    ? [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(' ') ||
+      clerkUser.emailAddresses[0]?.emailAddress ||
+      'Field Tech'
+    : 'Field Tech';
+  const initials = clerkUser
+    ? [clerkUser.firstName, clerkUser.lastName]
+        .filter(Boolean)
+        .map(n => n![0].toUpperCase())
+        .join('') || '?'
+    : '?';
+
   const [selectedJob,     setSelectedJob]     = useState<TodayJob | null>(null);
   const [selectedDay,     setSelectedDay]     = useState<{ day: number; events: CalendarEvent[] } | null>(null);
   const [calFullScreen,   setCalFullScreen]   = useState(false);
@@ -149,7 +167,7 @@ export function DashboardView({ onStartJob }: Props) {
         <div className="flex items-start justify-between">
           <div>
             <div className="text-gray-500 text-xs mb-0.5">{greeting},</div>
-            <h1 className="text-2xl font-bold leading-tight">Marcus Rivera</h1>
+            <h1 className="text-2xl font-bold leading-tight">{displayName}</h1>
             <div className="flex items-center gap-2 mt-1 text-xs text-gray-500">
               <span>{now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}</span>
               <span className="text-gray-700">·</span>
@@ -158,7 +176,7 @@ export function DashboardView({ onStartJob }: Props) {
           </div>
           <button onClick={() => setAccountOpen(true)}
             className="w-12 h-12 rounded-2xl bg-blue-700 flex items-center justify-center font-bold text-white text-lg flex-shrink-0 active:scale-95 transition-transform">
-            MR
+            {initials}
           </button>
         </div>
         <div className="flex items-center gap-3 mt-3 text-xs text-gray-500">
@@ -476,7 +494,15 @@ export function DashboardView({ onStartJob }: Props) {
       </AnimatePresence>
 
       <AnimatePresence>
-        {accountOpen && <AccountDashboard onClose={() => setAccountOpen(false)} />}
+        {accountOpen && (
+          <AccountDashboard
+            onClose={() => setAccountOpen(false)}
+            displayName={displayName}
+            initials={initials}
+            onNavigate={(path) => { setAccountOpen(false); navigate(path); }}
+            onLogout={() => { signOut().then(() => navigate('/')); }}
+          />
+        )}
       </AnimatePresence>
 
       <AnimatePresence>
@@ -1071,39 +1097,44 @@ function FullScreenCalendar({ events, today, onClose, onDayTap }: {
 }
 
 // ─── Account Dashboard ─────────────────────────────────────────────────────────
-function AccountDashboard({ onClose }: { onClose: () => void }) {
+function AccountDashboard({
+  onClose, displayName, initials, onNavigate, onLogout,
+}: {
+  onClose: () => void;
+  displayName: string;
+  initials: string;
+  onNavigate: (path: string) => void;
+  onLogout: () => void;
+}) {
   const MENU_SECTIONS = [
     {
       items: [
-        { icon: <User size={15} />,        label: 'Profile' },
-        { icon: <Settings size={15} />,    label: 'My Account' },
-        { icon: <CheckCircle size={15} />, label: 'Subscription', badge: 'Pro' },
+        { icon: <User size={15} />,        label: 'My Account',    path: '/account' },
+        { icon: <CheckCircle size={15} />, label: 'Subscription',  path: '/account', badge: 'Pro' },
       ],
     },
     {
       title: "Today's Performance",
       items: [
-        { label: 'Hours Worked',        value: '6h 22min' },
         { label: 'Completed Jobs',      value: '0 of 3' },
         { label: 'Active Jobs',         value: '0' },
-        { label: 'PM Completion',       value: '—' },
         { label: 'Follow-ups Pending',  value: '2' },
       ],
     },
     {
       title: 'Field Tools',
       items: [
-        { icon: <Cpu size={15} />,      label: 'Saved Equipment' },
-        { icon: <Wrench size={15} />,   label: 'Inventory' },
-        { icon: <FileText size={15} />, label: 'Service Records' },
+        { icon: <Cpu size={15} />,      label: 'Saved Equipment',  path: '/records' },
+        { icon: <Wrench size={15} />,   label: 'Inventory',        path: '/account' },
+        { icon: <FileText size={15} />, label: 'Service Records',  path: '/records' },
       ],
     },
     {
       title: 'System',
       items: [
-        { icon: <Settings size={15} />,    label: 'Settings' },
-        { icon: <Zap size={15} />,         label: 'Offline Mode', badge: 'Ready' },
-        { icon: <Lightbulb size={15} />,   label: 'Help & Support' },
+        { icon: <Settings size={15} />,    label: 'Settings',      path: '/account' },
+        { icon: <Zap size={15} />,         label: 'Offline Mode',  badge: 'Ready' },
+        { icon: <Lightbulb size={15} />,   label: 'Help & Support', path: '/account' },
       ],
     },
   ];
@@ -1119,13 +1150,12 @@ function AccountDashboard({ onClose }: { onClose: () => void }) {
         {/* Profile header */}
         <div className="px-5 pt-5 pb-4 border-b border-gray-800">
           <div className="flex items-center gap-4">
-            <div className="w-14 h-14 rounded-2xl bg-blue-700 flex items-center justify-center font-bold text-white text-xl">MR</div>
+            <div className="w-14 h-14 rounded-2xl bg-blue-700 flex items-center justify-center font-bold text-white text-xl">{initials}</div>
             <div>
-              <div className="font-bold text-white text-lg leading-tight">Marcus Rivera</div>
-              <div className="text-sm text-gray-400">Rivera HVAC Service</div>
+              <div className="font-bold text-white text-lg leading-tight">{displayName}</div>
+              <div className="text-sm text-gray-400">UnitDown Field Tech</div>
               <div className="flex items-center gap-2 mt-1">
                 <span className="text-[9px] bg-blue-700/50 text-blue-300 px-1.5 py-0.5 rounded-full font-bold">PRO</span>
-                <span className="text-[10px] text-gray-600">Tech ID: MR-042</span>
               </div>
             </div>
           </div>
@@ -1140,7 +1170,10 @@ function AccountDashboard({ onClose }: { onClose: () => void }) {
               )}
               <div className="bg-gray-800 rounded-2xl overflow-hidden">
                 {section.items.map((item, ii) => (
-                  <div key={ii} className={`flex items-center justify-between px-4 py-3.5 ${ii < section.items.length - 1 ? 'border-b border-gray-700' : ''}`}>
+                  <button
+                    key={ii}
+                    onClick={() => { if ('path' in item && item.path) onNavigate(item.path); }}
+                    className={`w-full flex items-center justify-between px-4 py-3.5 text-left ${ii < section.items.length - 1 ? 'border-b border-gray-700' : ''} ${'path' in item && item.path ? 'active:bg-gray-700' : 'cursor-default'}`}>
                     <div className="flex items-center gap-3">
                       {'icon' in item && item.icon && <span className="text-gray-400">{item.icon}</span>}
                       <span className={`text-sm ${'value' in item ? 'text-gray-400' : 'text-white'}`}>{item.label}</span>
@@ -1152,15 +1185,17 @@ function AccountDashboard({ onClose }: { onClose: () => void }) {
                       {'value' in item && item.value && (
                         <span className="text-sm font-semibold text-white">{item.value}</span>
                       )}
-                      {'icon' in item && <ChevronRight size={14} className="text-gray-600" />}
+                      {'path' in item && item.path && <ChevronRight size={14} className="text-gray-600" />}
                     </div>
-                  </div>
+                  </button>
                 ))}
               </div>
             </div>
           ))}
 
-          <button className="w-full flex items-center gap-3 bg-red-950/30 border border-red-900/50 rounded-2xl px-4 py-3.5">
+          <button
+            onClick={onLogout}
+            className="w-full flex items-center gap-3 bg-red-950/30 border border-red-900/50 rounded-2xl px-4 py-3.5 active:bg-red-950/50">
             <LogOut size={15} className="text-red-400" />
             <span className="text-sm font-semibold text-red-400">Logout</span>
           </button>

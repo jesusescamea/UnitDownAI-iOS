@@ -1,0 +1,96 @@
+Stop partial migration.
+
+Use the exact UnitDown 2.0 branch/prototype UI as the production source of truth.
+
+Current problem:
+The production /dashboard and /records screens still do not match the UnitDown 2.0 version we built.
+They look like simplified/old screens instead of the full AI Day Brief / job dashboard / dispatch experience.
+
+Goal:
+Make production match the branch/prototype version exactly, then wire it to real data.
+
+Do not redesign.
+Do not simplify.
+Do not create a new watered-down version.
+Use the branch/prototype UI we already approved.
+
+Tasks:
+
+1. Identify the exact component/page that renders the approved UnitDown 2.0 dashboard UI:
+- AI Day Brief
+- modern calendar
+- Overview cards
+- Today’s Jobs
+- job cards with parts/tools readiness
+- Equipment Intelligence
+- Messages
+- Recent Activity
+- Quick Actions
+- My Van / Tools access
+
+2. Promote that exact UI to production.
+
+3. Route map should become:
+- /dashboard = approved UnitDown 2.0 Field Hub dashboard
+- /records = Equipment Records only
+- /job = approved UnitDown 2.0 job flow
+- /account = Account
+- /diagnose = Diagnosis
+
+4. Do not use the current simplified FieldHubDashboard if it does not match the approved 2.0 UI.
+Replace it with the approved branch/prototype dashboard.
+
+5. Preserve real backend connections:
+- saved units
+- diagnostics
+- jobs
+- equipment memory
+- OCR scanner
+- service records
+- auth
+- subscriptions
+- offline sync
+
+6. Where real data is not available yet:
+- keep the approved UI layout
+- show honest empty states
+- do not downgrade the UI
+
+7. Fix /records asking signed-in users to sign in again.
+Investigate and report root cause.
+
+Check:
+- Clerk isLoaded
+- isSignedIn
+- userId
+- auth guard logic
+- whether /dashboard and /records use different auth checks
+- whether unitdown.org and preview domain sessions differ
+- whether /records is being opened on a different domain/session
+- whether cookies/session are blocked
+- whether login redirect returns to the wrong path
+
+8. /records should not ask for sign-in if the user is already signed in.
+If auth is still loading, show loading state.
+If auth fails, show a clear reason.
+Do not incorrectly show “Sign in to view equipment” to authenticated users.
+
+9. Run:
+- frontend typecheck
+- backend typecheck
+- shared/lib typecheck
+- frontend build
+- backend build
+
+10. Final report:
+- Which approved 2.0 component is now production
+- What /dashboard shows
+- What /records shows
+- Why /records was asking for sign-in again
+- Files changed
+- Typecheck result
+- Build result
+- Remaining blockers
+
+Success condition:
+Production should visually match the UnitDown 2.0 branch/prototype UI we approved, not a simplified replacement.

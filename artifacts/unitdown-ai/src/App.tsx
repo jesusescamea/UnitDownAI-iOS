@@ -27,6 +27,7 @@ import UnitDetailPage from "./pages/UnitDetailPage";
 import DiagnosticLogDetailPage from "./pages/DiagnosticLogDetailPage";
 import NotFound from "./pages/not-found";
 import FieldHubDashboard from "./pages/FieldHubDashboard";
+import { DashboardView } from "./pages/jmp/DashboardView";
 import PricingPage from "./pages/PricingPage";
 import DevEquipmentPreview from "./pages/DevEquipmentPreview";
 import JobModePrototype from "./pages/JobModePrototype";
@@ -3471,6 +3472,29 @@ export function Home() {
 }
 
 // ─── RootRoute ──────────────────────────────────────────────────────────────────
+// Approved UnitDown 2.0 Field Hub — DashboardView from jmp/DashboardView.tsx
+// Auth guard: redirect to /login if not signed in.
+function DashboardRoute() {
+  const { user: clerkUser, isLoaded } = useUser();
+  const [, navigate] = useLocation();
+
+  useEffect(() => {
+    if (isLoaded && !clerkUser) {
+      navigate("/login", { replace: true } as Parameters<typeof navigate>[1]);
+    }
+  }, [isLoaded, clerkUser, navigate]);
+
+  if (!isLoaded || !clerkUser) {
+    return (
+      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
+
+  return <DashboardView onStartJob={() => navigate("/job")} />;
+}
+
 // Auth-aware entry: signed-in users land on /dashboard; guests see the public
 // diagnostic landing page (Home). This lets the old Home continue serving its
 // purpose as a marketing/diagnostic page for unauthenticated visitors.
@@ -3512,7 +3536,7 @@ function App() {
           <JobModeProvider>
             <Switch>
               <Route path="/" component={RootRoute} />
-              <Route path="/dashboard" component={FieldHubDashboard} />
+              <Route path="/dashboard" component={DashboardRoute} />
               <Route path="/diagnose" component={Home} />
               <Route path="/pricing" component={PricingPage} />
               <Route path="/admin" component={AdminView} />
