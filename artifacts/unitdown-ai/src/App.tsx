@@ -1779,7 +1779,7 @@ function AlternativesAccordion({ alternatives, issueInput }: { alternatives: Dia
 
 // ─── Home ───────────────────────────────────────────────────────────────────────
 
-function Home() {
+export function Home() {
   const [symptoms, setSymptoms] = useState("");
   const [exampleSetB, setExampleSetB] = useState(false);
   const [currentResult, setCurrentResult] = useState<DiagnosisResult | null>(null);
