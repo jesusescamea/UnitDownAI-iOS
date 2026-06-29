@@ -4,7 +4,7 @@ import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronRight, ChevronLeft, X, Wrench, Calendar as CalIcon, Plus,
-  AlertTriangle, MapPin, Clock, Phone, Search, Cpu, FileText,
+  AlertTriangle, MapPin, Clock, Search, Cpu, FileText,
   Zap, CheckCircle, Maximize2, User, Settings, LogOut, ChevronDown,
   TrendingUp, TrendingDown, Minus, Lightbulb, Sparkles,
 } from 'lucide-react';
@@ -455,7 +455,6 @@ export function DashboardView({ onStartJob }: Props) {
             </div>
           </button>
           {[
-            { icon: <Phone size={18} />,  label: 'Emergency\nCall',   color: 'bg-red-900/40 border-red-800',       iconColor: 'text-red-400',   onClick: undefined },
             { icon: <Search size={18} />, label: 'Search\nEquipment', color: 'bg-blue-900/40 border-blue-800',     iconColor: 'text-blue-400',  onClick: undefined },
             { icon: <Zap size={18} />,    label: 'Scan\nNameplate',   color: 'bg-green-900/40 border-green-800',   iconColor: 'text-green-400', onClick: () => setScannerOpen(true) },
             { icon: <Cpu size={18} />,    label: 'AI\nAssistant',     color: 'bg-purple-900/40 border-purple-800', iconColor: 'text-purple-400', onClick: undefined },
@@ -468,21 +467,6 @@ export function DashboardView({ onStartJob }: Props) {
         </div>
       </div>
 
-      {/* ── Emergency strip ──────────────────────────────────────── */}
-      <div className="px-4 pt-3 pb-2">
-        <button className="w-full flex items-center justify-between bg-red-950/30 border border-red-900 rounded-2xl px-4 py-3.5">
-          <div className="flex items-center gap-3">
-            <div className="w-8 h-8 bg-red-700 rounded-xl flex items-center justify-center flex-shrink-0">
-              <Phone size={15} className="text-white" />
-            </div>
-            <div className="text-left">
-              <div className="font-bold text-sm text-white">Start Emergency Call</div>
-              <div className="text-[10px] text-red-400/70">Unscheduled urgent service</div>
-            </div>
-          </div>
-          <ChevronRight size={16} className="text-red-600" />
-        </button>
-      </div>
 
       {/* ═══ Modals ════════════════════════════════════════════════ */}
 
@@ -570,7 +554,6 @@ export function DashboardView({ onStartJob }: Props) {
                 <>
                   <p className="text-sm text-gray-400 mb-4">Nothing scheduled for this day.</p>
                   {[
-                    { icon: <Phone size={16} className="text-red-400" />,     label: 'Create Emergency Call',  bg: 'bg-red-950/40 border-red-900' },
                     { icon: <Search size={16} className="text-blue-400" />,   label: 'Browse Equipment',       bg: 'bg-blue-950/40 border-blue-900' },
                     { icon: <FileText size={16} className="text-gray-300" />, label: 'View Service Records',   bg: 'bg-gray-800 border-gray-700' },
                     { icon: <Cpu size={16} className="text-purple-400" />,    label: 'AI Assistant',           bg: 'bg-purple-950/40 border-purple-900' },
