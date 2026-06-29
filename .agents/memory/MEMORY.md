@@ -5,3 +5,4 @@
 - [Job Mode offline-first architecture](job-mode-offline.md) — client-generated permanent IDs, IndexedDB sync queue (idb), onConflictDoNothing idempotency; startJob never requires network.
 - [Van inventory persistence pattern](van-inventory-persistence.md) — van_inventory + tool_checklist tables; API uses clientId query-param auth (like units.ts, not Bearer); MyVanModal merges persisted qty into INITIAL_INVENTORY template on load.
 - [PT Chart + Nav architecture](pt-chart-nav.md) — AppNavSection type is "dashboard"|"job"|"pt-chart"|"records"|"account"; Home component at /diagnose uses !(clerkLoaded && clerkUser) guards to hide marketing elements for authenticated users.
+- [OAuth Calendar/Email integration](oauth-integration.md) — Outlook + Google OAuth; clientId query-param auth; HMAC-signed state; AES-256-GCM token encryption; popup + postMessage flow; configured/connected pattern for graceful missing-env fallback.

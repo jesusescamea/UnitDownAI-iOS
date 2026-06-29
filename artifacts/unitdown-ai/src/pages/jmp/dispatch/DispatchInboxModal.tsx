@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Inbox, Plus, ChevronRight, CheckCircle, Clock, MapPin,
@@ -13,8 +13,9 @@ import type { ScheduleWizardResult } from '../ScheduleJobWizard';
 import type { TodayJob } from '../mockData';
 import type { CalendarEvent } from '../dashboardData';
 import { PROVIDERS, CATEGORY_LABELS } from './providers/index';
-import { parsePastedText, parseCSV, parseICS } from './parsers';
+import { parsePastedText, parseCSV, parseICS, calendarEventToImportedJob, emailToImportedJob } from './parsers';
 import { useDispatchInbox } from './useDispatchInbox';
+import { useOAuthIntegration, getMailSubject, getMailSnippet, getMailFrom } from './useOAuthIntegration';
 
 // ─── Screen types ─────────────────────────────────────────────────────────────
 type Screen =
@@ -29,7 +30,9 @@ type Screen =
   | 'email_alt'
   | 'dispatch_alt'
   | 'custom_api'
-  | 'edit';
+  | 'edit'
+  | 'outlook_connect'
+  | 'google_connect';
 
 type CalendarProvider  = 'google_calendar' | 'apple_calendar' | 'outlook_calendar';
 type EmailProvider     = 'gmail' | 'outlook_email';
@@ -623,32 +626,22 @@ function ScanScreen({
 
 // ─── Calendar alternative screen ──────────────────────────────────────────────
 
-const CALENDAR_INFO: Record<CalendarProvider, {
+const CALENDAR_INFO: Record<'apple_calendar', {
   name: string;
   authNote: string;
   instructions: string;
 }> = {
-  google_calendar: {
-    name: 'Google Calendar',
-    authNote: 'Direct Google Calendar sync requires Google OAuth, which is not configured in this environment.',
-    instructions: 'Open the event in Google Calendar → tap ⋮ → Export → Download the .ics file. Or open the event, copy all the details, and paste below.',
-  },
   apple_calendar: {
     name: 'Apple Calendar',
     authNote: 'Apple Calendar does not support direct web sync. Tap the event in the Calendar app to export or copy it.',
     instructions: 'Open Calendar → tap the event → tap Edit → tap Share → Save .ics to Files. Or copy event details and paste below.',
-  },
-  outlook_calendar: {
-    name: 'Outlook Calendar',
-    authNote: 'Microsoft authentication is not configured. Direct Outlook Calendar sync requires Microsoft Graph API credentials.',
-    instructions: 'Open the event in Outlook → tap … → Forward as iCalendar → open the attachment and save the .ics file. Or copy all event details and paste below.',
   },
 };
 
 function CalendarAltScreen({
   provider, onSelectICS, onSelectPaste, onSelectManual, onBack,
 }: {
-  provider:       CalendarProvider;
+  provider:       'apple_calendar';
   onSelectICS:    () => void;
   onSelectPaste:  () => void;
   onSelectManual: () => void;
@@ -721,7 +714,7 @@ function EmailAltScreen({
         <div className="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3">
           <div className="flex items-center gap-2 mb-1">
             <AlertCircle size={13} className="text-gray-400 flex-shrink-0" />
-            <p className="text-xs font-semibold text-gray-300">Authentication not configured</p>
+            <p className="text-xs font-semibold text-gray-300">Direct sync requires setup</p>
           </div>
           <p className="text-[10px] text-gray-500 leading-relaxed">{info.authNote}</p>
         </div>
@@ -736,6 +729,234 @@ function EmailAltScreen({
           <FallbackBtn icon={<Copy size={18} className="text-blue-300" />} iconColor="bg-blue-900/30" title="Paste Dispatch Email" sub="Copy email text, paste here — AI extracts jobs" onClick={onSelectPaste} />
           <FallbackBtn icon={<FileUp size={18} className="text-purple-300" />} iconColor="bg-purple-900/30" title="Calendar File (.ics)" sub="If the email has a calendar attachment" onClick={onSelectICS} />
           <FallbackBtn icon={<Plus size={18} className="text-green-300" />} iconColor="bg-green-900/30" title="Manual Entry" sub="Enter job details from the email" onClick={onSelectManual} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── OAuth Connect Screen (Outlook + Google) ──────────────────────────────────
+
+function OAuthConnectScreen({
+  provider,
+  importType,
+  userId,
+  onParsed,
+  onBack,
+  onSelectICS,
+  onSelectPaste,
+  onSelectManual,
+}: {
+  provider:       'outlook' | 'google';
+  importType:     'calendar' | 'email';
+  userId:         string | undefined;
+  onParsed:       (jobs: ImportedJob[]) => void;
+  onBack:         () => void;
+  onSelectICS:    () => void;
+  onSelectPaste:  () => void;
+  onSelectManual: () => void;
+}) {
+  const {
+    status, statusLoading, events, messages, dataLoading, connecting, error,
+    connect, disconnect, fetchCalendarEvents, fetchEmails,
+  } = useOAuthIntegration(provider, userId);
+
+  const label = provider === 'outlook' ? 'Outlook' : 'Google';
+  const dataLoaded = importType === 'calendar' ? events.length > 0 : messages.length > 0;
+
+  useEffect(() => {
+    if (status.connected) {
+      if (importType === 'calendar') fetchCalendarEvents();
+      else fetchEmails();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status.connected]);
+
+  function handleImportEvent(ev: unknown) {
+    const source: ProviderType = provider === 'outlook' ? 'outlook_calendar' : 'google_calendar';
+    const job = calendarEventToImportedJob(ev as Parameters<typeof calendarEventToImportedJob>[0], source);
+    onParsed([job]);
+  }
+
+  function handleImportEmail(msg: unknown) {
+    const source: ProviderType = provider === 'outlook' ? 'outlook_email' : 'gmail';
+    const job = emailToImportedJob(msg as Parameters<typeof emailToImportedJob>[0], source);
+    onParsed([job]);
+  }
+
+  const title = `${label} ${importType === 'calendar' ? 'Calendar' : 'Email'}`;
+
+  if (statusLoading) {
+    return (
+      <div className="flex flex-col h-full">
+        <ScreenHeader title={title} onBack={onBack} />
+        <div className="flex-1 flex items-center justify-center">
+          <span className="text-sm text-gray-500">Checking connection…</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <ScreenHeader title={title} onBack={onBack} />
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+
+        {/* ── Not configured (env vars missing) ─────────────────────────────── */}
+        {!status.configured && (
+          <div className="bg-gray-900 border border-gray-700 rounded-xl px-4 py-3">
+            <div className="flex items-center gap-2 mb-1">
+              <AlertCircle size={13} className="text-gray-400 flex-shrink-0" />
+              <p className="text-xs font-semibold text-gray-300">Direct sync requires setup</p>
+            </div>
+            <p className="text-[10px] text-gray-500 leading-relaxed">
+              {label} sync needs OAuth credentials configured on the server. Import another way today using the options below — full {label} sync will be available once set up.
+            </p>
+          </div>
+        )}
+
+        {/* ── Configured, not yet connected ─────────────────────────────────── */}
+        {status.configured && !status.connected && (
+          <>
+            <div className="bg-blue-950/30 border border-blue-800/40 rounded-xl px-4 py-3">
+              <p className="text-[10px] text-blue-300 leading-relaxed">
+                Sign in to {label} to pull your {importType === 'calendar' ? 'calendar events' : 'dispatch emails'} directly into the inbox. Takes about 30 seconds.
+              </p>
+            </div>
+            <button
+              onClick={connect}
+              disabled={connecting}
+              className="w-full bg-white text-gray-950 font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-2 active:scale-[0.98] transition-transform disabled:opacity-60"
+            >
+              {connecting
+                ? <RefreshCw size={16} className="animate-spin" />
+                : <Zap size={16} />}
+              {connecting ? 'Connecting…' : `Connect ${label}`}
+            </button>
+          </>
+        )}
+
+        {/* ── Connected ─────────────────────────────────────────────────────── */}
+        {status.connected && (
+          <div className="flex items-center justify-between bg-green-950/20 border border-green-800/40 rounded-xl px-3 py-2">
+            <div className="flex items-center gap-2">
+              <CheckCircle size={13} className="text-green-400" />
+              <span className="text-xs font-semibold text-green-300">{label} connected</span>
+            </div>
+            <button onClick={disconnect} className="text-[10px] text-gray-500 border border-gray-700 px-2 py-1 rounded-lg">
+              Disconnect
+            </button>
+          </div>
+        )}
+
+        {/* ── Error ─────────────────────────────────────────────────────────── */}
+        {!!error && (
+          <p className="text-[10px] text-red-400 bg-red-950/20 border border-red-800/30 rounded-lg px-3 py-2">{error}</p>
+        )}
+
+        {/* ── Fetch button (connected, no data yet) ─────────────────────────── */}
+        {status.connected && !dataLoaded && !dataLoading && (
+          <button
+            onClick={importType === 'calendar' ? fetchCalendarEvents : fetchEmails}
+            className="w-full flex items-center justify-center gap-2 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-sm font-semibold text-white active:bg-gray-700 transition-colors"
+          >
+            <RefreshCw size={14} />
+            {importType === 'calendar' ? 'Load Calendar Events' : 'Load Recent Emails'}
+          </button>
+        )}
+        {status.connected && dataLoading && (
+          <div className="flex items-center justify-center gap-2 py-6">
+            <RefreshCw size={14} className="animate-spin text-gray-500" />
+            <span className="text-sm text-gray-500">Loading…</span>
+          </div>
+        )}
+
+        {/* ── Calendar events list ───────────────────────────────────────────── */}
+        {status.connected && importType === 'calendar' && events.length > 0 && (
+          <>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Upcoming Events ({events.length})</p>
+              <button onClick={fetchCalendarEvents} className="text-[10px] text-gray-500 flex items-center gap-1">
+                <RefreshCw size={10} /> Refresh
+              </button>
+            </div>
+            <div className="space-y-2">
+              {(events as unknown as Record<string, unknown>[]).map((ev, i) => {
+                const subject     = (ev.subject ?? ev.summary ?? 'Calendar Event') as string;
+                const startDT     = ((ev.start as Record<string, string> | undefined)?.dateTime ?? (ev.start as Record<string, string> | undefined)?.date ?? '') as string;
+                const locRaw      = ev.location;
+                const loc         = typeof locRaw === 'string' ? locRaw : (locRaw as Record<string, string> | undefined)?.displayName ?? '';
+                const parsedStart = startDT ? new Date(startDT) : null;
+                return (
+                  <div key={(ev.id as string) ?? i} className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="text-sm font-semibold text-white leading-tight truncate">{subject}</div>
+                      {parsedStart && (
+                        <div className="text-[10px] text-blue-400 mt-0.5">
+                          {parsedStart.toLocaleDateString([], { weekday: 'short', month: 'short', day: 'numeric' })}
+                          {startDT.includes('T') && ` · ${parsedStart.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                        </div>
+                      )}
+                      {loc && <div className="text-[10px] text-gray-500 truncate mt-0.5">{loc}</div>}
+                    </div>
+                    <button
+                      onClick={() => handleImportEvent(ev)}
+                      className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 bg-blue-900/40 border border-blue-700/60 rounded-xl text-[10px] font-bold text-blue-300 active:bg-blue-900/60"
+                    >
+                      <Plus size={10} /> Import
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </>
+        )}
+        {status.connected && importType === 'calendar' && events.length === 0 && !dataLoading && dataLoaded && (
+          <p className="text-center text-[10px] text-gray-500 py-4">No upcoming events found in the next 30 days.</p>
+        )}
+
+        {/* ── Email list ────────────────────────────────────────────────────── */}
+        {status.connected && importType === 'email' && messages.length > 0 && (
+          <>
+            <div className="flex items-center justify-between">
+              <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Recent Emails ({messages.length})</p>
+              <button onClick={fetchEmails} className="text-[10px] text-gray-500 flex items-center gap-1">
+                <RefreshCw size={10} /> Refresh
+              </button>
+            </div>
+            <div className="space-y-2">
+              {messages.map((msg, i) => (
+                <div key={i} className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3 flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-semibold text-white leading-tight truncate">{getMailSubject(msg)}</div>
+                    {getMailFrom(msg) && <div className="text-[10px] text-gray-500 truncate mt-0.5">{getMailFrom(msg)}</div>}
+                    {getMailSnippet(msg) && <div className="text-[10px] text-gray-600 mt-0.5 line-clamp-2">{getMailSnippet(msg)}</div>}
+                  </div>
+                  <button
+                    onClick={() => handleImportEmail(msg)}
+                    className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 bg-blue-900/40 border border-blue-700/60 rounded-xl text-[10px] font-bold text-blue-300 active:bg-blue-900/60"
+                  >
+                    <Plus size={10} /> Import
+                  </button>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+        {status.connected && importType === 'email' && messages.length === 0 && !dataLoading && dataLoaded && (
+          <p className="text-center text-[10px] text-gray-500 py-4">No emails found in the past 7 days.</p>
+        )}
+
+        {/* ── Always-visible alternatives ───────────────────────────────────── */}
+        <div className="border-t border-gray-800 pt-4">
+          <p className="text-[10px] font-bold uppercase tracking-wider text-gray-500 mb-2">Import another way today:</p>
+          <div className="space-y-2">
+            {importType === 'calendar' && (
+              <FallbackBtn icon={<FileUp size={16} className="text-purple-300" />} iconColor="bg-purple-900/30" title="Calendar File (.ics)" sub="Export from calendar app, then upload" onClick={onSelectICS} />
+            )}
+            <FallbackBtn icon={<Copy size={16} className="text-blue-300" />} iconColor="bg-blue-900/30" title="Paste Schedule" sub="Copy and paste dispatch text or email" onClick={onSelectPaste} />
+            <FallbackBtn icon={<Plus size={16} className="text-green-300" />} iconColor="bg-green-900/30" title="Manual Entry" sub="Enter job details by hand" onClick={onSelectManual} />
+          </div>
         </div>
       </div>
     </div>
@@ -1139,10 +1360,11 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
   const [screen,           setScreen]          = useState<Screen>('inbox');
   const [editingJob,       setEditingJob]       = useState<ImportedJob | null>(null);
   const [isNewJob,         setIsNewJob]         = useState(false);
-  const [calendarFor,      setCalendarFor]      = useState<CalendarProvider>('google_calendar');
+  const [calendarFor,      setCalendarFor]      = useState<'apple_calendar'>('apple_calendar');
   const [emailFor,         setEmailFor]         = useState<EmailProvider>('gmail');
   const [dispatchPlatform, setDispatchPlatform] = useState<DispatchPlatform>('servicetitan');
   const [inboxFilter,      setInboxFilter]      = useState<'all' | 'pending' | 'accepted'>('all');
+  const [connectImportType, setConnectImportType] = useState<'calendar' | 'email'>('calendar');
 
   // ── Accept a single job ────────────────────────────────────────────────────
   function handleAccept(job: ImportedJob) {
@@ -1171,11 +1393,11 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
     if (id === 'ics')      { setScreen('ics');    return; }
     if (id === 'pdf')      { setScreen('pdf');    return; }
     if (id === 'scan_ocr') { setScreen('scan');   return; }
-    if (id === 'google_calendar')  { setCalendarFor('google_calendar');  setScreen('calendar_alt'); return; }
-    if (id === 'apple_calendar')   { setCalendarFor('apple_calendar');   setScreen('calendar_alt'); return; }
-    if (id === 'outlook_calendar') { setCalendarFor('outlook_calendar'); setScreen('calendar_alt'); return; }
-    if (id === 'gmail')         { setEmailFor('gmail');         setScreen('email_alt'); return; }
-    if (id === 'outlook_email') { setEmailFor('outlook_email'); setScreen('email_alt'); return; }
+    if (id === 'google_calendar')  { setConnectImportType('calendar'); setScreen('google_connect');  return; }
+    if (id === 'gmail')            { setConnectImportType('email');    setScreen('google_connect');  return; }
+    if (id === 'outlook_calendar') { setConnectImportType('calendar'); setScreen('outlook_connect'); return; }
+    if (id === 'outlook_email')    { setConnectImportType('email');    setScreen('outlook_connect'); return; }
+    if (id === 'apple_calendar')   { setCalendarFor('apple_calendar'); setScreen('calendar_alt');   return; }
     if (id === 'servicetitan')  { setDispatchPlatform('servicetitan');  setScreen('dispatch_alt'); return; }
     if (id === 'fieldedge')     { setDispatchPlatform('fieldedge');     setScreen('dispatch_alt'); return; }
     if (id === 'housecall_pro') { setDispatchPlatform('housecall_pro'); setScreen('dispatch_alt'); return; }
@@ -1269,7 +1491,7 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
         />
       )}
 
-      {/* ── Calendar alt ──────────────────────────────────────────────────── */}
+      {/* ── Calendar alt (Apple Calendar only) ───────────────────────────── */}
       {screen === 'calendar_alt' && (
         <CalendarAltScreen
           provider={calendarFor}
@@ -1280,7 +1502,7 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
         />
       )}
 
-      {/* ── Email alt ─────────────────────────────────────────────────────── */}
+      {/* ── Email alt (legacy fallback, may not be reached) ───────────────── */}
       {screen === 'email_alt' && (
         <EmailAltScreen
           provider={emailFor}
@@ -1288,6 +1510,34 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
           onSelectICS={goICS}
           onSelectManual={goManual}
           onBack={goSources}
+        />
+      )}
+
+      {/* ── Outlook connect ───────────────────────────────────────────────── */}
+      {screen === 'outlook_connect' && (
+        <OAuthConnectScreen
+          provider="outlook"
+          importType={connectImportType}
+          userId={user?.id}
+          onParsed={handleParsed}
+          onBack={goSources}
+          onSelectICS={goICS}
+          onSelectPaste={goPaste}
+          onSelectManual={goManual}
+        />
+      )}
+
+      {/* ── Google connect ────────────────────────────────────────────────── */}
+      {screen === 'google_connect' && (
+        <OAuthConnectScreen
+          provider="google"
+          importType={connectImportType}
+          userId={user?.id}
+          onParsed={handleParsed}
+          onBack={goSources}
+          onSelectICS={goICS}
+          onSelectPaste={goPaste}
+          onSelectManual={goManual}
         />
       )}
 

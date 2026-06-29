@@ -22,6 +22,8 @@ import voiceReportRouter from "./voiceReport";
 import jobsRouter from "./jobs";
 import vanRouter from "./van";
 import assistRouter from "./assist";
+import integrationsOutlookRouter from "./integrationsOutlook";
+import integrationsGoogleRouter from "./integrationsGoogle";
 
 const router: IRouter = Router();
 
@@ -48,5 +50,7 @@ router.use(voiceReportRouter);
 router.use(jobsRouter);
 router.use(vanRouter);
 router.use(assistRouter);
+router.use(integrationsOutlookRouter);
+router.use(integrationsGoogleRouter);
 
 export default router;

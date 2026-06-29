@@ -3,6 +3,113 @@
 
 import type { ImportedJob, ProviderType, JobPriority } from './types';
 
+// ─── OAuth calendar event → ImportedJob ──────────────────────────────────────
+// Converts a raw calendar event object (Microsoft Graph or Google Calendar API)
+// into a normalized ImportedJob. Works with either format.
+
+interface AnyCalendarEvent {
+  id?:          string;
+  subject?:     string;
+  summary?:     string;
+  start?:       { dateTime?: string; date?: string };
+  end?:         { dateTime?: string; date?: string };
+  location?:    string | { displayName?: string };
+  description?: string;
+  bodyPreview?: string;
+  body?:        { content?: string; contentType?: string };
+}
+
+interface AnyMailMessage {
+  subject?:         string;
+  from?:            { emailAddress?: { name?: string; address?: string } };
+  receivedDateTime?: string;
+  bodyPreview?:     string;
+  snippet?:         string;
+  payload?:         { headers?: { name: string; value: string }[] };
+}
+
+export function calendarEventToImportedJob(event: AnyCalendarEvent, source: ProviderType): ImportedJob {
+  const job = defaultJob(source);
+  job.rawData = event;
+
+  const summary     = event.subject ?? event.summary ?? '';
+  const description = event.description ?? event.body?.content ?? event.bodyPreview ?? '';
+  const location    = typeof event.location === 'string'
+    ? event.location
+    : (event.location?.displayName ?? '');
+
+  if (event.start?.dateTime) {
+    const dt = new Date(event.start.dateTime);
+    job.appointmentDate = dt.toISOString().split('T')[0];
+    job.appointmentTime = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  } else if (event.start?.date) {
+    job.appointmentDate = event.start.date;
+  }
+
+  if (event.end?.dateTime && job.appointmentTime) {
+    const endDt = new Date(event.end.dateTime);
+    const endTime = endDt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    job.timeWindow = `${job.appointmentTime} – ${endTime}`;
+    job.appointmentTime = '';
+  }
+
+  if (location) job.address = location;
+
+  if (summary) {
+    const splitMatch = summary.match(/^(.+?)\s*[-–|]\s*(.+)$/);
+    if (splitMatch) {
+      job.customer  = splitMatch[1].trim();
+      job.complaint = splitMatch[2].trim();
+    } else {
+      job.customer = summary.trim();
+    }
+  }
+
+  if (description) {
+    const phoneMatch = description.match(/(\(?\d{3}\)?[\s.\-]\d{3}[\s.\-]\d{4})/);
+    if (phoneMatch) job.phone = phoneMatch[1];
+
+    const jobNumMatch = description.match(/(?:job|wo|work\s*order|dispatch|ticket)\s*#?\s*:?\s*([A-Z0-9\-]+)/i);
+    if (jobNumMatch) job.jobNumber = jobNumMatch[1];
+
+    if (!job.complaint) {
+      const complaintMatch = description.match(/(?:complaint|symptom|issue|problem|task|description)\s*:?\s*(.+?)(?:\n|$)/i);
+      if (complaintMatch) job.complaint = complaintMatch[1].trim();
+    }
+
+    if (!job.notes) job.notes = description.replace(/<[^>]+>/g, '').trim().slice(0, 500);
+  }
+
+  const allText = [summary, description, location].filter(Boolean).join(' ');
+  job.jobType  = guessJobType(allText);
+  job.priority = guessPriority(allText);
+
+  if (!job.customer) job.customer = summary || 'Calendar Event';
+  return job;
+}
+
+export function emailToImportedJob(message: AnyMailMessage, source: ProviderType): ImportedJob {
+  const subject = message.subject ?? message.payload?.headers?.find(h => h.name === 'Subject')?.value ?? '';
+  const from    = message.from?.emailAddress?.name ?? message.payload?.headers?.find(h => h.name === 'From')?.value ?? '';
+  const body    = message.bodyPreview ?? message.snippet ?? '';
+
+  const combined = [subject, body].filter(Boolean).join('\n');
+  const parsed   = parsePastedText(combined);
+
+  if (parsed.length > 0) {
+    return { ...parsed[0], source, rawData: message };
+  }
+
+  const job    = defaultJob(source);
+  job.rawData  = message;
+  job.customer = from;
+  job.complaint = subject;
+  job.notes    = body;
+  job.jobType  = guessJobType(combined);
+  job.priority = guessPriority(combined);
+  return job;
+}
+
 function uid(): string {
   return `DI-${Date.now()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
 }
