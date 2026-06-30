@@ -26,6 +26,7 @@ import integrationsOutlookRouter from "./integrationsOutlook";
 import integrationsGoogleRouter from "./integrationsGoogle";
 import speakScheduleRouter from "./speakSchedule";
 import scheduleCustomersRouter from "./scheduleCustomers";
+import customersRouter from "./customers";
 
 const router: IRouter = Router();
 
@@ -56,5 +57,6 @@ router.use(integrationsOutlookRouter);
 router.use(integrationsGoogleRouter);
 router.use(speakScheduleRouter);
 router.use(scheduleCustomersRouter);
+router.use(customersRouter);
 
 export default router;

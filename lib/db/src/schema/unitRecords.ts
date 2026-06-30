@@ -39,6 +39,13 @@ export const unitRecords = pgTable(
     beltNotes:              text("belt_notes"),
     maintenanceVerifiedAt:  text("maintenance_verified_at"),
 
+    // ── Customer / Site links ────────────────────────────────────────────────
+    // Nullable FK-style references to the customers + customer_sites tables.
+    // Populated when a tech explicitly links equipment to a saved customer/site.
+    // Historical data is matched by siteCustomerName (text) until linked.
+    customerId: text("customer_id"),
+    siteId:     text("site_id"),
+
     nameplateImageUrl: text("nameplate_image_url"),
     nameplatePreviewUrl: text("nameplate_preview_url"),
 

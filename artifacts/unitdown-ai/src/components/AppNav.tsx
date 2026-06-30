@@ -5,7 +5,7 @@
  * Mobile (<640px):  Slim sticky top bar (logo + avatar only) + fixed bottom tab bar.
  *
  * One import per authenticated page delivers both bars automatically.
- * Tabs: Today · Jobs · PT Chart · Equipment · Account
+ * Tabs: Today · Jobs · PT Chart · Customers · Equipment · Account
  */
 import { useLocation } from "wouter";
 import {
@@ -15,6 +15,7 @@ import {
   Wrench,
   Gauge,
   User,
+  Users,
 } from "lucide-react";
 import { useUser } from "@clerk/clerk-react";
 
@@ -22,6 +23,7 @@ export type AppNavSection =
   | "dashboard"
   | "job"
   | "pt-chart"
+  | "customers"
   | "records"
   | "account";
 
@@ -30,11 +32,12 @@ interface AppNavProps {
 }
 
 const TABS = [
-  { id: "dashboard" as AppNavSection, label: "Today",    Icon: LayoutGrid, path: "/dashboard" },
-  { id: "job"       as AppNavSection, label: "Jobs",     Icon: Briefcase,  path: "/job"       },
-  { id: "pt-chart"  as AppNavSection, label: "PT Chart", Icon: Gauge,      path: "/pt-chart"  },
-  { id: "records"   as AppNavSection, label: "Equipment",Icon: Wrench,     path: "/records"   },
-  { id: "account"   as AppNavSection, label: "Account",  Icon: User,       path: "/account"   },
+  { id: "dashboard" as AppNavSection, label: "Today",     Icon: LayoutGrid, path: "/dashboard"  },
+  { id: "job"       as AppNavSection, label: "Jobs",      Icon: Briefcase,  path: "/job"        },
+  { id: "pt-chart"  as AppNavSection, label: "PT Chart",  Icon: Gauge,      path: "/pt-chart"   },
+  { id: "customers" as AppNavSection, label: "Customers", Icon: Users,      path: "/customers"  },
+  { id: "records"   as AppNavSection, label: "Equipment", Icon: Wrench,     path: "/records"    },
+  { id: "account"   as AppNavSection, label: "Account",   Icon: User,       path: "/account"    },
 ] as const;
 
 function buildInitials(user: ReturnType<typeof useUser>["user"]): string {
@@ -133,8 +136,8 @@ export function AppNav({ active }: AppNavProps) {
                 {isActive && (
                   <span className="absolute top-0 left-1/2 -translate-x-1/2 w-8 h-0.5 bg-blue-500 rounded-full" />
                 )}
-                <Icon className="w-[18px] h-[18px]" />
-                <span className="text-[9px] font-bold tracking-wide leading-none">{label}</span>
+                <Icon className="w-[16px] h-[16px]" />
+                <span className="text-[8px] font-bold tracking-wide leading-none">{label}</span>
               </button>
             );
           })}
