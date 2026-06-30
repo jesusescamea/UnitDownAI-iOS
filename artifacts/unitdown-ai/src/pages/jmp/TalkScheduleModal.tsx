@@ -32,7 +32,7 @@ interface Props {
 
 // ─── ImportedJob → ScheduleWizardResult ──────────────────────────────────────
 
-function calTypeFromJob(jobType: string, priority: string): CalendarEvent['type'] {
+export function calTypeFromJob(jobType: string, priority: string): CalendarEvent['type'] {
   const t = (jobType ?? '').toLowerCase();
   if (priority === 'emergency' || t.includes('emergency')) return 'emergency';
   if (t.includes('pm') || t.includes('maintenance') || t.includes('preventive')) return 'pm';
@@ -40,7 +40,7 @@ function calTypeFromJob(jobType: string, priority: string): CalendarEvent['type'
   return 'appointment';
 }
 
-function importedToResult(job: ImportedJob, todayStr: string): ScheduleWizardResult {
+export function importedToResult(job: ImportedJob, todayStr: string): ScheduleWizardResult {
   const dateStr = job.appointmentDate || todayStr;
   let day = new Date().getDate();
   try { day = new Date(dateStr + 'T12:00:00').getDate(); } catch { /* use today */ }
@@ -81,7 +81,7 @@ function importedToResult(job: ImportedJob, todayStr: string): ScheduleWizardRes
 
 // ─── Smart reminder extraction ────────────────────────────────────────────────
 
-function extractSmartReminders(jobs: ImportedJob[]): ReminderData[] {
+export function extractSmartReminders(jobs: ImportedJob[]): ReminderData[] {
   const results: ReminderData[] = [];
   const seen    = new Set<string>();
   const today   = new Date().toISOString().split('T')[0];

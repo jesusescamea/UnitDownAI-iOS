@@ -29,7 +29,8 @@ import {
 import { AppNav } from '../../components/AppNav';
 import { NameplateWorkflowModal } from './NameplateWorkflowModal';
 import { UnassignedScansModal }   from './UnassignedScansModal';
-import { TalkScheduleModal, type ReminderData } from './TalkScheduleModal';
+import { ScheduleImportModal } from './ScheduleImportModal';
+import type { ReminderData } from './TalkScheduleModal';
 import { useReminders } from './reminders/useReminders';
 import { EquipmentSearchModal } from './EquipmentSearchModal';
 import { JmpAiAssistantModal } from './JmpAiAssistantModal';
@@ -455,12 +456,12 @@ export function DashboardView({ onStartJob }: Props) {
               <div className="text-[9px] text-orange-400/80">Checklist</div>
             </div>
           </button>
-          {/* Talk Schedule tile */}
+          {/* Tap to Schedule tile */}
           <button onClick={() => setTalkScheduleOpen(true)}
             className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-violet-900/30 border-violet-800 active:scale-95 transition-transform">
             <Mic size={18} className="text-violet-400" />
             <div className="text-center">
-              <div className="text-[10px] text-gray-200 font-bold leading-tight">Talk</div>
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">Tap to</div>
               <div className="text-[9px] text-violet-400/80">Schedule</div>
             </div>
           </button>
@@ -690,7 +691,7 @@ export function DashboardView({ onStartJob }: Props) {
 
       <AnimatePresence>
         {talkScheduleOpen && (
-          <TalkScheduleModal
+          <ScheduleImportModal
             userId={clerkUser?.id ?? ''}
             onSaved={handleTalkScheduleSaved}
             onClose={() => setTalkScheduleOpen(false)}
