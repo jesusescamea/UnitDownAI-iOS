@@ -42,6 +42,28 @@ function getSpeechRecognition() {
   return window.SpeechRecognition ?? window.webkitSpeechRecognition ?? null;
 }
 
+/**
+ * Collapse immediately-repeated words / short phrases produced by the
+ * Web Speech API when continuous mode is used without interimResults:false.
+ * Runs multiple passes to catch cascades ("a a a" → "a" in two passes).
+ * Safe on HVAC schedule text — genuine repetitions are extremely rare.
+ */
+function cleanTranscript(raw: string): string {
+  let s = raw.replace(/\s+/g, ' ').trim();
+  for (let pass = 0; pass < 3; pass++) {
+    // 1-word repeats: "there's there's" → "there's"
+    s = s.replace(/\b(\w+)\s+\1\b/gi, '$1');
+    // 2-word repeats: "service call service call" → "service call"
+    s = s.replace(/\b(\w+ \w+)\s+\1\b/gi, '$1');
+    // 3-word repeats: "a service call a service call" → "a service call"
+    s = s.replace(/\b(\w+ \w+ \w+)\s+\1\b/gi, '$1');
+    // 4-word repeats
+    s = s.replace(/\b(\w+ \w+ \w+ \w+)\s+\1\b/gi, '$1');
+    s = s.replace(/\s{2,}/g, ' ').trim();
+  }
+  return s;
+}
+
 // ─── Priority badge ───────────────────────────────────────────────────────────
 
 const PRIORITY_CLS: Record<string, string> = {
@@ -309,14 +331,17 @@ export default function SpeakScheduleScreen({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
       let interim = '';
-      for (let i = 0; i < e.results.length; i++) {
+      // IMPORTANT: start from e.resultIndex, NOT 0.
+      // e.results is a cumulative list; starting from 0 re-processes
+      // already-finalized results on every event, causing repetition like
+      // "there's there's there's a service there's a service call..."
+      for (let i = (e.resultIndex as number); i < e.results.length; i++) {
         const result = e.results[i];
         if (!result) continue;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const isFinal = (result as any).isFinal as boolean;
+        const isFinal = result.isFinal as boolean;
         const text: string = result[0]?.transcript ?? '';
         if (isFinal) {
-          finalAccum += (finalAccum ? ' ' : '') + text;
+          finalAccum = cleanTranscript(finalAccum + (finalAccum ? ' ' : '') + text);
         } else {
           interim = text;
         }
@@ -337,7 +362,8 @@ export default function SpeakScheduleScreen({
     };
 
     rec.onend = () => {
-      setTranscript(t => t || finalAccum);
+      const cleaned = cleanTranscript(finalAccum);
+      setTranscript(t => t || cleaned);
       setPhase(prev => prev === 'recording' ? 'transcribed' : prev);
     };
 
