@@ -49,7 +49,7 @@ import InstallPromptBanner from "./components/InstallPromptBanner";
 import { ActiveJobBanner } from "./components/job/ActiveJobBanner";
 import EmailWallModal from "./components/EmailWallModal";
 import { getFingerprint } from "./lib/fingerprint";
-import { applyTheme } from "./lib/theme";
+import { applyTheme, applyFieldMode } from "./lib/theme";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -1770,10 +1770,11 @@ export function Home() {
     const next = !darkMode;
     setDarkMode(next);
     applyTheme(next);
+    applyFieldMode(false);
     try {
       const raw = localStorage.getItem("unitdown_prefs");
       const prefs = raw ? JSON.parse(raw) : {};
-      localStorage.setItem("unitdown_prefs", JSON.stringify({ ...prefs, darkMode: next }));
+      localStorage.setItem("unitdown_prefs", JSON.stringify({ ...prefs, darkMode: next, fieldMode: false }));
     } catch {}
   }, [darkMode]);
 

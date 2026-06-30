@@ -39,6 +39,8 @@ import {
   Trash2,
   ShieldAlert,
   ShieldCheck,
+  Sun,
+  Moon,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -74,6 +76,7 @@ interface HistoryEntry {
 interface Prefs {
   terminologyMode: "beginner" | "technician" | "advanced";
   darkMode: boolean;
+  fieldMode: boolean;
 }
 
 // ── Storage helpers ────────────────────────────────────────────────────────────
@@ -95,9 +98,14 @@ function loadHistory(): HistoryEntry[] {
 function loadPrefs(): Prefs {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
-    return raw ? (JSON.parse(raw) as Prefs) : { terminologyMode: "technician", darkMode: false };
+    const saved = raw ? (JSON.parse(raw) as Partial<Prefs>) : {};
+    return {
+      terminologyMode: saved.terminologyMode ?? "technician",
+      darkMode: saved.darkMode ?? false,
+      fieldMode: saved.fieldMode ?? false,
+    };
   } catch {
-    return { terminologyMode: "technician", darkMode: false };
+    return { terminologyMode: "technician", darkMode: false, fieldMode: false };
   }
 }
 
@@ -167,7 +175,7 @@ export default function AccountPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Preferences
-  const [prefs, setPrefs] = useState<Prefs>({ terminologyMode: "technician", darkMode: false });
+  const [prefs, setPrefs] = useState<Prefs>({ terminologyMode: "technician", darkMode: false, fieldMode: false });
 
   // Password reset email
   const [resetLoading, setResetLoading] = useState(false);
@@ -427,8 +435,15 @@ export default function AccountPage() {
     setPrefs((prev) => {
       const next = { ...prev, ...update };
       savePrefs(next);
-      if ("darkMode" in update) {
-        import("../lib/theme").then(({ applyTheme }) => applyTheme(next.darkMode));
+      if ("darkMode" in update || "fieldMode" in update) {
+        import("../lib/theme").then(({ applyTheme, applyFieldMode }) => {
+          if (next.fieldMode) {
+            applyFieldMode(true);
+          } else {
+            applyFieldMode(false);
+            applyTheme(next.darkMode);
+          }
+        });
       }
       return next;
     });
@@ -1042,26 +1057,44 @@ export default function AccountPage() {
               </div>
             </div>
 
-            <div className="flex items-center justify-between py-3 border-t border-slate-100">
-              <div>
-                <p className="text-sm font-semibold text-slate-700">Dark Mode</p>
-                <p className="text-xs text-slate-400 mt-0.5">Easier on the eyes in low light</p>
+            <div className="pt-3 border-t border-slate-100">
+              <label className="block text-sm font-bold text-slate-700 mb-1">Appearance</label>
+              <p className="text-xs text-slate-500 mb-3">Choose your display mode for any lighting condition.</p>
+              <div className="grid grid-cols-3 gap-2">
+                {(
+                  [
+                    { id: "standard", label: "Standard",   icon: Sun,  sub: "Default" },
+                    { id: "dark",     label: "Dark",        icon: Moon, sub: "Low light" },
+                    { id: "field",    label: "Field Mode",  icon: Eye,  sub: "High contrast" },
+                  ] as const
+                ).map(({ id, label, icon: Icon, sub }) => {
+                  const active =
+                    (id === "standard" && !prefs.darkMode && !prefs.fieldMode) ||
+                    (id === "dark"     && prefs.darkMode  && !prefs.fieldMode) ||
+                    (id === "field"    && prefs.fieldMode);
+                  return (
+                    <button
+                      key={id}
+                      data-no-field-target
+                      onClick={() => {
+                        if (id === "standard") updatePrefs({ darkMode: false, fieldMode: false });
+                        else if (id === "dark")  updatePrefs({ darkMode: true,  fieldMode: false });
+                        else                     updatePrefs({ darkMode: false, fieldMode: true  });
+                      }}
+                      data-testid={`prefs-appearance-${id}`}
+                      className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border text-xs font-semibold transition-colors ${
+                        active
+                          ? "bg-blue-600 border-blue-600 text-white"
+                          : "border-slate-200 text-slate-600 hover:border-blue-300 hover:text-blue-700 bg-white"
+                      }`}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span>{label}</span>
+                      <span className={`text-[10px] font-normal leading-none ${active ? "text-blue-100" : "text-slate-400"}`}>{sub}</span>
+                    </button>
+                  );
+                })}
               </div>
-              <button
-                role="switch"
-                aria-checked={prefs.darkMode}
-                onClick={() => updatePrefs({ darkMode: !prefs.darkMode })}
-                className={`relative w-11 h-6 rounded-full transition-colors duration-200 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
-                  prefs.darkMode ? "bg-blue-600" : "bg-slate-200"
-                }`}
-                data-testid="toggle-dark-mode"
-              >
-                <span
-                  className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow-sm transition-transform duration-200 ${
-                    prefs.darkMode ? "translate-x-5" : "translate-x-0"
-                  }`}
-                />
-              </button>
             </div>
           </div>
         </Section>

@@ -341,3 +341,175 @@ html.dark .border-green-100 { border-color: hsl(142 35% 13%) !important; }
 html.dark .hover\:bg-red-50:hover   { background-color: hsl(0 50% 11%) !important; }
 html.dark .hover\:border-red-300:hover { border-color: hsl(0 40% 26%) !important; }
 html.dark .hover\:text-red-600:hover   { color: hsl(0 75% 67%) !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FIELD MODE — High Contrast (optimised for direct sunlight / arm's-length
+   mobile readability). Activated by adding the `.field` class to <html>.
+   Mutually exclusive with .dark.
+
+   Design targets:
+   - WCAG AA+ for every text / background pairing
+   - Body text +1–2 px via font-size bumps on utility classes
+   - Cards white; page background noticeably grey so cards pop
+   - Bold weights on headings and key labels
+   - Minimum 44 px touch targets on interactive elements
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── CSS variable overrides ──────────────────────────────────────────────── */
+html.field {
+  color-scheme: light;
+
+  /* Page bg: medium-light grey so pure-white cards lift off the surface */
+  --background:          210 18% 87%;
+  --foreground:          222 40% 8%;
+
+  --border:              214 22% 62%;
+  --input:               214 22% 62%;
+  --ring:                221 83% 38%;
+
+  --card:                0 0% 100%;
+  --card-foreground:     222 40% 8%;
+  --card-border:         214 22% 58%;
+
+  --popover:             0 0% 100%;
+  --popover-foreground:  222 40% 8%;
+  --popover-border:      214 22% 58%;
+
+  /* Darker, more saturated blue — better contrast on white in sun */
+  --primary:             221 83% 38%;
+  --primary-foreground:  210 40% 98%;
+
+  --secondary:           210 18% 91%;
+  --secondary-foreground:222 40% 8%;
+
+  --muted:               210 18% 91%;
+  --muted-foreground:    222 28% 26%;
+
+  --accent:              210 18% 91%;
+  --accent-foreground:   222 40% 8%;
+
+  --destructive:         0 72% 38%;
+  --destructive-foreground: 210 40% 98%;
+}
+
+/* ── Font size bumps (+1–2 px across the scale) ──────────────────────────── */
+html.field body { font-size: 17px; }
+
+html.field .text-xs   { font-size: 0.8125rem  !important; }  /* 13 px */
+html.field .text-sm   { font-size: 0.9375rem  !important; }  /* 15 px */
+html.field .text-base { font-size: 1.0625rem  !important; }  /* 17 px */
+
+/* ── Font weight bumps — key labels and headings pop at arm's length ─────── */
+html.field .font-medium   { font-weight: 600 !important; }
+html.field .font-semibold { font-weight: 700 !important; }
+html.field h1, html.field h2, html.field h3,
+html.field h4, html.field h5, html.field h6 { font-weight: 800 !important; }
+
+/* ── Minimum tap-target height for buttons ───────────────────────────────── */
+html.field button:not([data-no-field-target]) { min-height: 44px; }
+html.field button[aria-label]                 { min-height: unset; }
+
+/* ── Page & card backgrounds ─────────────────────────────────────────────── */
+html.field .bg-white    { background-color: hsl(0 0% 100%)    !important; }
+html.field .bg-slate-50 { background-color: hsl(210 18% 90%)  !important; }
+html.field .bg-slate-100{ background-color: hsl(210 18% 86%)  !important; }
+html.field .bg-slate-200{ background-color: hsl(210 18% 80%)  !important; }
+html.field .bg-gray-50  { background-color: hsl(210 18% 90%)  !important; }
+html.field .bg-gray-100 { background-color: hsl(210 18% 86%)  !important; }
+html.field .bg-gray-200 { background-color: hsl(210 18% 80%)  !important; }
+
+/* ── Text — all slate/gray midtones pushed to near-black ─────────────────── */
+html.field .text-slate-300 { color: hsl(222 18% 42%) !important; }
+html.field .text-slate-400 { color: hsl(222 22% 34%) !important; }
+html.field .text-slate-500 { color: hsl(222 26% 26%) !important; }
+html.field .text-slate-600 { color: hsl(222 30% 20%) !important; }
+html.field .text-slate-700 { color: hsl(222 35% 14%) !important; }
+html.field .text-slate-800 { color: hsl(222 40% 9%)  !important; }
+html.field .text-slate-900 { color: hsl(222 45% 5%)  !important; }
+
+html.field .text-gray-300  { color: hsl(220 14% 42%) !important; }
+html.field .text-gray-400  { color: hsl(220 18% 34%) !important; }
+html.field .text-gray-500  { color: hsl(220 22% 26%) !important; }
+html.field .text-gray-600  { color: hsl(220 26% 20%) !important; }
+html.field .text-gray-700  { color: hsl(220 30% 14%) !important; }
+html.field .text-gray-800  { color: hsl(220 36% 9%)  !important; }
+html.field .text-gray-900  { color: hsl(220 42% 5%)  !important; }
+
+html.field .text-muted-foreground { color: hsl(222 28% 26%) !important; }
+
+/* ── Borders — clearly visible on white cards in sunlight ───────────────── */
+html.field .border-slate-100 { border-color: hsl(214 22% 72%) !important; }
+html.field .border-slate-200 { border-color: hsl(214 22% 62%) !important; }
+html.field .border-slate-300 { border-color: hsl(214 22% 52%) !important; }
+html.field .border-gray-100  { border-color: hsl(214 18% 72%) !important; }
+html.field .border-gray-200  { border-color: hsl(214 18% 62%) !important; }
+
+/* ── Hover states ────────────────────────────────────────────────────────── */
+html.field .hover\:bg-slate-50:hover  { background-color: hsl(210 18% 93%) !important; }
+html.field .hover\:bg-slate-100:hover { background-color: hsl(210 18% 88%) !important; }
+html.field .hover\:bg-white:hover     { background-color: hsl(0 0% 97%)    !important; }
+html.field .hover\:text-slate-700:hover { color: hsl(222 35% 14%) !important; }
+html.field .hover\:text-slate-800:hover { color: hsl(222 40% 9%)  !important; }
+html.field .hover\:text-slate-900:hover { color: hsl(222 45% 5%)  !important; }
+html.field .hover\:bg-blue-50:hover   { background-color: hsl(213 80% 94%) !important; }
+html.field .hover\:text-blue-600:hover { color: hsl(221 80% 30%)  !important; }
+html.field .hover\:text-blue-700:hover { color: hsl(221 80% 24%)  !important; }
+
+/* ── Form inputs ─────────────────────────────────────────────────────────── */
+html.field input,
+html.field textarea,
+html.field select {
+  background-color: hsl(0 0% 100%)     !important;
+  border-color:     hsl(214 22% 55%)   !important;
+  color:            hsl(222 40% 8%)    !important;
+  font-size:        1rem               !important;
+}
+html.field input::placeholder,
+html.field textarea::placeholder { color: hsl(222 22% 38%) !important; }
+
+/* ── Blue (info / primary action) ────────────────────────────────────────── */
+html.field .bg-blue-50  { background-color: hsl(213 80% 95%) !important; }
+html.field .bg-blue-100 { background-color: hsl(213 75% 90%) !important; }
+html.field .text-blue-700 { color: hsl(221 72% 28%)  !important; }
+html.field .text-blue-800 { color: hsl(221 76% 22%)  !important; }
+html.field .border-blue-100 { border-color: hsl(213 50% 75%) !important; }
+html.field .border-blue-200 { border-color: hsl(213 50% 65%) !important; }
+
+/* ── Amber (warnings, caution) ───────────────────────────────────────────── */
+html.field .bg-amber-50   { background-color: hsl(38 80% 94%) !important; }
+html.field .bg-amber-100  { background-color: hsl(38 80% 88%) !important; }
+html.field .text-amber-700 { color: hsl(38 72% 24%) !important; }
+html.field .text-amber-800 { color: hsl(38 76% 18%) !important; }
+html.field .text-amber-900 { color: hsl(38 80% 12%) !important; }
+html.field .border-amber-100 { border-color: hsl(38 50% 72%) !important; }
+html.field .border-amber-200 { border-color: hsl(38 50% 62%) !important; }
+
+/* ── Red (errors, critical) ──────────────────────────────────────────────── */
+html.field .bg-red-50   { background-color: hsl(0 80% 96%) !important; }
+html.field .bg-red-100  { background-color: hsl(0 80% 90%) !important; }
+html.field .text-red-600 { color: hsl(0 72% 30%) !important; }
+html.field .text-red-700 { color: hsl(0 76% 24%) !important; }
+html.field .text-red-800 { color: hsl(0 80% 18%) !important; }
+html.field .border-red-100  { border-color: hsl(0 50% 72%) !important; }
+html.field .border-red-200  { border-color: hsl(0 50% 62%) !important; }
+html.field .border-red-300  { border-color: hsl(0 50% 52%) !important; }
+
+/* ── Green (success) ─────────────────────────────────────────────────────── */
+html.field .bg-green-50  { background-color: hsl(142 60% 94%) !important; }
+html.field .bg-green-100 { background-color: hsl(142 60% 88%) !important; }
+html.field .text-green-700 { color: hsl(142 60% 20%) !important; }
+html.field .border-green-100 { border-color: hsl(142 40% 65%) !important; }
+html.field .border-green-200 { border-color: hsl(142 40% 55%) !important; }
+
+/* ── Orange (high-priority) ──────────────────────────────────────────────── */
+html.field .bg-orange-50  { background-color: hsl(24 80% 95%) !important; }
+html.field .bg-orange-100 { background-color: hsl(24 80% 89%) !important; }
+html.field .text-orange-700 { color: hsl(24 72% 24%) !important; }
+html.field .text-orange-800 { color: hsl(24 76% 18%) !important; }
+
+/* ── AccountPage Section cards — ensure bright white in field mode ────────── */
+html.field .rounded-2xl.bg-white,
+html.field .rounded-2xl.border.bg-white { background-color: hsl(0 0% 100%) !important; }
+
+/* ── Suppress hero gradient overlay so field-mode bg shows through ─────────── */
+html.field [class*="from-blue-50"] { opacity: 0.3 !important; }
