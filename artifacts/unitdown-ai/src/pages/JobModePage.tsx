@@ -288,8 +288,10 @@ export function JobModePage({ jobId }: JobModePageProps) {
       );
     }
 
-    // Dispatch phase: no events yet — show pre-job brief
-    if (events.length === 0) {
+    // Dispatch phase: show pre-job brief until tech taps "I'm On Site"
+    // (presence of an "arrived" event marks the transition to active)
+    const hasArrived = events.some((e) => e.eventType === "arrived");
+    if (!hasArrived) {
       return (
         <JobDispatchView
           job={job}
@@ -300,7 +302,7 @@ export function JobModePage({ jobId }: JobModePageProps) {
       );
     }
 
-    // Active phase: events exist — show 2.0 dark timeline
+    // Active phase: arrived event exists — show 2.0 dark timeline
     return (
       <JobActiveView
         job={job}

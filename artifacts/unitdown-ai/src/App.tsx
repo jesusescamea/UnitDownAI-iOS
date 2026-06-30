@@ -42,7 +42,7 @@ import { JobModePage } from "./pages/JobModePage";
 import { ServiceRecordPage } from "./pages/ServiceRecordPage";
 import { LandingPage } from "./pages/LandingPage";
 import PTChartPage from "./pages/PTChartPage";
-import { JobModeProvider } from "./context/JobModeContext";
+import { JobModeProvider, useJobMode } from "./context/JobModeContext";
 import InstallPromptBanner from "./components/InstallPromptBanner";
 import { ActiveJobBanner } from "./components/job/ActiveJobBanner";
 import EmailWallModal from "./components/EmailWallModal";
@@ -3442,6 +3442,7 @@ export function Home() {
 function DashboardRoute() {
   const { user: clerkUser, isLoaded } = useUser();
   const [, navigate] = useLocation();
+  const { startJob } = useJobMode();
 
   useEffect(() => {
     if (isLoaded && !clerkUser) {
@@ -3457,7 +3458,22 @@ function DashboardRoute() {
     );
   }
 
-  return <DashboardView onStartJob={() => navigate("/job")} />;
+  async function handleStartJob(info: import("./pages/jmp/DashboardView").JobStartInfo) {
+    try {
+      const newJob = await startJob({
+        customer: info.customer,
+        site: info.site,
+        unitLabel: info.unitLabel,
+        title: info.title,
+        metadata: info.metadata,
+      });
+      navigate(`/job/${newJob.id}`);
+    } catch {
+      navigate("/job");
+    }
+  }
+
+  return <DashboardView onStartJob={(info) => { void handleStartJob(info); }} />;
 }
 
 // Auth-aware entry: signed-in users land on /dashboard; guests see the public

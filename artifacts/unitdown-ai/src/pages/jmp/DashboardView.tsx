@@ -34,7 +34,15 @@ import { useDispatchInbox } from './dispatch/useDispatchInbox';
 import { EquipmentSearchModal } from './EquipmentSearchModal';
 import { JmpAiAssistantModal } from './JmpAiAssistantModal';
 
-interface Props { onStartJob: () => void }
+export interface JobStartInfo {
+  customer?: string;
+  site?: string;
+  unitLabel?: string;
+  title?: string;
+  metadata?: Record<string, unknown>;
+}
+
+interface Props { onStartJob: (info: JobStartInfo) => void }
 
 const PRIORITY_STYLE = {
   emergency: { border: 'border-l-red-500',   badge: 'bg-red-500 text-white',       label: 'EMERGENCY' },
@@ -171,6 +179,24 @@ export function DashboardView({ onStartJob }: Props) {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
   const timeStr = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 
+  function buildJobStartInfo(job: TodayJob): JobStartInfo {
+    return {
+      customer: job.customer,
+      site: job.address,
+      unitLabel: job.unitTag,
+      title: job.symptom,
+      metadata: {
+        symptom: job.symptom,
+        address: job.address,
+        scheduledTime: job.scheduledTime,
+        scheduledJobId: job.id,
+        ...(job.dispatchNotes && job.dispatchNotes.length > 0
+          ? { dispatchNotes: job.dispatchNotes }
+          : {}),
+      },
+    };
+  }
+
   function handleStartJob(job: TodayJob) {
     setSelectedJob(null);
     const hasNotes = job.dispatchNotes && job.dispatchNotes.length > 0;
@@ -178,16 +204,16 @@ export function DashboardView({ onStartJob }: Props) {
     if (hasNotes && !alreadySeen) {
       setJobBriefFor(job);
     } else {
-      onStartJob();
+      onStartJob(buildJobStartInfo(job));
     }
   }
 
   function handleBriefContinue() {
     if (jobBriefFor) {
       setBriefsSeen(prev => new Set(prev).add(jobBriefFor!.id));
-      const isPrototype = jobBriefFor.isPrototype;
+      const job = jobBriefFor;
       setJobBriefFor(null);
-      if (isPrototype) onStartJob();
+      onStartJob(buildJobStartInfo(job));
     }
   }
 
@@ -609,7 +635,7 @@ export function DashboardView({ onStartJob }: Props) {
         {inboxOpen && (
           <DispatchInboxModal
             onClose={() => setInboxOpen(false)}
-            onStartJob={() => { setInboxOpen(false); onStartJob(); }}
+            onStartJob={() => { setInboxOpen(false); onStartJob({}); }}
             onJobAccepted={handleJobCreated}
           />
         )}

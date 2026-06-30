@@ -9,7 +9,7 @@
 import { motion } from "framer-motion";
 import {
   AlertTriangle, Clock, MapPin, Wind, ChevronRight,
-  Building2, User, Briefcase,
+  Building2, User, Briefcase, Lightbulb,
 } from "lucide-react";
 import type { LocalJob } from "@/context/JobModeContext";
 
@@ -162,6 +162,38 @@ export function JobDispatchView({ job, unit, techName, onStartJob }: Props) {
             </p>
           </motion.div>
         )}
+
+        {/* Dispatch notes — carried from scheduled job via metadata */}
+        {(() => {
+          const meta = job.metadata as Record<string, unknown> | null;
+          const notes = Array.isArray(meta?.dispatchNotes) ? (meta!.dispatchNotes as string[]) : null;
+          if (!notes || notes.length === 0) return null;
+          return (
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.15 }}
+              className="bg-blue-950/40 border border-blue-800/50 rounded-2xl p-4"
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <Lightbulb size={14} className="text-blue-400" />
+                <span className="text-xs font-bold uppercase tracking-wider text-blue-400">
+                  Dispatch Notes
+                </span>
+              </div>
+              <div className="space-y-2">
+                {notes.map((note, i) => (
+                  <div key={i} className="flex items-start gap-2.5">
+                    <div className="w-5 h-5 rounded-full bg-blue-800/60 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-[10px] font-bold text-blue-300">{i + 1}</span>
+                    </div>
+                    <span className="text-sm text-blue-100/90 leading-snug">{note}</span>
+                  </div>
+                ))}
+              </div>
+            </motion.div>
+          );
+        })()}
 
         {/* Site / tech info */}
         <motion.div

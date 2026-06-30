@@ -121,6 +121,7 @@ export interface StartJobOptions {
   site?: string;
   unitLabel?: string;
   title?: string;
+  metadata?: Record<string, unknown>;
 }
 
 /**
@@ -501,7 +502,7 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
       completedAt: null,
       usrId: null,
       serviceRecordStatus: null,
-      metadata: null,
+      metadata: opts?.metadata ?? null,
       createdAt: new Date().toISOString(),
     };
 
