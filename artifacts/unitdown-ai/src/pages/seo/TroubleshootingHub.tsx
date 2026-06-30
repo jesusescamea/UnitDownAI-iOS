@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { seoPages } from "./data";
 import { ArrowRight, BookOpen, ChevronRight, Zap, Lock, Tag, CheckCircle2 } from "lucide-react";
-import { useUser } from "@clerk/clerk-react";
+import { useClerkTimeout } from "@/hooks/useClerkTimeout";
 import { checkIAPSubscriptionActive } from "@/lib/appleIAP";
 import { isDemoProEmail } from "@/lib/demoAccess";
 import { useSeoHead } from "@/lib/useSeoHead";
@@ -52,7 +52,9 @@ const brandLinks = [
 ];
 
 function useProStatus() {
-  const { user } = useUser();
+  // Use the timeout-aware hook so Pro status resolves within 3 s even when
+  // Clerk's CDN is unreachable (offline, blocked, pk_test_ key on proxy, etc.).
+  const { user, timedOut } = useClerkTimeout(3_000);
   const [isPro, setIsPro] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     if (checkIAPSubscriptionActive()) return true;
@@ -66,7 +68,8 @@ function useProStatus() {
     }
   }, []);
 
-  const email = user?.primaryEmailAddress?.emailAddress;
+  // When Clerk has timed out, treat as a non-Pro guest (user is null).
+  const email = timedOut ? null : user?.primaryEmailAddress?.emailAddress;
   return isDemoProEmail(email) || isPro;
 }
 

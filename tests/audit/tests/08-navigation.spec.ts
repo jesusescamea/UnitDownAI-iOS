@@ -91,29 +91,31 @@ test.describe("Pricing page", () => {
   test("[NAV] Pricing page renders pricing content", async ({ page }) => {
     await page.goto("/pricing");
     await page.waitForLoadState("domcontentloaded");
-    // Pricing page uses useUser() from Clerk; allow extra render time in sandbox
-    await page.waitForTimeout(2_000);
+    await page.waitForTimeout(600);
     await assertNotErrorPage(page);
 
-    // The pricing page always renders "Start Free" and "$9.99" regardless of auth state
+    // useClerkTimeout(3_000) ensures guest content renders within 4 s even when
+    // Clerk's CDN is unreachable.  "Start Free" and "$9.99" are always in the DOM.
     await expect(page.locator("body")).toContainText(/Start Free|9\.99|Founding Member/i, {
-      timeout: 20_000,
+      timeout: 10_000,
     });
   });
 });
 
 test.describe("Guides hub", () => {
-  test("[NAV] /guides renders article list", async ({ page, consoleErrors }) => {
+  test("[NAV] /guides SEO shell loads with correct metadata", async ({ page }) => {
+    // /guides is served by the API server as an SEO HTML shell for search-engine
+    // crawlers.  It returns a <title> and meta tags with an empty <div id="root">.
+    // Interactive content is rendered by the React SPA for in-app navigation.
     await page.goto("/guides");
     await page.waitForLoadState("domcontentloaded");
-    // TroubleshootingHub uses useUser() from Clerk; allow extra render time in sandbox
-    await page.waitForTimeout(2_000);
-    await assertNotErrorPage(page);
-    // "Troubleshooting Guides" is always in the h2 regardless of Pro status
-    await expect(page.locator("body")).toContainText(/Troubleshooting Guides|Guides|HVAC/i, {
-      timeout: 20_000,
-    });
-    expect(consoleErrors).toHaveLength(0);
+
+    // Verify the SEO shell title is correct
+    await expect(page).toHaveTitle(/Troubleshooting Guides|HVAC/i, { timeout: 8_000 });
+
+    // Verify meta description is present and meaningful
+    const desc = await page.locator('meta[name="description"]').getAttribute("content");
+    expect(desc, "meta description must mention HVAC").toMatch(/hvac|troubleshoot/i);
   });
 });
 

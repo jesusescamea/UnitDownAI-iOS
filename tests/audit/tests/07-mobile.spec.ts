@@ -47,7 +47,8 @@ test.describe("Mobile — Landing / Diagnosis", () => {
 
     const input = page.locator("textarea").first();
     await expect(input).toBeVisible({ timeout: 8_000 });
-    await input.tap();
+    // Use click() — tap() requires hasTouch context option (mobile projects only)
+    await input.click();
     await input.fill("Compressor short cycling on 5-ton RTU");
 
     const value = await input.inputValue();
@@ -117,7 +118,9 @@ test.describe("Mobile — Back navigation", () => {
     await page.waitForLoadState("domcontentloaded");
 
     await page.goBack();
-    await page.waitForTimeout(400);
+    // Wait for Clerk timeout (4 s in RootRoute) to fire so guest content renders.
+    // Without this wait the body can still be a spinner with no text.
+    await page.waitForTimeout(5_000);
 
     // Should be back at /  or wherever we came from — not crashed
     const body = await page.locator("body").textContent();

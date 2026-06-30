@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation, Link } from "wouter";
 import { useUser, useClerk, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
+import { useClerkTimeout } from "@/hooks/useClerkTimeout";
+import { ClerkTimeoutFallback } from "@/components/ClerkTimeoutFallback";
 import { shouldUseAppleIAP } from "@/lib/platform";
 import { trackDiagnosisComplete, trackThumbsUp, maybeRequestReview, trackAppOpen } from "@/lib/appReview";
 import { awardReward } from "@/lib/rewards";
@@ -3481,15 +3483,22 @@ export function Home() {
 // Approved UnitDown 2.0 Field Hub — DashboardView from jmp/DashboardView.tsx
 // Auth guard: redirect to /login if not signed in.
 function DashboardRoute() {
-  const { user: clerkUser, isLoaded } = useUser();
+  const { user: clerkUser, isLoaded, timedOut: clerkTimedOut } = useClerkTimeout(5_000);
   const [, navigate] = useLocation();
   const { startJob } = useJobMode();
 
   useEffect(() => {
+    // Only redirect when Clerk has fully confirmed no session — not on timeout.
     if (isLoaded && !clerkUser) {
       navigate("/login", { replace: true } as Parameters<typeof navigate>[1]);
     }
   }, [isLoaded, clerkUser, navigate]);
+
+  // Clerk timed out before loading — show a usable fallback instead of an
+  // infinite spinner so the user (and App Store reviewers) can take action.
+  if (!isLoaded && clerkTimedOut) {
+    return <ClerkTimeoutFallback />;
+  }
 
   if (!isLoaded || !clerkUser) {
     return (
@@ -3522,7 +3531,7 @@ function DashboardRoute() {
 // purpose as a marketing/diagnostic page for unauthenticated visitors.
 
 function RootRoute() {
-  const { isSignedIn, isLoaded } = useUser();
+  const { isSignedIn, isLoaded, timedOut: clerkTimedOut } = useClerkTimeout(4_000);
   const [, navigate] = useLocation();
 
   useEffect(() => {
@@ -3531,7 +3540,9 @@ function RootRoute() {
     }
   }, [isLoaded, isSignedIn, navigate]);
 
-  if (!isLoaded) {
+  // Show spinner only while Clerk is actively loading (not yet timed out).
+  // After the timeout, fall through and render the guest landing page.
+  if (!isLoaded && !clerkTimedOut) {
     return (
       <div className="min-h-screen bg-slate-50 flex items-center justify-center">
         <div className="w-8 h-8 bg-blue-600 rounded-xl flex items-center justify-center animate-pulse">

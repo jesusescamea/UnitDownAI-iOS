@@ -29,9 +29,15 @@ for (const route of ROUTES.public) {
     await assertNotErrorPage(page);
 
     // ── Expected text must appear somewhere on the page ───────────────────
-    await expect(page.locator("body")).toContainText(route.textMatch, {
-      timeout: 10_000,
-    });
+    // SEO-shell routes (e.g. /guides served by the API server) have an empty
+    // React root; verify <title> instead of body text for those.
+    if (route.titleMatch) {
+      await expect(page).toHaveTitle(route.titleMatch, { timeout: 8_000 });
+    } else if (route.textMatch) {
+      await expect(page.locator("body")).toContainText(route.textMatch, {
+        timeout: 10_000,
+      });
+    }
 
     // ── No unhandled API errors ────────────────────────────────────────────
     expect(apiErrors, `${route.path}: unexpected API errors:\n${apiErrors.join("\n")}`).toHaveLength(0);

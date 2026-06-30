@@ -9,7 +9,8 @@
 
 import { useState, useEffect, useCallback, useMemo, type MouseEvent } from "react";
 import { useLocation } from "wouter";
-import { useUser } from "@clerk/clerk-react";
+import { useClerkTimeout } from "@/hooks/useClerkTimeout";
+import { ClerkTimeoutFallback } from "@/components/ClerkTimeoutFallback";
 import {
   Building2, Search, Plus, ChevronRight, Star,
   MapPin, AlertCircle, CircleDot, CheckCircle2,
@@ -214,7 +215,7 @@ function UnitCard({
 
 export default function RecordsPage() {
   const [, navigate] = useLocation();
-  const { user: clerkUser, isLoaded } = useUser();
+  const { user: clerkUser, isLoaded, timedOut: clerkTimedOut } = useClerkTimeout(5_000);
 
   const clientId = clerkUser?.id ?? getClientId();
   const isLoggedIn = isLoaded && !!clerkUser;
@@ -323,6 +324,11 @@ export default function RecordsPage() {
   // ─── Auth guard ──────────────────────────────────────────────────────────
 
   if (!isLoaded) {
+    // Clerk timed out before loading — show actionable fallback instead of
+    // an infinite spinner.  Retry reloads; "Back to Home" shows guest content.
+    if (clerkTimedOut) {
+      return <ClerkTimeoutFallback dark={false} />;
+    }
     return (
       <div className="min-h-screen bg-slate-50 dark:bg-gray-950 flex items-center justify-center">
         <div className="w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />

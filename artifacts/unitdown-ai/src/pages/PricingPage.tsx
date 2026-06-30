@@ -10,7 +10,7 @@
  */
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { useUser } from "@clerk/clerk-react";
+import { useClerkTimeout } from "@/hooks/useClerkTimeout";
 import {
   ThermometerSnowflake,
   Check,
@@ -89,7 +89,10 @@ function CellValue({ val }: { val: string | boolean }) {
 
 export default function PricingPage() {
   const [, navigate] = useLocation();
-  const { user: clerkUser, isLoaded } = useUser();
+  const { user: clerkUser, isLoaded: clerkIsLoaded, timedOut: clerkTimedOut } = useClerkTimeout(3_000);
+  // Treat a Clerk timeout as "loaded but signed out" so the guest pricing page
+  // always renders within a few seconds even when Clerk's CDN is unreachable.
+  const isLoaded = clerkIsLoaded || clerkTimedOut;
   const { toast } = useToast();
   const [purchasing, setPurchasing] = useState(false);
   const useIAP = shouldUseAppleIAP();

@@ -1,7 +1,20 @@
 import type { Page, Request, Response } from "@playwright/test";
 
+/**
+ * Route spec type.
+ *   textMatch  — regex that must appear in <body> text content (Vite SPA routes)
+ *   titleMatch — regex that must appear in <title> instead of body, used for
+ *                SEO-shell routes that the API server serves with an empty React root.
+ */
+type RouteSpec = {
+  path: string;
+  label: string;
+  textMatch?: RegExp;
+  titleMatch?: RegExp;
+};
+
 /** All app routes, grouped by auth requirement */
-export const ROUTES = {
+export const ROUTES: { public: RouteSpec[]; protected: string[] } = {
   public: [
     { path: "/",          label: "Landing page",         textMatch: /UnitDown|HVAC|diagnos/i },
     { path: "/diagnose",  label: "Diagnosis form",        textMatch: /diagnos|symptom|Run Diagnosis/i },
@@ -9,7 +22,9 @@ export const ROUTES = {
     { path: "/login",     label: "Login page",            textMatch: /UnitDown|Sign in|sign.in|Google|Apple|email/i },
     { path: "/signup",    label: "Sign-up page",          textMatch: /Create your account|UnitDown|Sign up/i },
     { path: "/pricing",   label: "Pricing page",          textMatch: /Start Free|9\.99|Founding Member|Pro/i },
-    { path: "/guides",    label: "Guides hub",            textMatch: /Troubleshooting Guides|Guides|HVAC/i },
+    // /guides is served by the API server as an SEO HTML shell (empty React root);
+    // check <title> instead of body text.
+    { path: "/guides",    label: "Guides hub",            titleMatch: /Troubleshooting Guides|HVAC/i },
     { path: "/terms",     label: "Terms of Service",      textMatch: /terms/i },
     { path: "/privacy",   label: "Privacy Policy",        textMatch: /privacy/i },
     { path: "/legal",     label: "Legal",                 textMatch: /legal|terms|privacy/i },
@@ -50,8 +65,10 @@ export function collectRequestFailures(page: Page): () => string[] {
 export async function assertNotErrorPage(page: Page) {
   const url = page.url();
   const body = await page.locator("body").textContent({ timeout: 5000 }).catch(() => "");
-  const looks404 = /404|not found|page not found/i.test(body ?? "");
-  const looks500 = /500|internal server error|error occurred/i.test(body ?? "");
+  // Use specific HTTP-error phrases; avoid bare "500" which appears in product
+  // copy ("first 500 subscribers") and bare "error" which appears in normal copy.
+  const looks404 = /\b404\b.*not found|\bnot found\b|\bpage not found\b/i.test(body ?? "");
+  const looks500 = /\b500\s+internal server error\b|\binternal server error\b|\ban error occurred\b/i.test(body ?? "");
   if (looks404) throw new Error(`Page appears to be a 404 at ${url}`);
   if (looks500) throw new Error(`Page appears to be a 500 at ${url}`);
 }

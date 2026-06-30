@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import { AppNav } from "@/components/AppNav";
-import { useUser, useClerk, useSignIn } from "@clerk/clerk-react";
+import { useClerk, useSignIn } from "@clerk/clerk-react";
+import { useClerkTimeout } from "@/hooks/useClerkTimeout";
+import { ClerkTimeoutFallback } from "@/components/ClerkTimeoutFallback";
 import { shouldUseAppleIAP, isIOS, isIOSApp } from "@/lib/platform";
 import { checkIAPSubscriptionActive, restorePurchases, IAP_PRODUCT_ID } from "@/lib/appleIAP";
 import { isDemoProEmail } from "@/lib/demoAccess";
@@ -130,7 +132,7 @@ function Section({
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function AccountPage() {
-  const { user, isLoaded } = useUser();
+  const { user, isLoaded, timedOut: clerkTimedOut } = useClerkTimeout(5_000);
   const { signOut } = useClerk();
   const { signIn, isLoaded: signInLoaded } = useSignIn();
   const [, navigate] = useLocation();
@@ -445,6 +447,11 @@ export default function AccountPage() {
   // ── Loading state ──────────────────────────────────────────────────────────
 
   if (!isLoaded) {
+    // Clerk timed out before loading — show actionable fallback instead of
+    // an infinite spinner.  Retry reloads; "Back to Home" shows guest content.
+    if (clerkTimedOut) {
+      return <ClerkTimeoutFallback dark={false} />;
+    }
     return (
       <div className="min-h-screen bg-[#f8fafc] flex items-center justify-center">
         <div className="w-8 h-8 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
