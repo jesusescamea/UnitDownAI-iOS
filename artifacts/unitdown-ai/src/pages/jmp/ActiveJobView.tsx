@@ -395,10 +395,12 @@ export function ActiveJobView({ state, dispatch, onComplete }: Props) {
           }} />
         )}
         {activeModal === 'photo' && (
-          <PhotoModal jobState={jobState} onClose={closeModal} onSave={(label, color) => {
+          <PhotoModal jobState={jobState} onClose={closeModal} onSave={(label, color, photoDataUrl, notes) => {
             addActivity({
               id: `photo-${Date.now()}`, type: 'photo', timestamp: currentTime(),
               title: 'Photo Captured', photoLabel: label, photoColor: color,
+              photoDataUrl: photoDataUrl ?? undefined,
+              photoNotes: notes || undefined,
             }, undefined, 5);
             toast('📷 Photo saved');
           }} />
@@ -486,14 +488,26 @@ function ActivityCard({ activity: a }: { activity: Activity }) {
         </div>
         <div className="text-[10px] text-gray-600 font-mono flex-shrink-0">{a.timestamp}</div>
       </div>
-      {/* Photo placeholder */}
-      {a.type === 'photo' && a.photoLabel && (
-        <div className={`mt-2 h-20 rounded-xl flex items-center justify-center ${a.photoColor ?? 'bg-gray-800'}`}>
-          <div className="text-center">
-            <div className="text-2xl mb-0.5">📷</div>
-            <div className="text-xs text-white/70 font-medium">{a.photoLabel}</div>
+      {/* Photo preview */}
+      {a.type === 'photo' && (a.photoDataUrl || a.photoLabel) && (
+        a.photoDataUrl ? (
+          <div className="mt-2 rounded-xl overflow-hidden">
+            <img src={a.photoDataUrl} alt={a.photoLabel ?? 'Photo'} className="w-full max-h-48 object-cover" />
+            {(a.photoLabel || a.photoNotes) && (
+              <div className={`px-2 py-1.5 ${a.photoColor ?? 'bg-gray-800'} flex items-center justify-between`}>
+                <span className="text-xs text-white/80 font-medium">{a.photoLabel}</span>
+                {a.photoNotes && <span className="text-xs text-white/50 truncate ml-2">{a.photoNotes}</span>}
+              </div>
+            )}
           </div>
-        </div>
+        ) : (
+          <div className={`mt-2 h-20 rounded-xl flex items-center justify-center ${a.photoColor ?? 'bg-gray-800'}`}>
+            <div className="text-center">
+              <div className="text-2xl mb-0.5">📷</div>
+              <div className="text-xs text-white/70 font-medium">{a.photoLabel}</div>
+            </div>
+          </div>
+        )
       )}
       {a.type === 'nameplate' && (
         <div className="mt-2 bg-blue-900/40 rounded-xl p-2.5 text-[10px]">
@@ -1395,43 +1409,124 @@ const PHOTO_TYPES = [
   { label: 'Overall Unit', color: 'bg-gray-800' },
 ];
 
-function PhotoModal({ jobState: _j, onClose, onSave }: { jobState: JobState; onClose: () => void; onSave: (label: string, color: string) => void }) {
-  const [selected, setSelected] = useState<string | null>(null);
-  const [selectedColor, setSelectedColor] = useState('bg-gray-800');
-  const [taken, setTaken] = useState(false);
+function compressImageJmp(file: File, maxWidth = 1200, quality = 0.75): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext('2d');
+        if (!ctx) { reject(new Error('canvas')); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target!.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
 
-  function takePhoto() {
-    setTaken(true);
-    setTimeout(() => onSave(selected ?? 'General', selectedColor), 900);
+function PhotoModal({ jobState: _j, onClose, onSave }: {
+  jobState: JobState;
+  onClose: () => void;
+  onSave: (label: string, color: string, photoDataUrl: string | null, notes: string) => void;
+}) {
+  const [selected, setSelected] = useState(PHOTO_TYPES[2]);
+  const [notes, setNotes] = useState('');
+  const [preview, setPreview] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCompressing(true);
+    try {
+      const dataUrl = await compressImageJmp(file);
+      setPreview(dataUrl);
+    } catch {
+      setPreview(null);
+    } finally {
+      setCompressing(false);
+      e.target.value = '';
+    }
   }
 
   return (
     <ModalShell title="Capture Photo" onClose={onClose}>
       <div className="space-y-4">
         <div>
-          <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-2">Category (AI suggests — tap to change)</div>
+          <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-2">Category</div>
           <div className="grid grid-cols-3 gap-2">
             {PHOTO_TYPES.map(p => (
-              <button key={p.label} onClick={() => { setSelected(p.label); setSelectedColor(p.color); }}
-                className={`py-3 rounded-xl text-xs font-semibold border ${selected === p.label ? 'border-white text-white bg-gray-700' : 'border-gray-700 text-gray-400'}`}>
+              <button key={p.label} onClick={() => setSelected(p)}
+                className={`py-3 rounded-xl text-xs font-semibold border ${selected.label === p.label ? 'border-white text-white bg-gray-700' : 'border-gray-700 text-gray-400'}`}>
                 {p.label}
               </button>
             ))}
           </div>
         </div>
-        {!taken ? (
-          <button onClick={takePhoto} className="w-full bg-white text-gray-950 font-bold py-5 rounded-2xl flex items-center justify-center gap-2 text-lg">
-            <Camera size={22} /> Take Photo
-          </button>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          onChange={handleFileChange}
+        />
+
+        {preview ? (
+          <div className="relative rounded-2xl overflow-hidden">
+            <img src={preview} alt="Captured" className="w-full max-h-56 object-cover rounded-2xl" />
+            <button
+              onClick={() => setPreview(null)}
+              className="absolute top-2 right-2 bg-gray-900/80 text-white rounded-full p-1.5"
+            >
+              <X size={14} />
+            </button>
+          </div>
         ) : (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-            className={`h-40 rounded-2xl flex items-center justify-center ${selectedColor}`}>
-            <div className="text-center">
-              <div className="text-3xl mb-1">✓</div>
-              <div className="text-white font-semibold">{selected ?? 'Photo'} saved</div>
-            </div>
-          </motion.div>
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={compressing}
+            className="w-full bg-white text-gray-950 font-bold py-5 rounded-2xl flex items-center justify-center gap-2 text-lg disabled:opacity-60"
+          >
+            <Camera size={22} />
+            {compressing ? 'Processing…' : 'Take Photo'}
+          </button>
         )}
+
+        {preview && (
+          <button
+            onClick={() => inputRef.current?.click()}
+            className="w-full border border-gray-700 text-gray-400 font-semibold py-3 rounded-2xl flex items-center justify-center gap-2 text-sm"
+          >
+            <Camera size={16} /> Retake
+          </button>
+        )}
+
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Notes (optional)"
+          rows={2}
+          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 resize-none focus:outline-none focus:border-gray-500"
+        />
+
+        <button
+          onClick={() => onSave(selected.label, selected.color, preview, notes)}
+          disabled={!preview}
+          className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-40"
+        >
+          Save Photo
+        </button>
       </div>
     </ModalShell>
   );

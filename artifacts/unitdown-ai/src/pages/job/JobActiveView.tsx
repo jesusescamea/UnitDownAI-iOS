@@ -158,7 +158,7 @@ export function JobActiveView({ job, events, elapsedSeconds, onComplete, onBack 
   async function doAddEvent(type: EventType, title: string, extra: {
     notes?: string; measurements?: Record<string, string>;
     parts?: unknown; metadata?: Record<string, unknown>;
-    voiceTranscript?: string;
+    voiceTranscript?: string; photoUrls?: string[];
   } = {}) {
     closeModal();
     await addEvent({ eventType: type, title, ...extra });
@@ -341,8 +341,12 @@ export function JobActiveView({ job, events, elapsedSeconds, onComplete, onBack 
         {activeModal === "photo" && (
           <PhotoModal
             onClose={closeModal}
-            onSave={(label) => {
-              void doAddEvent("photo", "Photo Captured", { notes: label, metadata: { photoLabel: label } });
+            onSave={(label, photoDataUrl, notes) => {
+              void doAddEvent("photo", `Photo · ${label}`, {
+                notes: notes || label,
+                photoUrls: photoDataUrl ? [photoDataUrl] : undefined,
+                metadata: { photoLabel: label },
+              });
             }}
           />
         )}
@@ -626,15 +630,60 @@ const PHOTO_TYPES = [
   "Nameplate", "Failed Part", "Repair", "Wiring", "Measurement", "Overall Unit",
 ];
 
-function PhotoModal({ onClose, onSave }: { onClose: () => void; onSave: (label: string) => void }) {
-  const [selected, setSelected] = useState<string | null>(null);
+function compressImage(file: File, maxWidth = 1200, quality = 0.75): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxWidth / img.width);
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { reject(new Error("canvas")); return; }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = reject;
+      img.src = e.target!.result as string;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+function PhotoModal({ onClose, onSave }: {
+  onClose: () => void;
+  onSave: (label: string, photoDataUrl: string | null, notes: string) => void;
+}) {
+  const [selected, setSelected] = useState("Repair");
+  const [notes, setNotes] = useState("");
+  const [preview, setPreview] = useState<string | null>(null);
+  const [compressing, setCompressing] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setCompressing(true);
+    try {
+      const dataUrl = await compressImage(file);
+      setPreview(dataUrl);
+    } catch {
+      setPreview(null);
+    } finally {
+      setCompressing(false);
+      e.target.value = "";
+    }
+  }
 
   return (
     <ModalShell title="Capture Photo" onClose={onClose}>
       <div className="space-y-4">
         <div>
           <div className="text-xs text-gray-400 font-semibold uppercase tracking-wider mb-2">
-            Photo Category
+            Category
           </div>
           <div className="grid grid-cols-3 gap-2">
             {PHOTO_TYPES.map((p) => (
@@ -645,16 +694,61 @@ function PhotoModal({ onClose, onSave }: { onClose: () => void; onSave: (label: 
             ))}
           </div>
         </div>
+
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="sr-only"
+          onChange={handleFileChange}
+        />
+
+        {preview ? (
+          <div className="relative rounded-2xl overflow-hidden">
+            <img src={preview} alt="Captured" className="w-full max-h-56 object-cover rounded-2xl" />
+            <button
+              onClick={() => setPreview(null)}
+              className="absolute top-2 right-2 bg-gray-900/80 text-white rounded-full p-1.5"
+            >
+              <X size={14} />
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={compressing}
+            className="w-full bg-white text-gray-950 font-bold py-5 rounded-2xl flex items-center justify-center gap-2 text-lg disabled:opacity-60"
+          >
+            <Camera size={22} />
+            {compressing ? "Processing…" : "Take Photo"}
+          </button>
+        )}
+
+        {preview && (
+          <button
+            onClick={() => inputRef.current?.click()}
+            className="w-full border border-gray-700 text-gray-400 font-semibold py-3 rounded-2xl flex items-center justify-center gap-2 text-sm"
+          >
+            <Camera size={16} /> Retake
+          </button>
+        )}
+
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Notes (optional)"
+          rows={2}
+          className="w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2 text-sm text-white placeholder-gray-600 resize-none focus:outline-none focus:border-gray-500"
+        />
+
         <button
-          onClick={() => onSave(selected ?? "General")}
-          className="w-full bg-white text-gray-950 font-bold py-5 rounded-2xl flex items-center justify-center gap-2 text-lg"
+          onClick={() => onSave(selected, preview, notes)}
+          disabled={!preview}
+          className="w-full bg-blue-600 text-white font-bold py-4 rounded-2xl flex items-center justify-center gap-2 disabled:opacity-40"
         >
-          <Camera size={22} /> Save Photo
+          Save Photo
         </button>
-        <p className="text-xs text-gray-600 text-center">
-          Photo capture via device camera will attach the real image in a future update.
-          The event is saved to your timeline immediately.
-        </p>
       </div>
     </ModalShell>
   );

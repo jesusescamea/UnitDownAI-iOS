@@ -56,6 +56,8 @@ export interface Activity {
   badge?: string;
   photoLabel?: string;
   photoColor?: string;
+  photoDataUrl?: string;
+  photoNotes?: string;
   measurements?: MeasurementReading[];
   transcript?: string;
   confidence?: number;
