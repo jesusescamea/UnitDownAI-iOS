@@ -10,6 +10,27 @@ import { useUser } from '@clerk/clerk-react';
 import NameplateScannerModal from '../../components/NameplateScannerModal';
 import { useUnassignedScans, type NameplateFields } from './useUnassignedScans';
 
+// ─── Clipboard utility (navigator.clipboard + execCommand fallback) ───────────
+function copyToClipboard(text: string): void {
+  if (navigator.clipboard?.writeText) {
+    navigator.clipboard.writeText(text).catch(() => execCommandCopy(text));
+  } else {
+    execCommandCopy(text);
+  }
+}
+function execCommandCopy(text: string): void {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+    document.body.appendChild(ta);
+    ta.focus();
+    ta.select();
+    document.execCommand('copy');
+    document.body.removeChild(ta);
+  } catch { /* nothing */ }
+}
+
 // ─── Parts lookup types (mirror server-side PartsLookupResult) ────────────────
 interface PartsLookupResult {
   filterSize:    string | null;
@@ -68,16 +89,19 @@ interface UnitResult {
 
 // ─── Shared field display ─────────────────────────────────────────────────────
 interface FieldRowProps {
-  label:   string;
-  value:   string | null | undefined;
-  review?: boolean;
+  label:    string;
+  value:    string | null | undefined;
+  review?:  boolean;
   missing?: boolean;
+  onCopy?:  () => void;
+  copied?:  boolean;
 }
 
-function FieldRow({ label, value, review, missing }: FieldRowProps) {
+function FieldRow({ label, value, review, missing, onCopy, copied }: FieldRowProps) {
   if (!value && !missing) return null;
-  return (
-    <div className="flex items-start justify-between gap-2 py-1.5 border-b border-gray-800/50 last:border-0">
+
+  const inner = (
+    <>
       <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 flex-shrink-0 w-28">{label}</span>
       <div className="flex items-center gap-1.5 flex-1 justify-end">
         {value
@@ -85,7 +109,29 @@ function FieldRow({ label, value, review, missing }: FieldRowProps) {
           : <span className="text-[10px] text-gray-600 italic">Not detected</span>}
         {review && value && <span className="text-[8px] bg-amber-900/50 text-amber-400 border border-amber-800/50 px-1 py-0.5 rounded flex-shrink-0">Review</span>}
         {missing && !value && <span className="text-[8px] bg-gray-800 text-gray-600 border border-gray-700 px-1 py-0.5 rounded flex-shrink-0">Missing</span>}
+        {onCopy && value && (
+          copied
+            ? <CheckCircle size={9} className="text-green-400 flex-shrink-0" />
+            : <Copy size={9} className="text-gray-600 flex-shrink-0 opacity-60" />
+        )}
       </div>
+    </>
+  );
+
+  if (onCopy && value) {
+    return (
+      <button
+        onClick={onCopy}
+        className="w-full flex items-start justify-between gap-2 py-1.5 border-b border-gray-800/50 last:border-0 active:bg-white/5 rounded-sm transition-colors"
+      >
+        {inner}
+      </button>
+    );
+  }
+
+  return (
+    <div className="flex items-start justify-between gap-2 py-1.5 border-b border-gray-800/50 last:border-0">
+      {inner}
     </div>
   );
 }
@@ -132,31 +178,97 @@ function ScreenHeader({ title, subtitle, onBack, onClose }: { title: string; sub
 }
 
 // ─── Extracted fields panel ────────────────────────────────────────────────────
-function ExtractedFieldsPanel({ fields }: { fields: NameplateFields }) {
+function ExtractedFieldsPanel({
+  fields,
+  onCopyField,
+}: {
+  fields: NameplateFields;
+  onCopyField?: (label: string, value: string) => void;
+}) {
+  const [copiedLabel, setCopiedLabel] = useState<string | null>(null);
   const review  = new Set(fields.reviewFields ?? []);
   const missing = new Set(fields.missing_fields ?? []);
   const f       = fields;
 
+  function mkCopy(label: string, value: string | null | undefined) {
+    if (!onCopyField || !value) return undefined;
+    return () => {
+      onCopyField(label, value);
+      setCopiedLabel(label);
+      setTimeout(() => setCopiedLabel(null), 1500);
+    };
+  }
+
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3">
-      <FieldRow label="Manufacturer"  value={f.manufacturer}     review={review.has('manufacturer')}  missing={missing.has('manufacturer')} />
-      <FieldRow label="Model"         value={f.modelNumber}      review={review.has('modelNumber')}   missing={missing.has('modelNumber')} />
-      <FieldRow label="Serial"        value={f.serialNumber}     review={review.has('serialNumber')}  missing={missing.has('serialNumber')} />
-      {f.manufactureDate && <FieldRow label="Mfg Date"     value={f.manufactureDate} review={review.has('manufactureDate')} />}
-      <FieldRow label="Equip Type"    value={f.equipmentType}    review={review.has('equipmentType')} missing={missing.has('equipmentType')} />
-      <FieldRow label="System"        value={f.systemType}       review={review.has('systemType')}    />
-      {f.capacityTons && <FieldRow label="Cooling Tons"  value={`${f.capacityTons} Tons`} review={review.has('capacityTons')} />}
-      {f.coolingCapacity && <FieldRow label="Cooling BTUH" value={f.coolingCapacity} />}
-      {f.heatingCapacity && <FieldRow label="Heating BTUH" value={f.heatingCapacity} />}
-      {f.gasType && <FieldRow label="Gas Type"     value={f.gasType}    />}
-      <FieldRow label="Refrigerant"   value={f.refrigerantType}  review={review.has('refrigerantType')} missing={missing.has('refrigerantType')} />
-      {f.refrigerantCharge && <FieldRow label="Ref Charge"   value={f.refrigerantCharge} />}
-      <FieldRow label="Voltage"       value={f.voltage}          review={review.has('voltage')}       missing={missing.has('voltage')} />
-      {(f.phase || f.hertz) && <FieldRow label="Phase / Hz"   value={[f.phase ? `${f.phase}Ø` : null, f.hertz ? `${f.hertz}Hz` : null].filter(Boolean).join(' / ')} />}
-      {f.mca   && <FieldRow label="MCA"          value={`${f.mca}A`}  />}
-      {f.mocp  && <FieldRow label="MOCP"         value={`${f.mocp}A`} />}
-      {f.rla   && <FieldRow label="RLA / FLA"    value={`${f.rla}A`}  />}
-      {f.lra   && <FieldRow label="LRA"          value={`${f.lra}A`}  />}
+      <FieldRow label="Manufacturer"  value={f.manufacturer}     review={review.has('manufacturer')}  missing={missing.has('manufacturer')} onCopy={mkCopy('Manufacturer', f.manufacturer)} copied={copiedLabel === 'Manufacturer'} />
+      <FieldRow label="Model"         value={f.modelNumber}      review={review.has('modelNumber')}   missing={missing.has('modelNumber')}  onCopy={mkCopy('Model', f.modelNumber)} copied={copiedLabel === 'Model'} />
+      <FieldRow label="Serial"        value={f.serialNumber}     review={review.has('serialNumber')}  missing={missing.has('serialNumber')} onCopy={mkCopy('Serial', f.serialNumber)} copied={copiedLabel === 'Serial'} />
+      {f.manufactureDate && <FieldRow label="Mfg Date"     value={f.manufactureDate} review={review.has('manufactureDate')} onCopy={mkCopy('Mfg Date', f.manufactureDate)} copied={copiedLabel === 'Mfg Date'} />}
+      <FieldRow label="Equip Type"    value={f.equipmentType}    review={review.has('equipmentType')} missing={missing.has('equipmentType')} onCopy={mkCopy('Equip Type', f.equipmentType)} copied={copiedLabel === 'Equip Type'} />
+      <FieldRow label="System"        value={f.systemType}       review={review.has('systemType')}    onCopy={mkCopy('System', f.systemType)} copied={copiedLabel === 'System'} />
+      {f.capacityTons && <FieldRow label="Cooling Tons"  value={`${f.capacityTons} Tons`} review={review.has('capacityTons')} onCopy={mkCopy('Cooling Tons', `${f.capacityTons} Tons`)} copied={copiedLabel === 'Cooling Tons'} />}
+      {f.coolingCapacity && <FieldRow label="Cooling BTUH" value={f.coolingCapacity} onCopy={mkCopy('Cooling BTUH', f.coolingCapacity)} copied={copiedLabel === 'Cooling BTUH'} />}
+      {f.heatingCapacity && <FieldRow label="Heating BTUH" value={f.heatingCapacity} onCopy={mkCopy('Heating BTUH', f.heatingCapacity)} copied={copiedLabel === 'Heating BTUH'} />}
+      {f.gasType && <FieldRow label="Gas Type"     value={f.gasType} onCopy={mkCopy('Gas Type', f.gasType)} copied={copiedLabel === 'Gas Type'} />}
+      <FieldRow label="Refrigerant"   value={f.refrigerantType}  review={review.has('refrigerantType')} missing={missing.has('refrigerantType')} onCopy={mkCopy('Refrigerant', f.refrigerantType)} copied={copiedLabel === 'Refrigerant'} />
+      {f.refrigerantCharge && <FieldRow label="Ref Charge"   value={f.refrigerantCharge} onCopy={mkCopy('Ref Charge', f.refrigerantCharge)} copied={copiedLabel === 'Ref Charge'} />}
+      <FieldRow label="Voltage"       value={f.voltage}          review={review.has('voltage')}       missing={missing.has('voltage')} onCopy={mkCopy('Voltage', f.voltage)} copied={copiedLabel === 'Voltage'} />
+      {(f.phase || f.hertz) && <FieldRow label="Phase / Hz"   value={[f.phase ? `${f.phase}Ø` : null, f.hertz ? `${f.hertz}Hz` : null].filter(Boolean).join(' / ')} onCopy={mkCopy('Phase / Hz', [f.phase ? `${f.phase}Ø` : null, f.hertz ? `${f.hertz}Hz` : null].filter(Boolean).join(' / '))} copied={copiedLabel === 'Phase / Hz'} />}
+      {f.mca   && <FieldRow label="MCA"       value={`${f.mca}A`}  onCopy={mkCopy('MCA', `${f.mca}A`)}  copied={copiedLabel === 'MCA'} />}
+      {f.mocp  && <FieldRow label="MOCP"      value={`${f.mocp}A`} onCopy={mkCopy('MOCP', `${f.mocp}A`)} copied={copiedLabel === 'MOCP'} />}
+      {f.rla   && <FieldRow label="RLA / FLA" value={`${f.rla}A`}  onCopy={mkCopy('RLA / FLA', `${f.rla}A`)} copied={copiedLabel === 'RLA / FLA'} />}
+      {f.lra   && <FieldRow label="LRA"       value={`${f.lra}A`}  onCopy={mkCopy('LRA', `${f.lra}A`)} copied={copiedLabel === 'LRA'} />}
+    </div>
+  );
+}
+
+// ─── Quick-copy chip buttons ───────────────────────────────────────────────────
+function QuickCopyChip({
+  label, text, onCopy,
+}: { label: string; text: string; onCopy: (label: string, text: string) => void }) {
+  const [copied, setCopied] = useState(false);
+  function handleClick() {
+    onCopy(label, text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  }
+  return (
+    <button
+      onClick={handleClick}
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-[10px] font-semibold transition-colors flex-shrink-0 ${
+        copied
+          ? 'bg-green-900/40 border-green-800/60 text-green-400'
+          : 'bg-gray-800 border-gray-700 text-gray-300 active:bg-gray-700'
+      }`}
+    >
+      {copied ? <CheckCircle size={10} /> : <Copy size={10} />}
+      {copied ? `${label} copied` : label}
+    </button>
+  );
+}
+
+function QuickCopyButtons({
+  fields,
+  onCopy,
+}: { fields: NameplateFields; onCopy: (label: string, text: string) => void }) {
+  const model  = fields.modelNumber  ?? null;
+  const serial = fields.serialNumber ?? null;
+  const mfg    = fields.manufacturer ?? null;
+
+  const chips: { label: string; text: string }[] = [];
+  if (model)              chips.push({ label: 'Copy Model',           text: model });
+  if (serial)             chips.push({ label: 'Copy Serial',          text: serial });
+  if (model && serial)    chips.push({ label: 'Copy Model + Serial',  text: `${model} / ${serial}` });
+  if (mfg && model)       chips.push({ label: 'Copy Lennox Format',   text: `Model: ${model}\nSerial: ${serial ?? '—'}` });
+
+  if (chips.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {chips.map(c => (
+        <QuickCopyChip key={c.label} label={c.label} text={c.text} onCopy={onCopy} />
+      ))}
     </div>
   );
 }
@@ -897,7 +1009,7 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
   const [ocrError,      setOcrError]      = useState('');
   const [successMsg,    setSuccessMsg]    = useState('');
   const [rawExpanded,   setRawExpanded]   = useState(false);
-  const [copyToast,     setCopyToast]     = useState(false);
+  const [copyToast,     setCopyToast]     = useState<string | null>(null);
   const [partsResult,   setPartsResult]   = useState<PartsLookupResult | null>(null);
   const [partsLoading,  setPartsLoading]  = useState(false);
   const [confirmedParts, setConfirmedParts] = useState<ConfirmedParts | null>(null);
@@ -920,6 +1032,14 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
       .finally(() => { if (!cancelled) setPartsLoading(false); });
     return () => { cancelled = true; };
   }, [screen, fields.manufacturer, fields.modelNumber]);
+
+  // ── Copy helper (clipboard + toast) ───────────────────────────────────────
+  function doCopy(label: string, text: string) {
+    copyToClipboard(text);
+    const msg = label === 'All' ? 'All fields copied ✓' : `${label} copied ✓`;
+    setCopyToast(msg);
+    setTimeout(() => setCopyToast(null), 2000);
+  }
 
   // ── Camera capture → run OCR ───────────────────────────────────────────────
   const handleCapture = useCallback(async (blob: Blob, capturedPreviewUrl: string) => {
@@ -1050,7 +1170,10 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
                 </div>
               )}
 
-              <ExtractedFieldsPanel fields={fields} />
+              <ExtractedFieldsPanel fields={fields} onCopyField={doCopy} />
+
+              {/* Quick-copy chips */}
+              <QuickCopyButtons fields={fields} onCopy={doCopy} />
 
               {/* Parts lookup card */}
               <PartsLookupCard
@@ -1090,12 +1213,12 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
                     initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
                     className="text-center text-xs text-green-400 font-semibold py-1"
                   >
-                    Copied to clipboard ✓
+                    {copyToast}
                   </motion.div>
                 )}
               </AnimatePresence>
 
-              {/* Action row: Retake / Edit / Copy */}
+              {/* Action row: Retake / Edit / Copy All */}
               <div className="flex gap-2">
                 <button
                   onClick={() => { setScannerOpen(true); setScreen('scanning'); setPreviewUrl(null); setPartsResult(null); setConfirmedParts(null); }}
@@ -1110,16 +1233,10 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
                   <Edit2 size={12} /> Edit
                 </button>
                 <button
-                  onClick={async () => {
-                    try {
-                      await navigator.clipboard.writeText(formatForVendorApp(fields));
-                      setCopyToast(true);
-                      setTimeout(() => setCopyToast(false), 2500);
-                    } catch { /* clipboard blocked */ }
-                  }}
+                  onClick={() => doCopy('All', formatForVendorApp(fields))}
                   className="flex-1 flex items-center justify-center gap-1.5 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
                 >
-                  <Copy size={12} /> Copy
+                  <Copy size={12} /> Copy All
                 </button>
               </div>
 
