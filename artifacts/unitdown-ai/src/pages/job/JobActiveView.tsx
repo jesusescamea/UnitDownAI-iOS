@@ -17,6 +17,7 @@ import {
   Wrench, CheckSquare, Cpu, CheckCircle, Sparkles,
   AlertTriangle, Search, ArrowLeft, ChevronRight, Zap, FileText,
 } from "lucide-react";
+import { useUser } from "@clerk/clerk-react";
 import { useJobMode } from "@/context/JobModeContext";
 import type { LocalJob, LocalEvent, EventType } from "@/context/JobModeContext";
 import { VoiceNoteModal } from "@/components/job/modals/VoiceNoteModal";
@@ -24,6 +25,7 @@ import { NoteModal } from "@/components/job/modals/NoteModal";
 import { MeasurementModal } from "@/components/job/modals/MeasurementModal";
 import { searchParts, PARTS_MASTER, matchVanInventory } from "@/pages/jmp/partsIntelligence";
 import { INITIAL_INVENTORY } from "@/pages/jmp/vanData";
+import NameplateScannerModal from "@/components/NameplateScannerModal";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -321,12 +323,20 @@ export function JobActiveView({ job, events, elapsedSeconds, onComplete, onBack 
           />
         )}
         {activeModal === "nameplate" && (
-          <NameplateModal
+          <JobIdentifyModal
+            job={job}
             onClose={closeModal}
-            onSave={(fields) => {
+            onSave={(fields, method, linkedUnitId) => {
               const label = [fields.make, fields.model].filter(Boolean).join(" ") || "Equipment identified";
               const subtitle = Object.entries(fields).filter(([, v]) => v).map(([k, v]) => `${k}: ${v}`).join(" · ");
-              void doAddEvent("equipment_identified", label, { notes: subtitle, metadata: { nameplate: fields } });
+              void doAddEvent("equipment_identified", label, {
+                notes: subtitle,
+                metadata: {
+                  nameplate: fields,
+                  identificationMethod: method,
+                  ...(linkedUnitId ? { linkedUnitId } : {}),
+                },
+              });
             }}
           />
         )}
@@ -525,7 +535,12 @@ function FabMenu({ stage, onClose, onSelect, onRepairDone, onComplete }: {
   );
 }
 
-// ─── Nameplate modal (manual entry — OCR is a future server-side feature) ──────
+// ─── Job equipment identification modal ────────────────────────────────────────
+//
+// Smart routing flow:
+//   job.unitId       → VERIFY  (confirm the assigned unit)
+//   job.customer/site → SELECT  (pick from site's saved units, if any)
+//   fallback          → CHOOSE  (scan vs manual)
 
 const NAMEPLATE_FIELDS: Array<{ key: string; label: string; placeholder: string }> = [
   { key: "make",        label: "Make",          placeholder: "e.g. Carrier" },
@@ -536,16 +551,357 @@ const NAMEPLATE_FIELDS: Array<{ key: string; label: string; placeholder: string 
   { key: "voltage",     label: "Voltage",       placeholder: "e.g. 208/230V 3-Phase" },
 ];
 
-function NameplateModal({
-  onClose, onSave,
-}: { onClose: () => void; onSave: (fields: Record<string, string>) => void }) {
-  const [fields, setFields] = useState<Record<string, string>>({});
-  const anyFilled = Object.values(fields).some((v) => v.trim());
+const OCR_DISPLAY_FIELDS: Array<{ key: string; label: string }> = [
+  { key: "make",        label: "Manufacturer" },
+  { key: "model",       label: "Model" },
+  { key: "serial",      label: "Serial" },
+  { key: "refrigerant", label: "Refrigerant" },
+  { key: "voltage",     label: "Voltage" },
+  { key: "capacity",    label: "Capacity" },
+];
+
+interface UnitCard {
+  id: string;
+  nickname?: string | null;
+  siteCustomerName?: string | null;
+  location?: string | null;
+  manufacturer?: string | null;
+  modelNumber?: string | null;
+  serialNumber?: string | null;
+  equipmentType?: string | null;
+}
+
+type IdScreen = "routing" | "verify" | "select" | "choose" | "ocr_result" | "manual";
+
+function UnitCardDisplay({ unit, compact }: { unit: UnitCard; compact?: boolean }) {
+  const label = unit.nickname
+    || [unit.manufacturer, unit.modelNumber].filter(Boolean).join(" ")
+    || "Unknown Unit";
+  const sub = [unit.equipmentType, unit.location].filter(Boolean).join(" · ");
   return (
-    <ModalShell title="Nameplate Capture" onClose={onClose}>
+    <div className="space-y-1.5">
+      <div className="font-semibold text-white text-sm leading-tight">{label}</div>
+      {sub && <div className="text-[10px] text-gray-500">{sub}</div>}
+      {!compact && (
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 mt-1">
+          {unit.manufacturer  && <UnitSpec label="Make"   value={unit.manufacturer} />}
+          {unit.modelNumber   && <UnitSpec label="Model"  value={unit.modelNumber} />}
+          {unit.serialNumber  && <UnitSpec label="Serial" value={unit.serialNumber} />}
+          {unit.siteCustomerName && <UnitSpec label="Site" value={unit.siteCustomerName} />}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function UnitSpec({ label, value }: { label: string; value: string }) {
+  return (
+    <div>
+      <div className="text-[9px] font-bold uppercase tracking-wider text-gray-600">{label}</div>
+      <div className="text-[11px] text-white font-medium truncate">{value}</div>
+    </div>
+  );
+}
+
+function OcrEditRow({ label, value, onChange }: {
+  label: string; value: string; onChange: (v: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return (
+      <div className="flex items-center justify-between gap-2 py-1.5 border-b border-gray-800/50 last:border-0">
+        <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 flex-shrink-0 w-24">{label}</span>
+        <input
+          autoFocus
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          onBlur={() => setEditing(false)}
+          className="flex-1 bg-gray-800 text-white text-xs rounded-lg px-2 py-1 border border-teal-600 outline-none text-right"
+        />
+      </div>
+    );
+  }
+  return (
+    <button
+      onClick={() => setEditing(true)}
+      className="w-full flex items-center justify-between gap-2 py-1.5 border-b border-gray-800/50 last:border-0 active:bg-white/5 rounded-sm transition-colors"
+    >
+      <span className="text-[10px] font-semibold uppercase tracking-wider text-gray-500 flex-shrink-0 w-24">{label}</span>
+      <span className={`text-xs font-medium text-right flex-1 ${value ? "text-white" : "text-gray-600 italic"}`}>
+        {value || "Not detected"}
+      </span>
+    </button>
+  );
+}
+
+function JobIdentifyModal({ job, onClose, onSave }: {
+  job: LocalJob;
+  onClose: () => void;
+  onSave: (fields: Record<string, string>, method: string, linkedUnitId?: string) => void;
+}) {
+  const { user } = useUser();
+  const clientId = user?.id ?? "";
+
+  const [screen, setScreen]           = useState<IdScreen>("routing");
+  const [loading, setLoading]         = useState(true);
+  const [siteUnits, setSiteUnits]     = useState<UnitCard[]>([]);
+  const [assignedUnit, setAssignedUnit] = useState<UnitCard | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [ocrLoading, setOcrLoading]   = useState(false);
+  const [ocrFields, setOcrFields]     = useState<Record<string, string> | null>(null);
+  const [manualFields, setManualFields] = useState<Record<string, string>>({});
+
+  // Auto-route based on job context
+  useEffect(() => {
+    let cancelled = false;
+    async function route() {
+      try {
+        if (job.unitId) {
+          const res = await fetch(`/api/units/${job.unitId}?clientId=${encodeURIComponent(clientId)}`);
+          if (!cancelled && res.ok) {
+            const d = await res.json();
+            setAssignedUnit((d.unit ?? d) as UnitCard);
+            setScreen("verify");
+            setLoading(false);
+            return;
+          }
+        }
+        if (job.customer || job.site) {
+          const q = encodeURIComponent(job.customer ?? job.site ?? "");
+          const res = await fetch(`/api/units?clientId=${encodeURIComponent(clientId)}&q=${q}`);
+          if (!cancelled && res.ok) {
+            const d = await res.json();
+            const units: UnitCard[] = Array.isArray(d) ? d : (d.units ?? []);
+            if (units.length > 0) {
+              setSiteUnits(units);
+              setScreen("select");
+              setLoading(false);
+              return;
+            }
+          }
+        }
+      } catch { /* fall through to choose */ }
+      if (!cancelled) { setScreen("choose"); setLoading(false); }
+    }
+    void route();
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function handleCapture(blob: Blob) {
+    setScannerOpen(false);
+    setOcrLoading(true);
+    setScreen("ocr_result");
+    setOcrFields(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", blob, "nameplate.jpg");
+      const res  = await fetch("/api/nameplate/ocr", { method: "POST", body: fd });
+      const data = await res.json();
+      const ext  = (data.extracted ?? {}) as Record<string, unknown>;
+      setOcrFields({
+        make:        String(ext.manufacturer  ?? ""),
+        model:       String(ext.modelNumber   ?? ""),
+        serial:      String(ext.serialNumber  ?? ""),
+        capacity:    ext.capacityTons ? `${ext.capacityTons} Tons` : "",
+        refrigerant: String(ext.refrigerantType ?? ""),
+        voltage:     String(ext.voltage ?? ""),
+      });
+    } catch {
+      setOcrFields({});
+    } finally {
+      setOcrLoading(false);
+    }
+  }
+
+  function confirmUnit(unit: UnitCard, method: "verified" | "selected") {
+    onSave({
+      make:        unit.manufacturer ?? "",
+      model:       unit.modelNumber  ?? "",
+      serial:      unit.serialNumber ?? "",
+      refrigerant: "",
+      voltage:     "",
+      capacity:    "",
+    }, method, unit.id);
+  }
+
+  // ── Loading ──
+  if (loading) {
+    return (
+      <ModalShell title="Identify Equipment" onClose={onClose}>
+        <div className="flex flex-col items-center justify-center py-12 gap-3">
+          <div className="w-8 h-8 border-2 border-gray-700 border-t-white rounded-full animate-spin" />
+          <p className="text-xs text-gray-500">Checking for saved equipment…</p>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  // ── Camera scanner (renders full-screen) ──
+  if (scannerOpen) {
+    return (
+      <NameplateScannerModal
+        onCapture={(blob) => { void handleCapture(blob); }}
+        onClose={() => { setScannerOpen(false); setScreen(assignedUnit ? "verify" : siteUnits.length > 0 ? "select" : "choose"); }}
+      />
+    );
+  }
+
+  // ── VERIFY screen — job has a linked unit ──
+  if (screen === "verify" && assignedUnit) {
+    return (
+      <ModalShell title="Assigned Equipment" onClose={onClose}>
+        <div className="space-y-4">
+          <p className="text-xs text-gray-400">
+            This job is assigned to the unit below. Confirm you're working on the right equipment before starting.
+          </p>
+          <div className="bg-blue-950/25 border border-blue-800/40 rounded-2xl p-4">
+            <UnitCardDisplay unit={assignedUnit} />
+          </div>
+          <button
+            onClick={() => confirmUnit(assignedUnit, "verified")}
+            className="w-full bg-white text-gray-950 font-bold py-4 rounded-2xl text-sm flex items-center justify-center gap-2"
+          >
+            <CheckCircle size={16} /> Verify This Unit
+          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setScannerOpen(true)}
+              className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
+            >
+              <Camera size={13} /> Scan to Confirm
+            </button>
+            <button
+              onClick={() => setScreen(siteUnits.length > 0 ? "select" : "choose")}
+              className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
+            >
+              Select Different
+            </button>
+          </div>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  // ── SELECT screen — site has saved units ──
+  if (screen === "select") {
+    return (
+      <ModalShell title="Equipment on Site" onClose={onClose}>
+        <div className="space-y-3">
+          <p className="text-xs text-gray-400">Tap the unit you're working on.</p>
+          <div className="space-y-2 max-h-[52vh] overflow-y-auto">
+            {siteUnits.map((unit) => (
+              <button
+                key={unit.id}
+                onClick={() => confirmUnit(unit, "selected")}
+                className="w-full text-left bg-gray-800 border border-gray-700 rounded-2xl p-4 active:bg-gray-700 transition-colors"
+              >
+                <UnitCardDisplay unit={unit} />
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2 pt-1">
+            <button
+              onClick={() => setScannerOpen(true)}
+              className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
+            >
+              <Camera size={13} /> Scan Nameplate
+            </button>
+            <button
+              onClick={() => setScreen("manual")}
+              className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
+            >
+              Enter Manually
+            </button>
+          </div>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  // ── CHOOSE screen — no saved units ──
+  if (screen === "choose") {
+    return (
+      <ModalShell title="Identify Equipment" onClose={onClose}>
+        <div className="space-y-3">
+          <p className="text-xs text-gray-400">
+            How do you want to identify the unit you're working on?
+          </p>
+          <button
+            onClick={() => setScannerOpen(true)}
+            className="w-full bg-white text-gray-950 font-bold py-5 rounded-2xl flex items-center justify-center gap-3 text-sm active:scale-[0.98] transition-transform"
+          >
+            <Camera size={20} /> Scan Nameplate
+          </button>
+          <button
+            onClick={() => setScreen("manual")}
+            className="w-full bg-gray-800 border border-gray-700 text-gray-300 font-semibold py-5 rounded-2xl flex items-center justify-center gap-3 text-sm active:bg-gray-700"
+          >
+            Enter Manually
+          </button>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  // ── OCR RESULT screen ──
+  if (screen === "ocr_result") {
+    if (ocrLoading) {
+      return (
+        <ModalShell title="Reading Nameplate…" onClose={onClose}>
+          <div className="flex flex-col items-center justify-center py-12 gap-3">
+            <div className="w-8 h-8 border-2 border-gray-700 border-t-teal-400 rounded-full animate-spin" />
+            <p className="text-xs text-gray-500">Extracting equipment data…</p>
+          </div>
+        </ModalShell>
+      );
+    }
+    const fieldsToSave = ocrFields ?? {};
+    return (
+      <ModalShell title="Nameplate Detected" onClose={onClose}>
+        <div className="space-y-4">
+          <p className="text-xs text-gray-400">Review the extracted data. Tap any field to edit.</p>
+          <div className="bg-gray-900 border border-gray-800 rounded-2xl px-4 py-3">
+            {OCR_DISPLAY_FIELDS.map(f => (
+              <OcrEditRow
+                key={f.key}
+                label={f.label}
+                value={fieldsToSave[f.key] ?? ""}
+                onChange={(v) => setOcrFields(prev => ({ ...(prev ?? {}), [f.key]: v }))}
+              />
+            ))}
+          </div>
+          <button
+            onClick={() => onSave(fieldsToSave, "scanned")}
+            className="w-full bg-white text-gray-950 font-bold py-4 rounded-2xl text-sm"
+          >
+            Confirm Equipment
+          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => { setOcrFields(null); setScannerOpen(true); }}
+              className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
+            >
+              <Camera size={13} /> Scan Again
+            </button>
+            <button
+              onClick={() => setScreen("manual")}
+              className="flex-1 flex items-center justify-center gap-2 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
+            >
+              Enter Manually
+            </button>
+          </div>
+        </div>
+      </ModalShell>
+    );
+  }
+
+  // ── MANUAL entry screen (fallback) ──
+  const anyFilled = Object.values(manualFields).some(v => v.trim());
+  return (
+    <ModalShell title="Enter Manually" onClose={onClose}>
       <div className="space-y-3">
         <p className="text-xs text-gray-400">
-          Enter what you can read from the nameplate. All fields are optional — fill what's visible.
+          Fill in what you can read from the nameplate. All fields are optional.
         </p>
         {NAMEPLATE_FIELDS.map((f) => (
           <div key={f.key}>
@@ -553,15 +909,15 @@ function NameplateModal({
               {f.label}
             </label>
             <input
-              value={fields[f.key] ?? ""}
-              onChange={(e) => setFields((p) => ({ ...p, [f.key]: e.target.value }))}
+              value={manualFields[f.key] ?? ""}
+              onChange={(e) => setManualFields(p => ({ ...p, [f.key]: e.target.value }))}
               placeholder={f.placeholder}
               className="w-full bg-gray-800 text-white rounded-xl px-4 py-3 border border-gray-700 text-sm placeholder-gray-600 focus:border-teal-600 outline-none"
             />
           </div>
         ))}
         <button
-          onClick={() => onSave(fields)}
+          onClick={() => onSave(manualFields, "manual")}
           className={`w-full font-bold py-4 rounded-2xl mt-1 ${anyFilled ? "bg-white text-gray-950" : "bg-gray-800 border border-gray-700 text-gray-500"}`}
         >
           {anyFilled ? "Save to Record" : "Skip Equipment ID"}
