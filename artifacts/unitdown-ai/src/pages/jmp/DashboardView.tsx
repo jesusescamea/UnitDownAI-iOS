@@ -33,6 +33,7 @@ import { DispatchInboxModal } from './dispatch/DispatchInboxModal';
 import { useDispatchInbox } from './dispatch/useDispatchInbox';
 import { EquipmentSearchModal } from './EquipmentSearchModal';
 import { JmpAiAssistantModal } from './JmpAiAssistantModal';
+import { RemindersSection } from './reminders/RemindersSection';
 
 export interface JobStartInfo {
   customer?: string;
@@ -290,7 +291,7 @@ export function DashboardView({ onStartJob }: Props) {
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
             <div className="text-3xl mb-2">☀️</div>
             <div className="font-semibold text-white mb-1">No scheduled jobs today</div>
-            <div className="text-xs text-gray-500">Check equipment follow-ups and messages below</div>
+            <div className="text-xs text-gray-500">Check equipment follow-ups and reminders below</div>
           </div>
         ) : (
           <div className="space-y-2">
@@ -516,15 +517,8 @@ export function DashboardView({ onStartJob }: Props) {
         )}
       </div>
 
-      {/* ── Office Messages ──────────────────────────────────────── */}
-      <div className="px-4 pt-5">
-        <SectionHeader title="Messages" countLabel="unread" />
-        <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
-          <div className="text-2xl mb-2">💬</div>
-          <div className="font-semibold text-white mb-1">No office messages connected yet</div>
-          <div className="text-xs text-gray-500">Dispatcher messages will appear here once connected.</div>
-        </div>
-      </div>
+      {/* ── Important Reminders ──────────────────────────────────── */}
+      <RemindersSection userId={clerkUser?.id ?? ''} />
 
       {/* ── Recent Activity ──────────────────────────────────────── */}
       <div className="px-4 pt-5">
