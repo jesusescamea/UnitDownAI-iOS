@@ -314,34 +314,66 @@ export default function SpeakScheduleScreen({
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, [phase]);
 
+  // ── Unmount cleanup — stop any live recognizer when the component unmounts ───
+  useEffect(() => {
+    return () => {
+      if (recRef.current) {
+        try { recRef.current.stop(); } catch { /* ignore */ }
+        recRef.current = null;
+      }
+    };
+  }, []);
+
   // ── Start recording ──────────────────────────────────────────────────────────
   const startRecording = useCallback(() => {
     if (!SpeechRec) return;
+
+    // Guard: never spawn a second recognizer on top of a live one.
+    // On mobile a double-tap can call this twice before React re-renders.
+    if (recRef.current) return;
+
     setError(null);
     setTranscript('');
     setInterimText('');
 
     const rec = new SpeechRec();
-    rec.continuous = true;
-    rec.interimResults = true;
-    rec.lang = 'en-US';
+    rec.continuous      = true;
+    rec.interimResults  = true;
+    rec.lang            = 'en-US';
 
     let finalAccum = '';
+
+    // Track which result indices we have already accumulated as final.
+    //
+    // WHY: Chrome's Web Speech API (continuous mode) re-emits previously
+    // finalized results in later onresult events — sometimes with the same
+    // resultIndex. Starting the loop from e.resultIndex is necessary but not
+    // sufficient: Chrome can fire a new event where resultIndex still points
+    // back to an already-finalized slot, causing each phrase to accumulate
+    // again and producing output like "I have 1:00 p.m. I have 1:00 p.m. ..."
+    //
+    // The Set approach is the definitive fix: once index i is accumulated as
+    // final, it is never accumulated again regardless of future events.
+    const finalizedIndices = new Set<number>();
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     rec.onresult = (e: any) => {
       let interim = '';
-      // IMPORTANT: start from e.resultIndex, NOT 0.
-      // e.results is a cumulative list; starting from 0 re-processes
-      // already-finalized results on every event, causing repetition like
-      // "there's there's there's a service there's a service call..."
+      // Start from e.resultIndex so we skip old slots that are already
+      // accounted for in the cumulative e.results list — but the Set
+      // provides the real guard against double-accumulation.
       for (let i = (e.resultIndex as number); i < e.results.length; i++) {
         const result = e.results[i];
         if (!result) continue;
-        const isFinal = result.isFinal as boolean;
-        const text: string = result[0]?.transcript ?? '';
+        const isFinal: boolean = result.isFinal;
+        const text: string     = result[0]?.transcript ?? '';
         if (isFinal) {
-          finalAccum = cleanTranscript(finalAccum + (finalAccum ? ' ' : '') + text);
+          if (!finalizedIndices.has(i)) {
+            finalizedIndices.add(i);
+            finalAccum = cleanTranscript(
+              finalAccum + (finalAccum ? ' ' : '') + text,
+            );
+          }
         } else {
           interim = text;
         }
@@ -362,6 +394,8 @@ export default function SpeakScheduleScreen({
     };
 
     rec.onend = () => {
+      // Null the ref first so stopRecording's guard doesn't double-stop.
+      recRef.current = null;
       const cleaned = cleanTranscript(finalAccum);
       setTranscript(t => t || cleaned);
       setPhase(prev => prev === 'recording' ? 'transcribed' : prev);
@@ -373,8 +407,8 @@ export default function SpeakScheduleScreen({
   }, [SpeechRec]);
 
   const stopRecording = useCallback(() => {
-    recRef.current?.stop();
-    recRef.current = null;
+    if (!recRef.current) return;
+    recRef.current.stop();   // triggers onend asynchronously; onend nulls the ref
     setPhase('transcribed');
   }, []);
 
