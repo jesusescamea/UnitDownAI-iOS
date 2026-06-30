@@ -1,12 +1,13 @@
 /**
- * 01 — Public Routes
- * Every route accessible without authentication.
- * Verifies: page loads, expected content visible, no API 500s, no JS crashes.
+ * 01b — Public Static / Secondary Routes
+ * Includes thin SPA info pages and the /guides SEO shell served by the API
+ * server. Also covers the /sponsor redirect and the unknown-route 404 check.
+ * ~9 tests × ~5 s each ≈ 45 s — fits comfortably in the 2-minute bash limit.
  */
 import { test, expect } from "../utils/fixtures";
 import { ROUTES, assertNotErrorPage } from "../utils/helpers";
 
-for (const route of ROUTES.public) {
+for (const route of ROUTES.publicStatic) {
   test(`[PUBLIC] ${route.label} — ${route.path}`, async ({
     page,
     consoleErrors,
@@ -15,7 +16,6 @@ for (const route of ROUTES.public) {
   }) => {
     const res = await page.goto(route.path);
 
-    // ── HTTP status must not be a server error ────────────────────────────
     expect(
       res?.status() ?? 200,
       `${route.path} must not return HTTP 5xx`,
@@ -28,9 +28,7 @@ for (const route of ROUTES.public) {
     await waitForApp();
     await assertNotErrorPage(page);
 
-    // ── Expected text must appear somewhere on the page ───────────────────
-    // SEO-shell routes (e.g. /guides served by the API server) have an empty
-    // React root; verify <title> instead of body text for those.
+    // SEO-shell routes (e.g. /guides) have an empty React root — check <title>.
     if (route.titleMatch) {
       await expect(page).toHaveTitle(route.titleMatch, { timeout: 8_000 });
     } else if (route.textMatch) {
@@ -39,10 +37,7 @@ for (const route of ROUTES.public) {
       });
     }
 
-    // ── No unhandled API errors ────────────────────────────────────────────
     expect(apiErrors, `${route.path}: unexpected API errors:\n${apiErrors.join("\n")}`).toHaveLength(0);
-
-    // ── No unhandled JS errors ─────────────────────────────────────────────
     expect(
       consoleErrors,
       `${route.path}: unexpected console errors:\n${consoleErrors.join("\n")}`,
@@ -60,7 +55,6 @@ test("[PUBLIC] /sponsors redirect — /sponsor alias", async ({ page }) => {
 test("[PUBLIC] Unknown route shows 404 page — not blank", async ({ page }) => {
   await page.goto("/this-route-definitely-does-not-exist-abc123");
   await page.waitForLoadState("domcontentloaded");
-  // Must show something — not a blank white page
   const body = await page.locator("body").textContent();
   expect((body ?? "").trim().length).toBeGreaterThan(0);
 });

@@ -14,24 +14,37 @@ type RouteSpec = {
 };
 
 /** All app routes, grouped by auth requirement */
-export const ROUTES: { public: RouteSpec[]; protected: string[] } = {
-  public: [
-    { path: "/",          label: "Landing page",         textMatch: /UnitDown|HVAC|diagnos/i },
-    { path: "/diagnose",  label: "Diagnosis form",        textMatch: /diagnos|symptom|Run Diagnosis/i },
-    { path: "/pt-chart",  label: "PT Chart page",         textMatch: /PT Chart|Pressure.{0,5}Temperature|refrigerant/i },
-    { path: "/login",     label: "Login page",            textMatch: /UnitDown|Sign in|sign.in|Google|Apple|email/i },
-    { path: "/signup",    label: "Sign-up page",          textMatch: /Create your account|UnitDown|Sign up/i },
-    { path: "/pricing",   label: "Pricing page",          textMatch: /Start Free|9\.99|Founding Member|Pro/i },
-    // /guides is served by the API server as an SEO HTML shell (empty React root);
-    // check <title> instead of body text.
-    { path: "/guides",    label: "Guides hub",            titleMatch: /Troubleshooting Guides|HVAC/i },
-    { path: "/terms",     label: "Terms of Service",      textMatch: /terms/i },
-    { path: "/privacy",   label: "Privacy Policy",        textMatch: /privacy/i },
-    { path: "/legal",     label: "Legal",                 textMatch: /legal|terms|privacy/i },
-    { path: "/safety",    label: "Safety page",           textMatch: /safety/i },
-    { path: "/contact",   label: "Contact page",          textMatch: /contact/i },
-    { path: "/ai",        label: "AI page",               textMatch: /AI|artificial|intelligence|UnitDown/i },
-  ],
+export const ROUTES = {
+  /**
+   * Core SPA routes — served by the Vite frontend.
+   * Body text is checked against textMatch after React renders.
+   * File: 01a-public-spa-routes.spec.ts  (~6 tests, fits in 2 min)
+   */
+  publicSpa: [
+    { path: "/",          label: "Landing page",   textMatch: /UnitDown|HVAC|diagnos/i },
+    { path: "/diagnose",  label: "Diagnosis form", textMatch: /diagnos|symptom|Run Diagnosis/i },
+    { path: "/pt-chart",  label: "PT Chart page",  textMatch: /PT Chart|Pressure.{0,5}Temperature|refrigerant/i },
+    { path: "/login",     label: "Login page",     textMatch: /UnitDown|Sign in|sign.in|Google|Apple|email/i },
+    { path: "/signup",    label: "Sign-up page",   textMatch: /Create your account|UnitDown|Sign up/i },
+    { path: "/pricing",   label: "Pricing page",   textMatch: /Start Free|9\.99|Founding Member|Pro/i },
+  ] as RouteSpec[],
+
+  /**
+   * Static / secondary SPA routes — mostly thin informational pages.
+   * /guides is served by the API server as an SEO HTML shell (empty React
+   * root); titleMatch is used for those routes instead of textMatch.
+   * File: 01b-public-static-routes.spec.ts  (~7 tests, fits in 2 min)
+   */
+  publicStatic: [
+    { path: "/guides",  label: "Guides hub",       titleMatch: /Troubleshooting Guides|HVAC/i },
+    { path: "/terms",   label: "Terms of Service", textMatch: /terms/i },
+    { path: "/privacy", label: "Privacy Policy",   textMatch: /privacy/i },
+    { path: "/legal",   label: "Legal",            textMatch: /legal|terms|privacy/i },
+    { path: "/safety",  label: "Safety page",      textMatch: /safety/i },
+    { path: "/contact", label: "Contact page",     textMatch: /contact/i },
+    { path: "/ai",      label: "AI page",          textMatch: /AI|artificial|intelligence|UnitDown/i },
+  ] as RouteSpec[],
+
   protected: [
     { path: "/dashboard",      label: "Dashboard" },
     { path: "/records",        label: "Equipment records" },
@@ -39,7 +52,7 @@ export const ROUTES: { public: RouteSpec[]; protected: string[] } = {
     { path: "/notifications",  label: "Notifications" },
     { path: "/job",            label: "Job mode" },
   ],
-} as const;
+};
 
 /** Viewports for mobile regression */
 export const MOBILE_VIEWPORTS = [
