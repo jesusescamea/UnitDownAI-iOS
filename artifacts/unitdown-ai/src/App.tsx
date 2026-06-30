@@ -1757,6 +1757,7 @@ export function Home() {
   const { user: clerkUser, isLoaded: clerkLoaded } = useUser();
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [selectedUnitLabel, setSelectedUnitLabel] = useState<string | null>(null);
+  const [selectedUnitContext, setSelectedUnitContext] = useState<Record<string, string | null> | null>(null);
   const { signOut: clerkSignOut } = useClerk();
 
   // Dark mode — read from html class set by initTheme() at startup
@@ -1991,6 +1992,11 @@ export function Home() {
         sessionStorage.removeItem("unitdown_selected_unit_label");
         setSelectedUnitId(preUnitId);
         setSelectedUnitLabel(preUnitLabel);
+      }
+      const ctxRaw = sessionStorage.getItem("unitdown_unit_context");
+      if (ctxRaw) {
+        sessionStorage.removeItem("unitdown_unit_context");
+        try { setSelectedUnitContext(JSON.parse(ctxRaw)); } catch {}
       }
     } catch {}
 
@@ -2409,20 +2415,43 @@ export function Home() {
                 />
                 {/* Unit selector — shown only when logged in */}
                 {clerkLoaded && clerkUser && (
-                  <div className="mx-3 mb-2 flex items-center gap-2">
+                  <div className="mx-3 mb-2 space-y-2">
                     {selectedUnitId ? (
-                      <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-blue-700 flex-1 min-w-0">
-                        <Wrench className="w-3.5 h-3.5 flex-shrink-0" />
-                        <span className="truncate">{selectedUnitLabel ?? "Unit selected"}</span>
-                        <button
-                          type="button"
-                          onClick={() => { setSelectedUnitId(null); setSelectedUnitLabel(null); }}
-                          className="ml-auto text-blue-400 hover:text-blue-700 flex-shrink-0"
-                          aria-label="Remove unit selection"
-                        >
-                          ×
-                        </button>
-                      </div>
+                      <>
+                        {/* Unit badge row */}
+                        <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-3 py-1.5 text-xs font-semibold text-blue-700 min-w-0">
+                          <Wrench className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="truncate flex-1">{selectedUnitLabel ?? "Unit selected"}</span>
+                          <button
+                            type="button"
+                            onClick={() => { setSelectedUnitId(null); setSelectedUnitLabel(null); setSelectedUnitContext(null); }}
+                            className="text-blue-400 hover:text-blue-700 flex-shrink-0"
+                            aria-label="Remove unit selection"
+                          >
+                            ×
+                          </button>
+                        </div>
+                        {/* Equipment context card — preloaded from unit record */}
+                        {selectedUnitContext && Object.values(selectedUnitContext).some(Boolean) && (
+                          <div className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 grid grid-cols-2 gap-x-4 gap-y-0.5">
+                            {[
+                              ["Type",        selectedUnitContext.equipmentType],
+                              ["Model",       selectedUnitContext.modelNumber],
+                              ["Mfr",         selectedUnitContext.manufacturer],
+                              ["Serial",      selectedUnitContext.serialNumber],
+                              ["Refrigerant", selectedUnitContext.refrigerantType],
+                              ["Voltage",     selectedUnitContext.voltage],
+                              ["System",      selectedUnitContext.systemType],
+                              ["Tons",        selectedUnitContext.capacityTons ? `${selectedUnitContext.capacityTons}T` : null],
+                            ].filter(([, v]) => v).map(([label, value]) => (
+                              <div key={label as string} className="flex gap-1 text-[10px] leading-tight py-0.5">
+                                <span className="text-slate-400 font-semibold shrink-0">{label}:</span>
+                                <span className="text-slate-600 truncate">{value}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </>
                     ) : (
                       <button
                         type="button"
@@ -2635,6 +2664,18 @@ export function Home() {
                       </Button>
                     )}
                   </div>
+
+                  {/* Back to Unit — shown when diagnosis came from a unit record */}
+                  {currentResult && !diagnose.isPending && selectedUnitId && (
+                    <button
+                      type="button"
+                      onClick={() => navigate(`/records/${selectedUnitId}`)}
+                      className="w-full flex items-center justify-center gap-2 text-xs font-semibold text-blue-600 border border-blue-200 bg-blue-50 rounded-xl py-3 hover:bg-blue-100 transition-colors"
+                    >
+                      <Wrench className="w-3.5 h-3.5" />
+                      Back to Unit Record
+                    </button>
+                  )}
 
                   {/* Safety Notice — shown whenever results are visible */}
                   {(currentResult || diagnose.isError) && !diagnose.isPending && (

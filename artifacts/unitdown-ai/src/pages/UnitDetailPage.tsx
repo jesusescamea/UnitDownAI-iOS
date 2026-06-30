@@ -596,8 +596,21 @@ export default function UnitDetailPage() {
       sessionStorage.setItem("unitdown_selected_unit_id", params.id);
       sessionStorage.setItem("unitdown_selected_unit_label",
         unit ? (unit.nickname ?? unit.modelNumber ?? unit.manufacturer ?? "Unit") : "Unit");
+      if (unit) {
+        // Pass rich context so the diagnosis form can display equipment details
+        sessionStorage.setItem("unitdown_unit_context", JSON.stringify({
+          manufacturer:   unit.manufacturer   ?? null,
+          modelNumber:    unit.modelNumber    ?? null,
+          serialNumber:   unit.serialNumber   ?? null,
+          equipmentType:  unit.equipmentType  ?? null,
+          systemType:     unit.systemType     ?? null,
+          refrigerantType:unit.refrigerantType?? null,
+          voltage:        unit.voltage        ?? null,
+          capacityTons:   unit.capacityTons   ?? null,
+        }));
+      }
     } catch {}
-    navigate("/");
+    navigate("/diagnose");
   }, [params.id, unit, navigate]);
 
   const toggleExpand = useCallback((id: string) => {
