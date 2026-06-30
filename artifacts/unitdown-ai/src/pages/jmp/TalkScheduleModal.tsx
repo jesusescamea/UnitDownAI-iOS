@@ -13,7 +13,7 @@
 import { useState, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { ArrowLeft, CheckCircle } from 'lucide-react';
-import SpeakScheduleScreen from './dispatch/SpeakScheduleScreen';
+import { ScheduleConversationModal } from './schedule/ScheduleConversationModal';
 import type { ImportedJob } from './dispatch/types';
 import type { TodayJob } from './mockData';
 import type { CalendarEvent } from './dashboardData';
@@ -316,8 +316,12 @@ export function TalkScheduleModal({ userId, onSaved, onClose }: Props) {
   const [view, setView] = useState<'speak' | 'manual'>('speak');
 
   const handleParsed = useCallback((jobs: ImportedJob[]) => {
-    const results   = jobs.map(j => importedToResult(j, todayStr));
-    const reminders = extractSmartReminders(jobs);
+    // Reminder-only and note-only jobs (no customer) → skip adding to schedule results
+    const scheduleJobs = jobs.filter(
+      j => j.jobType !== 'Reminder' && j.jobType !== 'Note' && j.customer?.trim()
+    );
+    const results   = scheduleJobs.map(j => importedToResult(j, todayStr));
+    const reminders = extractSmartReminders(jobs); // extract from ALL jobs (incl. reminders)
     onSaved(results, reminders);
   }, [onSaved, todayStr]);
 
@@ -330,12 +334,10 @@ export function TalkScheduleModal({ userId, onSaved, onClose }: Props) {
       className="fixed inset-0 z-50 bg-gray-950 flex flex-col"
     >
       {view === 'speak' ? (
-        <SpeakScheduleScreen
-          clientId={userId}
+        <ScheduleConversationModal
+          userId={userId}
           onParsed={handleParsed}
           onBack={onClose}
-          onSelectPaste={() => { /* paste textarea is already in the speak screen */ }}
-          onSelectManual={() => setView('manual')}
         />
       ) : (
         <ManualEntryForm
