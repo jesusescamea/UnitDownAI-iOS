@@ -3,6 +3,7 @@ export type ProviderType =
   | 'csv'
   | 'ics'
   | 'manual'
+  | 'voice'
   | 'outlook_calendar'
   | 'outlook_email'
   | 'google_calendar'

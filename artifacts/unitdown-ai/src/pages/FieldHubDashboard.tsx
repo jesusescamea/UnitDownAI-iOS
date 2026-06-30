@@ -18,9 +18,11 @@ import {
   Stethoscope,
   Building2,
   Wrench,
+  Mic,
 } from "lucide-react";
 import { useJobMode } from "@/context/JobModeContext";
 import { ScheduleJobWizard, type ScheduleWizardResult } from "@/pages/jmp/ScheduleJobWizard";
+import { DispatchInboxModal } from "@/pages/jmp/dispatch/DispatchInboxModal";
 import { useToast } from "@/hooks/use-toast";
 import { AppNav } from "@/components/AppNav";
 
@@ -98,6 +100,7 @@ export default function FieldHubDashboard() {
   const [scheduledEvents, setScheduledEvents] = useState<ScheduledEventSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [showScheduleWizard, setShowScheduleWizard] = useState(false);
+  const [showSpeakInbox,     setShowSpeakInbox]     = useState(false);
 
   const clientId = clerkUser?.id ?? "";
 
@@ -206,13 +209,14 @@ export default function FieldHubDashboard() {
           <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest mb-3">
             Quick Actions
           </p>
-          <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {([
               { icon: Stethoscope, label: "Diagnose",     action: () => navigate("/diagnose"),           cls: "text-blue-600 bg-blue-50"    },
               { icon: Plus,        label: "New Unit",      action: () => navigate("/records/new"),        cls: "text-emerald-600 bg-emerald-50" },
               { icon: Calendar,    label: "Schedule",      action: () => setShowScheduleWizard(true),     cls: "text-orange-600 bg-orange-50" },
               { icon: Briefcase,   label: "Job Mode",      action: () => navigate("/job"),                cls: "text-violet-600 bg-violet-50" },
               { icon: Wrench,      label: "Records",       action: () => navigate("/records"),            cls: "text-slate-600 bg-slate-100"  },
+              { icon: Mic,         label: "Speak",         action: () => setShowSpeakInbox(true),         cls: "text-pink-600 bg-pink-50"    },
             ] as { icon: ElementType; label: string; action: () => void; cls: string }[]).map(({ icon: Icon, label, action, cls }) => (
               <button
                 key={label}
@@ -487,6 +491,16 @@ export default function FieldHubDashboard() {
         <ScheduleJobWizard
           onClose={() => setShowScheduleWizard(false)}
           onCreate={handleScheduleCreate}
+        />
+      )}
+
+      {/* ── Speak Schedule — Dispatch Inbox (speak screen) ───────────────────── */}
+      {showSpeakInbox && (
+        <DispatchInboxModal
+          initialScreen="speak"
+          onClose={() => setShowSpeakInbox(false)}
+          onStartJob={() => { setShowSpeakInbox(false); navigate("/job"); }}
+          onJobAccepted={handleScheduleCreate}
         />
       )}
     </div>

@@ -5,7 +5,7 @@ import {
   AlertTriangle, Edit2, Trash2, ClipboardList, Upload,
   FileText, Copy, Camera, Calendar, Mail, Zap, RefreshCw,
   Check, SkipForward, GitMerge, ChevronDown, FileUp,
-  AlertCircle, Settings, WifiOff,
+  AlertCircle, Settings, WifiOff, Mic,
 } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import type { ImportedJob, ProviderType } from './types';
@@ -16,6 +16,7 @@ import { PROVIDERS, CATEGORY_LABELS } from './providers/index';
 import { parsePastedText, parseCSV, parseICS, calendarEventToImportedJob, emailToImportedJob } from './parsers';
 import { useDispatchInbox } from './useDispatchInbox';
 import { useOAuthIntegration, getMailSubject, getMailSnippet, getMailFrom } from './useOAuthIntegration';
+import SpeakScheduleScreen from './SpeakScheduleScreen';
 
 // ─── Screen types ─────────────────────────────────────────────────────────────
 type Screen =
@@ -30,6 +31,7 @@ type Screen =
   | 'email_alt'
   | 'dispatch_alt'
   | 'custom_api'
+  | 'speak'
   | 'edit'
   | 'outlook_connect'
   | 'google_connect';
@@ -1346,9 +1348,10 @@ interface Props {
   onClose:        () => void;
   onStartJob:     () => void;
   onJobAccepted?: (result: ScheduleWizardResult) => void;
+  initialScreen?: Screen;
 }
 
-export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props) {
+export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted, initialScreen }: Props) {
   const { user } = useUser();
   const techName = user?.fullName || user?.firstName || 'Me';
 
@@ -1357,7 +1360,7 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
     addJobs, updateJob, updateStatus, removeJob, acceptAll, clearAccepted,
   } = useDispatchInbox();
 
-  const [screen,           setScreen]          = useState<Screen>('inbox');
+  const [screen,           setScreen]          = useState<Screen>(initialScreen ?? 'inbox');
   const [editingJob,       setEditingJob]       = useState<ImportedJob | null>(null);
   const [isNewJob,         setIsNewJob]         = useState(false);
   const [calendarFor,      setCalendarFor]      = useState<'apple_calendar'>('apple_calendar');
@@ -1402,6 +1405,7 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
     if (id === 'fieldedge')     { setDispatchPlatform('fieldedge');     setScreen('dispatch_alt'); return; }
     if (id === 'housecall_pro') { setDispatchPlatform('housecall_pro'); setScreen('dispatch_alt'); return; }
     if (id === 'custom_api')    { setScreen('custom_api'); return; }
+    if (id === 'voice')         { setScreen('speak');      return; }
     if (id === 'manual') {
       const blank: ImportedJob = {
         id:              `DI-${Date.now()}`,
@@ -1559,6 +1563,17 @@ export function DispatchInboxModal({ onClose, onStartJob, onJobAccepted }: Props
           onSelectCSV={goCSV}
           onSelectPaste={goPaste}
           onSelectManual={goManual}
+        />
+      )}
+
+      {/* ── Speak Schedule ────────────────────────────────────────────────── */}
+      {screen === 'speak' && (
+        <SpeakScheduleScreen
+          onParsed={handleParsed}
+          onBack={goSources}
+          onSelectPaste={goPaste}
+          onSelectManual={goManual}
+          clientId={user?.id}
         />
       )}
 

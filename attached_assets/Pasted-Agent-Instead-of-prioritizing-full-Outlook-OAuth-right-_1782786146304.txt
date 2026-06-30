@@ -1,0 +1,249 @@
+Agent,
+
+Instead of prioritizing full Outlook OAuth right now, build an easier production-ready MVP: Speak Your Schedule.
+
+Goal:
+A technician should be able to verbally enter their daily schedule and have UnitDown convert it into draft jobs.
+
+Example spoken input:
+"Tomorrow I have Lowe's job 2606-37730 at 7 AM in Lincoln. Vendor meet at 10 AM. Contact is 510-472-1230. Then Best Buy job 2606-07588 at 7:30 in North Sac. PM survey."
+
+UnitDown should extract structured jobs from the spoken schedule.
+
+Do not change:
+- Bundle ID
+- Clerk auth
+- Apple IAP
+- Stripe
+- version/build number
+- existing job mode
+- existing equipment records
+
+==================================================
+FEATURE NAME
+==================================================
+
+Add:
+
+Speak Schedule
+
+This should be available from:
+- Dashboard quick actions
+- Dispatch Inbox
+- Add Job / Import Schedule screen
+
+==================================================
+WORKFLOW
+==================================================
+
+1. User taps Speak Schedule.
+2. Voice recorder opens.
+3. User speaks their schedule.
+4. App transcribes speech to text.
+5. AI parses the transcript into draft jobs.
+6. User reviews extracted jobs.
+7. User edits any missing fields.
+8. User accepts selected jobs.
+9. Jobs appear in:
+   - Dashboard calendar
+   - Today's Jobs
+   - /job list
+   - Future schedule date
+
+==================================================
+TRANSCRIPTION
+==================================================
+
+Use browser/device speech recognition if available.
+
+If speech recognition is unavailable:
+Show fallback:
+"Voice schedule entry is unavailable on this device. Paste your schedule instead."
+
+Offer:
+- Paste Schedule
+- Manual Job
+- Import Calendar File
+
+==================================================
+AI PARSING
+==================================================
+
+Create one parsing function that accepts raw text and returns draft jobs.
+
+Input:
+raw transcript text
+
+Output:
+array of draft jobs
+
+Each draft job should include:
+- jobNumber
+- customerName
+- siteName
+- location
+- scheduledDate
+- scheduledStartTime
+- scheduledEndTime or timeWindow
+- jobType
+- priority
+- phoneNumber
+- contactName
+- complaintOrTask
+- notes
+- source = "voice"
+- needsReview = true
+
+==================================================
+DATE / TIME INTELLIGENCE
+==================================================
+
+Handle natural language:
+
+- today
+- tomorrow
+- Monday
+- next Monday
+- this morning
+- afternoon
+- first call
+- second call
+- after that
+- 7
+- 7 AM
+- 7:30
+- 10 vendor meet
+- PM survey
+- service call
+- maintenance
+- warranty
+- return visit
+
+If end time is missing:
+Default to 30 minutes for calendar placeholder.
+Mark needsReview = true.
+
+==================================================
+HVAC / LENNOX SCHEDULE PARSING
+==================================================
+
+Support schedule formats like:
+
+"2606-37730; Lowe's; serv"
+"2606-07588; Best Buy; PM survey"
+"Vendor meet at 10"
+"POC 510-472-1230"
+"Lincoln"
+"North Sac"
+
+Recognize:
+- Lennox job numbers
+- customer names
+- service call shorthand
+- PM / maintenance
+- vendor meet
+- POC/contact phone
+- city/location
+
+==================================================
+REVIEW IMPORTED JOBS
+==================================================
+
+After parsing, show Review Imported Jobs screen.
+
+Each draft job card should allow editing:
+- customer
+- job number
+- date
+- start time
+- location
+- task
+- phone
+- notes
+
+Actions:
+- Accept selected
+- Accept all
+- Delete
+- Edit
+- Re-record
+- Paste instead
+
+==================================================
+SAVE BEHAVIOR
+==================================================
+
+Accepted jobs must save into the same job/schedule system used by manual jobs.
+
+No separate voice-only storage.
+
+They must appear in:
+- Dashboard
+- Calendar
+- Today's Jobs
+- /job
+- Future schedule dates
+
+==================================================
+OFFLINE SUPPORT
+==================================================
+
+If offline:
+- allow recording/transcript if device supports it
+- save transcript locally
+- create draft jobs locally if parser works client-side
+- queue accepted jobs for sync
+- sync when connection returns
+
+==================================================
+UX COPY
+==================================================
+
+Use technician-friendly wording.
+
+Examples:
+- "Tell UnitDown your schedule."
+- "Say each job like you would explain it to another tech."
+- "Review before saving."
+- "Missing details can be added later."
+
+Do not show:
+- Coming Soon
+- Authentication not configured
+- Not configured
+- Dead button
+
+==================================================
+TESTING
+==================================================
+
+Test with these spoken/pasted examples:
+
+1.
+"Tomorrow I have Lowe's job 2606-37730 at 7 AM in Lincoln. Vendor meet at 10. POC 510-472-1230."
+
+2.
+"Then Best Buy job 2606-07588 at 7:30 in North Sac. PM survey."
+
+3.
+"Monday first call Cinemark Redding no cooling RTU 3. Second call Target Westfield front left unit maintenance."
+
+4.
+"Tomorrow I have six jobs. First Lowe's in Lincoln at 7. Second Best Buy in North Sac at 7:30. Third Cinemark in Redding no cool. Fourth Target PM. Fifth Walmart follow-up. Sixth return visit at 3."
+
+Run:
+- frontend typecheck
+- backend typecheck
+- shared/lib typecheck
+- frontend build
+- backend build
+
+Final report:
+- Files changed
+- Speech recognition behavior
+- AI parsing behavior
+- Review Jobs behavior
+- Save behavior
+- Offline behavior
+- Typecheck results
+- Build results
