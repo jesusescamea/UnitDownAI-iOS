@@ -858,6 +858,55 @@ export default function LoginPage() {
           )}
 
         </div>
+
+        {/* ── Legal footer ── */}
+        <div className="mt-8 text-center text-xs text-slate-400 space-y-1">
+          <p>
+            By continuing, you agree to our{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/terms")}
+              className="text-blue-600 hover:underline font-semibold"
+            >
+              Terms of Service
+            </button>{" "}
+            and{" "}
+            <button
+              type="button"
+              onClick={() => navigate("/privacy")}
+              className="text-blue-600 hover:underline font-semibold"
+            >
+              Privacy Policy
+            </button>
+            .
+          </p>
+          <p>
+            <button
+              type="button"
+              onClick={() => navigate("/legal")}
+              className="hover:text-slate-600 hover:underline transition-colors"
+            >
+              Legal Center
+            </button>
+            {" · "}
+            <button
+              type="button"
+              onClick={() => navigate("/safety")}
+              className="hover:text-slate-600 hover:underline transition-colors"
+            >
+              Safety Disclaimer
+            </button>
+            {" · "}
+            <button
+              type="button"
+              onClick={() => navigate("/contact")}
+              className="hover:text-slate-600 hover:underline transition-colors"
+            >
+              Contact
+            </button>
+          </p>
+        </div>
+
       </main>
     </div>
   );

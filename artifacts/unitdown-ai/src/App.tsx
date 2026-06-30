@@ -12,6 +12,10 @@ import { purchasePro, restorePurchases, fetchProducts, checkIAPSubscriptionActiv
 import TermsPage from "./pages/terms";
 import PrivacyPage from "./pages/privacy";
 import LegalPage from "./pages/LegalPage";
+import SafetyPage from "./pages/SafetyPage";
+import AIPage from "./pages/AIPage";
+import NotificationsPage from "./pages/NotificationsPage";
+import ContactPage from "./pages/ContactPage";
 import LoginPage from "./pages/login";
 import SignupPage from "./pages/signup";
 import SsoCallbackPage from "./pages/sso-callback";
@@ -3505,6 +3509,10 @@ function App() {
               <Route path="/terms" component={TermsPage} />
               <Route path="/privacy" component={PrivacyPage} />
               <Route path="/legal" component={LegalPage} />
+              <Route path="/safety" component={SafetyPage} />
+              <Route path="/ai" component={AIPage} />
+              <Route path="/notifications" component={NotificationsPage} />
+              <Route path="/contact" component={ContactPage} />
               <Route path="/login" component={LoginPage} />
               <Route path="/signup" component={SignupPage} />
               <Route path="/sso-callback" component={SsoCallbackPage} />

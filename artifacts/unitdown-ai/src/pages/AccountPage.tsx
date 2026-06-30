@@ -1194,6 +1194,32 @@ export default function AccountPage() {
           </Section>
         )}
 
+        {/* ── Legal & Compliance ── */}
+        <div className="rounded-2xl border border-slate-200 bg-white overflow-hidden">
+          <div className="px-5 py-4 border-b border-slate-100">
+            <p className="text-sm font-bold text-slate-900">Legal & Compliance</p>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {[
+              { label: "Terms of Service",               href: "/terms" },
+              { label: "Privacy Policy",                 href: "/privacy" },
+              { label: "Safety Disclaimer",              href: "/safety" },
+              { label: "AI Limitations & Transparency",  href: "/ai" },
+              { label: "Notification Policy",            href: "/notifications" },
+              { label: "Contact & Data Requests",        href: "/contact" },
+            ].map(({ label, href }) => (
+              <button
+                key={href}
+                onClick={() => navigate(href)}
+                className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 transition-colors text-left"
+              >
+                <span className="text-sm text-slate-700 font-medium">{label}</span>
+                <ChevronRight className="w-4 h-4 text-slate-400" />
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="pb-10 text-center text-xs text-slate-400">
           © {new Date().getFullYear()} UnitDown AI · Commercial HVAC Diagnostics
         </div>
