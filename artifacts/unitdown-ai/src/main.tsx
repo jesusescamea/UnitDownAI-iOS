@@ -6,6 +6,7 @@ import { installIOSPaymentGuard } from "./lib/iosPaymentGuard";
 import { isNative } from "./lib/platform";
 import { RootErrorBoundary } from "./components/RootErrorBoundary";
 import { initTheme } from "./lib/theme";
+import { ThemeProvider } from "./context/ThemeContext";
 
 // Restore saved dark/light preference before React renders so there is no
 // flash of the wrong theme on first paint.
@@ -91,6 +92,7 @@ const proxyUrl = isLiveKey ? `${effectiveOrigin}/api/__clerk` : undefined;
 
 createRoot(document.getElementById("root")!).render(
   <RootErrorBoundary>
+    <ThemeProvider>
     <ClerkProvider
       publishableKey={PUBLISHABLE_KEY}
       proxyUrl={proxyUrl}
@@ -111,5 +113,6 @@ createRoot(document.getElementById("root")!).render(
     >
       <App />
     </ClerkProvider>
+    </ThemeProvider>
   </RootErrorBoundary>
 );

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
+import { useTheme } from "@/context/ThemeContext";
 import { useLocation } from "wouter";
 import { AppNav } from "@/components/AppNav";
 import { useClerk, useSignIn } from "@clerk/clerk-react";
@@ -75,8 +76,6 @@ interface HistoryEntry {
 
 interface Prefs {
   terminologyMode: "beginner" | "technician" | "advanced";
-  darkMode: boolean;
-  fieldMode: boolean;
 }
 
 // ── Storage helpers ────────────────────────────────────────────────────────────
@@ -98,19 +97,19 @@ function loadHistory(): HistoryEntry[] {
 function loadPrefs(): Prefs {
   try {
     const raw = localStorage.getItem(PREFS_KEY);
-    const saved = raw ? (JSON.parse(raw) as Partial<Prefs>) : {};
-    return {
-      terminologyMode: saved.terminologyMode ?? "technician",
-      darkMode: saved.darkMode ?? false,
-      fieldMode: saved.fieldMode ?? false,
-    };
+    const saved = raw ? (JSON.parse(raw) as { terminologyMode?: Prefs["terminologyMode"] }) : {};
+    return { terminologyMode: saved.terminologyMode ?? "technician" };
   } catch {
-    return { terminologyMode: "technician", darkMode: false, fieldMode: false };
+    return { terminologyMode: "technician" };
   }
 }
 
 function savePrefs(p: Prefs) {
-  try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch {}
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    const existing = raw ? (JSON.parse(raw) as Record<string, unknown>) : {};
+    localStorage.setItem(PREFS_KEY, JSON.stringify({ ...existing, ...p }));
+  } catch {}
 }
 
 // ── Section card component ─────────────────────────────────────────────────────
@@ -141,6 +140,7 @@ function Section({
 
 export default function AccountPage() {
   const { user, isLoaded, timedOut: clerkTimedOut } = useClerkTimeout(5_000);
+  const { theme, setTheme } = useTheme();
   const { signOut } = useClerk();
   const { signIn, isLoaded: signInLoaded } = useSignIn();
   const [, navigate] = useLocation();
@@ -175,7 +175,7 @@ export default function AccountPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   // Preferences
-  const [prefs, setPrefs] = useState<Prefs>({ terminologyMode: "technician", darkMode: false, fieldMode: false });
+  const [prefs, setPrefs] = useState<Prefs>({ terminologyMode: "technician" });
 
   // Password reset email
   const [resetLoading, setResetLoading] = useState(false);
@@ -435,16 +435,6 @@ export default function AccountPage() {
     setPrefs((prev) => {
       const next = { ...prev, ...update };
       savePrefs(next);
-      if ("darkMode" in update || "fieldMode" in update) {
-        import("../lib/theme").then(({ applyTheme, applyFieldMode }) => {
-          if (next.fieldMode) {
-            applyFieldMode(true);
-          } else {
-            applyFieldMode(false);
-            applyTheme(next.darkMode);
-          }
-        });
-      }
       return next;
     });
   }
@@ -1068,19 +1058,12 @@ export default function AccountPage() {
                     { id: "field",    label: "Field Mode",  icon: Eye,  sub: "High contrast" },
                   ] as const
                 ).map(({ id, label, icon: Icon, sub }) => {
-                  const active =
-                    (id === "standard" && !prefs.darkMode && !prefs.fieldMode) ||
-                    (id === "dark"     && prefs.darkMode  && !prefs.fieldMode) ||
-                    (id === "field"    && prefs.fieldMode);
+                  const active = id === theme;
                   return (
                     <button
                       key={id}
                       data-no-field-target
-                      onClick={() => {
-                        if (id === "standard") updatePrefs({ darkMode: false, fieldMode: false });
-                        else if (id === "dark")  updatePrefs({ darkMode: true,  fieldMode: false });
-                        else                     updatePrefs({ darkMode: false, fieldMode: true  });
-                      }}
+                      onClick={() => setTheme(id)}
                       data-testid={`prefs-appearance-${id}`}
                       className={`flex flex-col items-center gap-1.5 py-3 px-2 rounded-xl border text-xs font-semibold transition-colors ${
                         active

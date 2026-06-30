@@ -49,7 +49,7 @@ import InstallPromptBanner from "./components/InstallPromptBanner";
 import { ActiveJobBanner } from "./components/job/ActiveJobBanner";
 import EmailWallModal from "./components/EmailWallModal";
 import { getFingerprint } from "./lib/fingerprint";
-import { applyTheme, applyFieldMode } from "./lib/theme";
+import { useTheme } from "./context/ThemeContext";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -1762,21 +1762,7 @@ export function Home() {
   const [selectedUnitContext, setSelectedUnitContext] = useState<Record<string, string | null> | null>(null);
   const { signOut: clerkSignOut } = useClerk();
 
-  // Dark mode — read from html class set by initTheme() at startup
-  const [darkMode, setDarkMode] = useState(() =>
-    document.documentElement.classList.contains("dark")
-  );
-  const toggleDarkMode = useCallback(() => {
-    const next = !darkMode;
-    setDarkMode(next);
-    applyTheme(next);
-    applyFieldMode(false);
-    try {
-      const raw = localStorage.getItem("unitdown_prefs");
-      const prefs = raw ? JSON.parse(raw) : {};
-      localStorage.setItem("unitdown_prefs", JSON.stringify({ ...prefs, darkMode: next, fieldMode: false }));
-    } catch {}
-  }, [darkMode]);
+  const { theme, setTheme } = useTheme();
 
   // Google Play closed testing whitelist — remove or replace after testing.
   const testerEmail = clerkUser?.primaryEmailAddress?.emailAddress;
@@ -2343,12 +2329,12 @@ export function Home() {
 
             {/* Dark mode toggle — always visible */}
             <button
-              onClick={toggleDarkMode}
-              aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+              onClick={() => setTheme(theme === "dark" ? "standard" : "dark")}
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
               className="flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-slate-500 hover:text-slate-800 hover:bg-slate-100 px-2 sm:px-3 py-1.5 rounded-lg transition-colors"
               data-testid="nav-dark-mode-toggle"
             >
-              {darkMode ? (
+              {theme === "dark" ? (
                 <>
                   <Sun className="w-4 h-4" />
                   <span className="hidden sm:inline">Light</span>

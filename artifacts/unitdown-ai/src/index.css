@@ -513,3 +513,71 @@ html.field .rounded-2xl.border.bg-white { background-color: hsl(0 0% 100%) !impo
 
 /* ── Suppress hero gradient overlay so field-mode bg shows through ─────────── */
 html.field [class*="from-blue-50"] { opacity: 0.3 !important; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   FIELD MODE — JMP / FIELD OS DARK CLASS OVERRIDES
+   The JMP dashboard, nav, jobs list, and active job views are dark-first and
+   use bg-gray-950/900/800, text-white, text-gray-100–600, border-gray-800/700.
+   These rules convert that dark palette into the high-contrast light palette
+   for Field Mode, making every page readable in direct sunlight.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Page backgrounds ────────────────────────────────────────────────────── */
+html.field .bg-gray-950 { background-color: hsl(210 18% 92%) !important; }
+html.field .bg-gray-900 { background-color: hsl(0 0% 100%)   !important; }
+html.field .bg-gray-800 { background-color: hsl(210 18% 88%) !important; }
+html.field .bg-gray-700 { background-color: hsl(210 18% 82%) !important; }
+
+/* Semi-transparent dark variants (slash-opacity syntax) */
+html.field [class*="bg-gray-950\/"] { background-color: hsl(210 18% 92% / 0.95) !important; }
+html.field [class*="bg-gray-900\/"] { background-color: hsl(0 0% 100% / 0.95)   !important; }
+html.field [class*="bg-gray-800\/"] { background-color: hsl(210 18% 88% / 0.85) !important; }
+
+/* ── Text ────────────────────────────────────────────────────────────────── */
+html.field .text-white    { color: hsl(222 40% 6%)  !important; }
+html.field .text-gray-100 { color: hsl(222 38% 9%)  !important; }
+html.field .text-gray-200 { color: hsl(222 34% 13%) !important; }
+
+/* ── Borders ─────────────────────────────────────────────────────────────── */
+html.field .border-gray-800 { border-color: hsl(214 18% 60%) !important; }
+html.field .border-gray-700 { border-color: hsl(214 18% 52%) !important; }
+html.field [class*="border-gray-800\/"] { border-color: hsl(214 18% 60% / 0.7) !important; }
+
+/* ── Hover states on dark card rows ──────────────────────────────────────── */
+html.field .hover\:bg-gray-800:hover { background-color: hsl(210 18% 86%) !important; }
+html.field .hover\:bg-gray-700:hover { background-color: hsl(210 18% 80%) !important; }
+html.field .hover\:bg-gray-900:hover { background-color: hsl(210 18% 95%) !important; }
+
+/* ── Status accent cards (dark tinted variants used in ActiveJobView) ─────── */
+html.field [class*="bg-green-950"]  { background-color: hsl(142 60% 94%) !important; }
+html.field [class*="bg-amber-950"]  { background-color: hsl(38 80% 94%)  !important; }
+html.field [class*="bg-purple-950"] { background-color: hsl(270 50% 95%) !important; }
+html.field [class*="bg-red-950"]    { background-color: hsl(0 80% 95%)   !important; }
+html.field [class*="bg-blue-950"]   { background-color: hsl(213 80% 95%) !important; }
+
+/* ── Coloured status text on those cards ─────────────────────────────────── */
+html.field .text-green-400  { color: hsl(142 55% 22%) !important; }
+html.field .text-green-300  { color: hsl(142 52% 26%) !important; }
+html.field .text-amber-400  { color: hsl(38 70% 24%)  !important; }
+html.field .text-amber-300  { color: hsl(38 68% 28%)  !important; }
+html.field .text-purple-400 { color: hsl(270 55% 28%) !important; }
+html.field .text-purple-300 { color: hsl(270 52% 32%) !important; }
+html.field .text-red-400    { color: hsl(0 65% 28%)   !important; }
+html.field .text-red-300    { color: hsl(0 62% 32%)   !important; }
+html.field .text-blue-400   { color: hsl(221 72% 28%) !important; }
+html.field .text-blue-300   { color: hsl(221 68% 32%) !important; }
+html.field .text-blue-500   { color: hsl(221 76% 24%) !important; }
+
+/* ── Nav active chip (bg-blue-600/20) ────────────────────────────────────── */
+html.field [class*="bg-blue-600\/"] { background-color: hsl(221 72% 92%) !important; }
+
+/* ── AppNav border separators ────────────────────────────────────────────── */
+html.field .border-t.border-gray-800,
+html.field .border-b.border-gray-800 { border-color: hsl(214 18% 60%) !important; }
+
+/* ── Left-side status accent borders (job list border-l-*-500) — keep colour */
+/* These are intentional status indicators; do not override. */
+
+/* ── Skeleton / pulse loaders on dark bg ─────────────────────────────────── */
+html.field .bg-gray-600 { background-color: hsl(210 14% 75%) !important; }
+html.field .bg-gray-500 { background-color: hsl(210 12% 68%) !important; }
