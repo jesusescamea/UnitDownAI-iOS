@@ -335,13 +335,55 @@ function inferSystemType(
   return null;
 }
 
+// ─── Carrier serial number year-letter table ──────────────────────────────────
+// Carrier (and Bryant / Payne / ICP) encode manufacture year as the FIRST
+// character of the serial number using an alphabetic table (skipping I, O, Q, U, Z).
+// Format: [year-letter][2-digit week][sequence digits]
+const CARRIER_YEAR_MAP: Record<string, number> = {
+  A:2000, B:2001, C:2002, D:2003, E:2004, F:2005, G:2006, H:2007,
+  J:2008, K:2009, L:2010, M:2011, N:2012, P:2013, R:2014, S:2015,
+  T:2016, V:2017, W:2018, X:2019, Y:2020,
+};
+
+function decodeCarrierSerial(serial: string): string | null {
+  const m = serial.match(/^([A-HJKLMNPRSTVWXY])(\d{2})/i);
+  if (!m) return null;
+  const year = CARRIER_YEAR_MAP[m[1].toUpperCase()];
+  const week = parseInt(m[2], 10);
+  if (!year || week < 1 || week > 52) return null;
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${MONTHS[Math.max(0, Math.min(11, Math.ceil(week / 4.34) - 1))]} ${year}`;
+}
+
+// ─── Goodman / Daikin / Amana serial number decade-letter table ───────────────
+// Format: [decade-letter][year-digit][2-digit week][sequence]
+// Decade: D=2000s, E=2010s, F=2020s
+function decodeGoodmanSerial(serial: string): string | null {
+  const m = serial.match(/^([DEF])(\d)(\d{2})/i);
+  if (!m) return null;
+  const decade  = { D: 2000, E: 2010, F: 2020 }[m[1].toUpperCase() as 'D'|'E'|'F'];
+  if (!decade) return null;
+  const year = decade + parseInt(m[2], 10);
+  const week = parseInt(m[3], 10);
+  if (week < 1 || week > 52) return null;
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${MONTHS[Math.max(0, Math.min(11, Math.ceil(week / 4.34) - 1))]} ${year}`;
+}
+
 // ─── Serial number → manufacture date decoder ─────────────────────────────────
-// Attempts to decode WWYY or YYWW patterns from the first 4 serial digits.
+// Attempts brand-specific formats first, then generic WWYY / YYWW patterns.
 // Returns null when the pattern is ambiguous or yields an implausible date.
 function decodeSerialDate(serial: string | null): string | null {
   if (!serial) return null;
 
-  // Strip non-alphanumeric characters and take the first 4 digits
+  // Brand-specific decoders first — they are unambiguous when they match
+  const carrierDate  = decodeCarrierSerial(serial);
+  if (carrierDate)  return carrierDate;
+
+  const goodmanDate  = decodeGoodmanSerial(serial);
+  if (goodmanDate)  return goodmanDate;
+
+  // Generic WWYY / YYWW decode (covers Lennox, Trane, York, Rheem, and most others)
   const digits = serial.replace(/\D/g, "").slice(0, 4);
   if (digits.length < 4) return null;
 
@@ -364,6 +406,31 @@ function decodeSerialDate(serial: string | null): string | null {
     if (plausibleYear(year)) return `${weekToMonth(b)} ${year}`;
   }
 
+  return null;
+}
+
+// ─── Capacity tons from model number ──────────────────────────────────────────
+// Most manufacturers encode nominal tonnage as a 3-digit segment inside the
+// model number.  The segment must be flanked by a letter on at least one side.
+// 018=1.5T, 024=2T, 030=2.5T, 036=3T, 042=3.5T, 048=4T, 060=5T,
+// 072=6T, 090=7.5T, 102=8.5T, 120=10T
+const TONS_MAP: Record<string, string> = {
+  "018": "1.5", "024": "2.0", "030": "2.5", "036": "3.0", "042": "3.5",
+  "048": "4.0", "060": "5.0", "072": "6.0", "090": "7.5", "102": "8.5",
+  "120": "10.0",
+};
+
+function inferCapacityTonsFromModel(model: string | null): string | null {
+  if (!model) return null;
+  const m = model.toUpperCase().replace(/[\s\-]/g, "");
+  for (const [code, tons] of Object.entries(TONS_MAP)) {
+    // Code between letters: e.g. LGH060P4M → 060 flanked by H and P
+    if (new RegExp(`[A-Z]${code}[A-Z]`).test(m)) return tons;
+    // Code at end after a letter: e.g. XC2060 → 060 after 0 (digit), but try letter boundary
+    if (new RegExp(`[A-Z]${code}$`).test(m)) return tons;
+    // Code at start before a letter: e.g. 060T → occasionally used
+    if (new RegExp(`^${code}[A-Z]`).test(m)) return tons;
+  }
   return null;
 }
 
@@ -421,6 +488,17 @@ function mergeExtractions(
     if (decoded) {
       out.manufactureDate = decoded;
       review.add("manufactureDate");
+    }
+  }
+
+  // ── Capacity tons from model number ───────────────────────────────────────
+  // Fills the gap when the nameplate does not print tons explicitly but the
+  // model number contains the standard 3-digit tonnage segment (036, 048, etc.)
+  if (!out.capacityTons && out.modelNumber) {
+    const inferredTons = inferCapacityTonsFromModel(out.modelNumber as string);
+    if (inferredTons) {
+      out.capacityTons = inferredTons;
+      review.add("capacityTons");
     }
   }
 

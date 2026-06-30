@@ -2,9 +2,8 @@ import { useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Camera, CheckCircle, AlertTriangle, RefreshCw, Edit2,
-  ChevronRight, Search, Plus, Inbox, Loader2, MapPin,
-  Thermometer, Zap, Tag, Calendar, FileText, Link2,
-  Package, UserPlus, Save, Trash2,
+  ChevronRight, Search, Plus, Inbox, Loader2,
+  Zap, Link2, Package, UserPlus, Save, Copy, ChevronDown, ChevronUp,
 } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import NameplateScannerModal from '../../components/NameplateScannerModal';
@@ -118,20 +117,52 @@ function ExtractedFieldsPanel({ fields }: { fields: NameplateFields }) {
       <FieldRow label="Manufacturer"  value={f.manufacturer}     review={review.has('manufacturer')}  missing={missing.has('manufacturer')} />
       <FieldRow label="Model"         value={f.modelNumber}      review={review.has('modelNumber')}   missing={missing.has('modelNumber')} />
       <FieldRow label="Serial"        value={f.serialNumber}     review={review.has('serialNumber')}  missing={missing.has('serialNumber')} />
-      <FieldRow label="Type"          value={f.equipmentType}    review={review.has('equipmentType')} missing={missing.has('equipmentType')} />
+      {f.manufactureDate && <FieldRow label="Mfg Date"     value={f.manufactureDate} review={review.has('manufactureDate')} />}
+      <FieldRow label="Equip Type"    value={f.equipmentType}    review={review.has('equipmentType')} missing={missing.has('equipmentType')} />
       <FieldRow label="System"        value={f.systemType}       review={review.has('systemType')}    />
+      {f.capacityTons && <FieldRow label="Cooling Tons"  value={`${f.capacityTons} Tons`} review={review.has('capacityTons')} />}
+      {f.coolingCapacity && <FieldRow label="Cooling BTUH" value={f.coolingCapacity} />}
+      {f.heatingCapacity && <FieldRow label="Heating BTUH" value={f.heatingCapacity} />}
+      {f.gasType && <FieldRow label="Gas Type"     value={f.gasType}    />}
       <FieldRow label="Refrigerant"   value={f.refrigerantType}  review={review.has('refrigerantType')} missing={missing.has('refrigerantType')} />
-      {f.refrigerantCharge && <FieldRow label="Charge" value={f.refrigerantCharge} />}
+      {f.refrigerantCharge && <FieldRow label="Ref Charge"   value={f.refrigerantCharge} />}
       <FieldRow label="Voltage"       value={f.voltage}          review={review.has('voltage')}       missing={missing.has('voltage')} />
       {(f.phase || f.hertz) && <FieldRow label="Phase / Hz"   value={[f.phase ? `${f.phase}Ø` : null, f.hertz ? `${f.hertz}Hz` : null].filter(Boolean).join(' / ')} />}
-      {f.capacityTons && <FieldRow label="Capacity"      value={`${f.capacityTons} Tons`} review={review.has('capacityTons')} />}
       {f.mca   && <FieldRow label="MCA"          value={`${f.mca}A`}  />}
       {f.mocp  && <FieldRow label="MOCP"         value={`${f.mocp}A`} />}
-      {f.rla   && <FieldRow label="RLA"          value={`${f.rla}A`}  />}
-      {f.gasType && <FieldRow label="Gas"         value={f.gasType}    />}
-      {f.manufactureDate && <FieldRow label="Mfg Date"     value={f.manufactureDate} review={review.has('manufactureDate')} />}
+      {f.rla   && <FieldRow label="RLA / FLA"    value={`${f.rla}A`}  />}
+      {f.lra   && <FieldRow label="LRA"          value={`${f.lra}A`}  />}
     </div>
   );
+}
+
+// ─── Vendor app copy formatter ─────────────────────────────────────────────────
+function formatForVendorApp(f: NameplateFields): string {
+  const row = (label: string, value: string | null | undefined) =>
+    value ? `${label}: ${value}` : null;
+
+  const voltLine = [f.voltage, f.phase ? `${f.phase}Ø` : null, f.hertz ? `${f.hertz}Hz` : null]
+    .filter(Boolean).join(' / ');
+
+  return [
+    row('Manufacturer',  f.manufacturer),
+    row('Model',         f.modelNumber),
+    row('Serial',        f.serialNumber),
+    row('Year',          f.manufactureDate),
+    row('Equipment Type',f.equipmentType),
+    row('System Type',   f.systemType),
+    f.capacityTons ? `Cooling Tons: ${f.capacityTons}T` : null,
+    row('Cooling BTUH',  f.coolingCapacity),
+    voltLine ? `Voltage: ${voltLine}` : null,
+    row('Refrigerant',   f.refrigerantType ? `${f.refrigerantType}${f.refrigerantCharge ? ' — ' + f.refrigerantCharge : ''}` : null),
+    row('Heat Type',     f.systemType?.includes('heat') || f.systemType?.includes('pump') ? f.systemType : null),
+    row('Heat BTUH',     f.heatingCapacity),
+    row('Gas',           f.gasType),
+    row('MCA',           f.mca ? `${f.mca}A` : null),
+    row('MOCP',          f.mocp ? `${f.mocp}A` : null),
+    row('RLA / FLA',     f.rla  ? `${f.rla}A`  : null),
+    row('LRA',           f.lra  ? `${f.lra}A`  : null),
+  ].filter(Boolean).join('\n');
 }
 
 // ─── Unit search hook ─────────────────────────────────────────────────────────
@@ -613,16 +644,21 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
   const [screen,        setScreen]        = useState<Screen>('scanning');
   const [scannerOpen,   setScannerOpen]   = useState(true);
   const [fields,        setFields]        = useState<NameplateFields>({});
+  const [previewUrl,    setPreviewUrl]    = useState<string | null>(null);
   const [ocrLoading,    setOcrLoading]    = useState(false);
   const [ocrError,      setOcrError]      = useState('');
   const [successMsg,    setSuccessMsg]    = useState('');
+  const [rawExpanded,   setRawExpanded]   = useState(false);
+  const [copyToast,     setCopyToast]     = useState(false);
 
   // ── Camera capture → run OCR ───────────────────────────────────────────────
-  const handleCapture = useCallback(async (blob: Blob, _previewUrl: string) => {
+  const handleCapture = useCallback(async (blob: Blob, capturedPreviewUrl: string) => {
     setScannerOpen(false);
     setScreen('ocr_loading');
     setOcrLoading(true);
     setOcrError('');
+    setPreviewUrl(capturedPreviewUrl);
+    setRawExpanded(false);
 
     try {
       const fd = new FormData();
@@ -719,30 +755,96 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
           <div className="flex flex-col h-full">
             <ScreenHeader title="Nameplate Scan Result" onClose={onClose} />
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-3">
+
+              {/* Image preview thumbnail */}
+              {previewUrl && (
+                <div className="rounded-2xl overflow-hidden border border-gray-800 bg-gray-900">
+                  <img
+                    src={previewUrl}
+                    alt="Captured nameplate"
+                    className="w-full object-contain max-h-36"
+                    style={{ imageRendering: 'crisp-edges' }}
+                  />
+                </div>
+              )}
+
               {typeof fields.confidence === 'number' && <ConfidenceBar confidence={fields.confidence} />}
-              <ExtractedFieldsPanel fields={fields} />
+
               {(fields.reviewFields?.length ?? 0) > 0 && (
                 <div className="bg-amber-950/25 border border-amber-800/40 rounded-xl px-3 py-2">
                   <p className="text-[10px] text-amber-400 font-semibold">
-                    {fields.reviewFields?.length} field{(fields.reviewFields?.length ?? 0) !== 1 ? 's' : ''} need review — tap Edit to correct
+                    {fields.reviewFields?.length} field{(fields.reviewFields?.length ?? 0) !== 1 ? 's' : ''} marked "Review" — verify before saving
                   </p>
                 </div>
               )}
+
+              <ExtractedFieldsPanel fields={fields} />
+
+              {/* Raw OCR text (collapsible) */}
+              {fields.rawText && (
+                <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+                  <button
+                    onClick={() => setRawExpanded(e => !e)}
+                    className="w-full flex items-center justify-between px-4 py-3 text-left"
+                  >
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500">Raw OCR Text</span>
+                    {rawExpanded ? <ChevronUp size={12} className="text-gray-600" /> : <ChevronDown size={12} className="text-gray-600" />}
+                  </button>
+                  {rawExpanded && (
+                    <div className="px-4 pb-4">
+                      <pre className="text-[10px] text-gray-400 font-mono whitespace-pre-wrap leading-relaxed break-all">
+                        {fields.rawText}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
+
             <div className="px-4 pb-6 pt-2 space-y-2 border-t border-gray-800">
+              {/* Copy toast feedback */}
+              <AnimatePresence>
+                {copyToast && (
+                  <motion.div
+                    initial={{ opacity: 0, y: 4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}
+                    className="text-center text-xs text-green-400 font-semibold py-1"
+                  >
+                    Copied to clipboard ✓
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Action row: Retake / Edit / Copy */}
               <div className="flex gap-2">
-                <button onClick={() => { setScannerOpen(true); setScreen('scanning'); }}
-                  className="flex-1 flex items-center justify-center gap-1.5 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300">
+                <button
+                  onClick={() => { setScannerOpen(true); setScreen('scanning'); setPreviewUrl(null); }}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
+                >
                   <RefreshCw size={12} /> Retake
                 </button>
-                <button onClick={() => setScreen('manual_entry')}
-                  className="flex-1 flex items-center justify-center gap-1.5 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300">
+                <button
+                  onClick={() => setScreen('manual_entry')}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
+                >
                   <Edit2 size={12} /> Edit
                 </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(formatForVendorApp(fields));
+                      setCopyToast(true);
+                      setTimeout(() => setCopyToast(false), 2500);
+                    } catch { /* clipboard blocked */ }
+                  }}
+                  className="flex-1 flex items-center justify-center gap-1.5 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
+                >
+                  <Copy size={12} /> Copy
+                </button>
               </div>
+
               <button onClick={() => setScreen('choose_action')}
                 className="w-full bg-white text-gray-950 font-bold py-4 rounded-2xl text-sm active:scale-[0.98] transition-transform">
-                Continue — Choose Action
+                Save to Equipment
               </button>
             </div>
           </div>
