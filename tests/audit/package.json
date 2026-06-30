@@ -1,0 +1,16 @@
+{
+  "name": "@workspace/audit",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "audit": "playwright test",
+    "audit:headed": "playwright test --headed",
+    "audit:debug": "playwright test --debug",
+    "audit:report": "playwright show-report audit-report",
+    "audit:install": "playwright install chromium --with-deps",
+    "audit:setup-auth": "playwright test --project=setup --headed"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
+  }
+}
