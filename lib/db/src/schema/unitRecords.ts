@@ -32,6 +32,13 @@ export const unitRecords = pgTable(
     manufactureDate: text("manufacture_date"),
     notes: text("notes"),
 
+    filterSize:             text("filter_size"),
+    filterQty:              text("filter_qty"),
+    beltSize:               text("belt_size"),
+    beltQty:                text("belt_qty"),
+    beltNotes:              text("belt_notes"),
+    maintenanceVerifiedAt:  text("maintenance_verified_at"),
+
     nameplateImageUrl: text("nameplate_image_url"),
     nameplatePreviewUrl: text("nameplate_preview_url"),
 

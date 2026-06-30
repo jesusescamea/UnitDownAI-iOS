@@ -1,13 +1,38 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Camera, CheckCircle, AlertTriangle, RefreshCw, Edit2,
   ChevronRight, Search, Plus, Inbox, Loader2,
   Zap, Link2, Package, UserPlus, Save, Copy, ChevronDown, ChevronUp,
+  Wrench,
 } from 'lucide-react';
 import { useUser } from '@clerk/clerk-react';
 import NameplateScannerModal from '../../components/NameplateScannerModal';
 import { useUnassignedScans, type NameplateFields } from './useUnassignedScans';
+
+// ─── Parts lookup types (mirror server-side PartsLookupResult) ────────────────
+interface PartsLookupResult {
+  filterSize:    string | null;
+  filterQty:     string | null;
+  beltSize:      string | null;
+  beltQty:       string | null;
+  beltType:      string | null;
+  beltNotes:     string | null;
+  oemFilterPart: string | null;
+  oemBeltPart:   string | null;
+  confidence:    'high' | 'medium' | 'verify_required';
+  source:        string | null;
+  notes:         string | null;
+}
+
+interface ConfirmedParts {
+  filterSize: string | null;
+  filterQty:  string | null;
+  beltSize:   string | null;
+  beltQty:    string | null;
+  beltNotes:  string | null;
+  maintenanceVerifiedAt: string;
+}
 
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 function getClientId(): string {
@@ -242,8 +267,8 @@ function ManualEntryScreen({
 
 // ─── Link existing unit screen ────────────────────────────────────────────────
 function LinkExistingScreen({
-  fields, onLinked, onBack,
-}: { fields: NameplateFields; onLinked: () => void; onBack: () => void }) {
+  fields, confirmedParts, onLinked, onBack,
+}: { fields: NameplateFields; confirmedParts?: ConfirmedParts | null; onLinked: () => void; onBack: () => void }) {
   const { query, results, loading, error, search } = useUnitSearch();
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
@@ -274,6 +299,14 @@ function LinkExistingScreen({
             lra:             fields.lra             ?? undefined,
             capacityTons:    fields.capacityTons    ?? undefined,
             manufactureDate: fields.manufactureDate ?? undefined,
+            ...(confirmedParts ? {
+              filterSize:            confirmedParts.filterSize,
+              filterQty:             confirmedParts.filterQty,
+              beltSize:              confirmedParts.beltSize,
+              beltQty:               confirmedParts.beltQty,
+              beltNotes:             confirmedParts.beltNotes,
+              maintenanceVerifiedAt: confirmedParts.maintenanceVerifiedAt,
+            } : {}),
           },
         }),
       });
@@ -369,8 +402,8 @@ function LinkExistingScreen({
 
 // ─── Customer search + new unit form ──────────────────────────────────────────
 function CustomerSearchScreen({
-  fields, onCreated, onBack,
-}: { fields: NameplateFields; onCreated: () => void; onBack: () => void }) {
+  fields, confirmedParts, onCreated, onBack,
+}: { fields: NameplateFields; confirmedParts?: ConfirmedParts | null; onCreated: () => void; onBack: () => void }) {
   const { query, results, loading, search } = useUnitSearch();
   const [customerName, setCustomerName] = useState('');
   const [phase2, setPhase2] = useState(false); // when true, show new unit form
@@ -384,7 +417,7 @@ function CustomerSearchScreen({
   }
 
   if (phase2) {
-    return <NewUnitFormScreen customerName={customerName} fields={fields} onCreated={onCreated} onBack={() => setPhase2(false)} />;
+    return <NewUnitFormScreen customerName={customerName} fields={fields} confirmedParts={confirmedParts} onCreated={onCreated} onBack={() => setPhase2(false)} />;
   }
 
   return (
@@ -446,8 +479,8 @@ function CustomerSearchScreen({
 
 // ─── New unit form ─────────────────────────────────────────────────────────────
 function NewUnitFormScreen({
-  customerName, fields, onCreated, onBack,
-}: { customerName: string; fields: NameplateFields; onCreated: () => void; onBack: () => void }) {
+  customerName, fields, confirmedParts, onCreated, onBack,
+}: { customerName: string; fields: NameplateFields; confirmedParts?: ConfirmedParts | null; onCreated: () => void; onBack: () => void }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [nickname, setNickname] = useState('');
@@ -484,6 +517,14 @@ function NewUnitFormScreen({
             capacityTons:     fields.capacityTons    ?? null,
             manufactureDate:  fields.manufactureDate ?? null,
             notes:            notes.trim()           || null,
+            ...(confirmedParts ? {
+              filterSize:            confirmedParts.filterSize,
+              filterQty:             confirmedParts.filterQty,
+              beltSize:              confirmedParts.beltSize,
+              beltQty:               confirmedParts.beltQty,
+              beltNotes:             confirmedParts.beltNotes,
+              maintenanceVerifiedAt: confirmedParts.maintenanceVerifiedAt,
+            } : {}),
           },
         }),
       });
@@ -538,13 +579,13 @@ function NewUnitFormScreen({
 
 // ─── Create new customer + unit ────────────────────────────────────────────────
 function CreateNewScreen({
-  fields, onCreated, onBack,
-}: { fields: NameplateFields; onCreated: () => void; onBack: () => void }) {
+  fields, confirmedParts, onCreated, onBack,
+}: { fields: NameplateFields; confirmedParts?: ConfirmedParts | null; onCreated: () => void; onBack: () => void }) {
   const [customerName, setCustomerName] = useState('');
   const [phase2, setPhase2] = useState(false);
 
   if (phase2 && customerName.trim()) {
-    return <NewUnitFormScreen customerName={customerName.trim()} fields={fields} onCreated={onCreated} onBack={() => setPhase2(false)} />;
+    return <NewUnitFormScreen customerName={customerName.trim()} fields={fields} confirmedParts={confirmedParts} onCreated={onCreated} onBack={() => setPhase2(false)} />;
   }
 
   const inp = 'w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-blue-500';
@@ -631,6 +672,213 @@ function SaveUnassignedScreen({
   );
 }
 
+// ─── Parts lookup card (shown on ocr_result screen) ───────────────────────────
+function PartsLookupCard({
+  result, loading, confirmed, onConfirm, onClear,
+}: {
+  result:    PartsLookupResult | null;
+  loading:   boolean;
+  confirmed: ConfirmedParts | null;
+  onConfirm: (p: ConfirmedParts) => void;
+  onClear:   () => void;
+}) {
+  const [open,       setOpen]       = useState(true);
+  const [editing,    setEditing]    = useState(false);
+  const [filterSize, setFilterSize] = useState('');
+  const [filterQty,  setFilterQty]  = useState('');
+  const [beltSize,   setBeltSize]   = useState('');
+  const [beltQty,    setBeltQty]    = useState('');
+  const [beltNotes,  setBeltNotes]  = useState('');
+
+  // Sync editable state when lookup result arrives
+  useEffect(() => {
+    if (!result) return;
+    setFilterSize(result.filterSize ?? '');
+    setFilterQty(result.filterQty ?? '');
+    setBeltSize(result.beltSize ?? '');
+    setBeltQty(result.beltQty ?? '');
+    setBeltNotes(result.beltNotes ?? '');
+    // Auto-enter edit mode when verify required so tech sees empty fields immediately
+    setEditing(result.confidence === 'verify_required');
+  }, [result]);
+
+  // Sync editable state when confirmed parts are set externally
+  useEffect(() => {
+    if (!confirmed) return;
+    setFilterSize(confirmed.filterSize ?? '');
+    setFilterQty(confirmed.filterQty ?? '');
+    setBeltSize(confirmed.beltSize ?? '');
+    setBeltQty(confirmed.beltQty ?? '');
+    setBeltNotes(confirmed.beltNotes ?? '');
+  }, [confirmed]);
+
+  const inp = 'w-full bg-gray-700 border border-gray-600 rounded-lg px-2.5 py-2 text-xs text-white placeholder-gray-500 focus:outline-none focus:border-blue-500 transition-colors';
+
+  const badge =
+    !result    ? null :
+    result.confidence === 'high'             ? { cls: 'bg-green-900/40 text-green-400 border-green-800/50',  label: 'Match Found' } :
+    result.confidence === 'medium'           ? { cls: 'bg-amber-900/40 text-amber-400 border-amber-800/50', label: 'Verify Recommended' } :
+                                               { cls: 'bg-red-900/30  text-red-400   border-red-800/40',    label: 'Verify Required' };
+
+  function handleConfirm() {
+    const cp: ConfirmedParts = {
+      filterSize: filterSize.trim() || null,
+      filterQty:  filterQty.trim()  || null,
+      beltSize:   beltSize.trim()   || null,
+      beltQty:    beltQty.trim()    || null,
+      beltNotes:  beltNotes.trim()  || null,
+      maintenanceVerifiedAt: new Date().toISOString().slice(0, 10),
+    };
+    onConfirm(cp);
+    setEditing(false);
+  }
+
+  const isEditing = editing || (!confirmed && !loading && !!result);
+
+  return (
+    <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
+      {/* Header row */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between px-4 py-3 text-left"
+      >
+        <div className="flex items-center gap-2 flex-wrap">
+          <Wrench size={12} className="text-blue-400 flex-shrink-0" />
+          <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Maintenance Parts</span>
+          {confirmed && !editing && (
+            <span className="text-[8px] bg-green-900/40 text-green-400 border border-green-800/50 px-1.5 py-0.5 rounded font-bold">CONFIRMED</span>
+          )}
+          {!confirmed && badge && (
+            <span className={`text-[8px] border px-1.5 py-0.5 rounded font-bold ${badge.cls}`}>{badge.label}</span>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          {loading && <Loader2 size={10} className="animate-spin text-gray-500" />}
+          {open ? <ChevronUp size={12} className="text-gray-600" /> : <ChevronDown size={12} className="text-gray-600" />}
+        </div>
+      </button>
+
+      {open && (
+        <div className="px-4 pb-4 space-y-3">
+
+          {/* Loading state */}
+          {loading && (
+            <div className="flex items-center gap-2 py-1 text-gray-500">
+              <Loader2 size={12} className="animate-spin" />
+              <span className="text-xs">Looking up parts data…</span>
+            </div>
+          )}
+
+          {/* Source note */}
+          {!loading && result?.source && (
+            <div className="text-[10px] text-gray-600">Source: {result.source}</div>
+          )}
+
+          {/* Guidance note */}
+          {!loading && result?.notes && (
+            <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+              <p className="text-[10px] text-gray-400 leading-relaxed">{result.notes}</p>
+            </div>
+          )}
+
+          {/* Belt notes (IOM reminder) */}
+          {!loading && result?.beltNotes && !isEditing && (
+            <div className="bg-amber-950/20 border border-amber-900/40 rounded-xl px-3 py-2">
+              <p className="text-[10px] text-amber-400 leading-relaxed">{result.beltNotes}</p>
+            </div>
+          )}
+
+          {/* Confirmed read-only view */}
+          {confirmed && !editing && !loading && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Filter Size</div>
+                  <div className="text-xs text-white font-medium mt-0.5">{confirmed.filterSize || '—'}</div>
+                </div>
+                <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Filter Qty</div>
+                  <div className="text-xs text-white font-medium mt-0.5">{confirmed.filterQty || '—'}</div>
+                </div>
+                <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Belt Size</div>
+                  <div className="text-xs text-white font-medium mt-0.5">{confirmed.beltSize || '—'}</div>
+                </div>
+                <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500">Belt Qty</div>
+                  <div className="text-xs text-white font-medium mt-0.5">{confirmed.beltQty || '—'}</div>
+                </div>
+              </div>
+              {confirmed.beltNotes && (
+                <div className="bg-gray-800/60 rounded-xl px-3 py-2">
+                  <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-0.5">Belt Notes</div>
+                  <div className="text-[10px] text-gray-400 leading-relaxed">{confirmed.beltNotes}</div>
+                </div>
+              )}
+              <div className="text-[10px] text-gray-600">Verified: {confirmed.maintenanceVerifiedAt}</div>
+              <div className="flex gap-2">
+                <button onClick={() => setEditing(true)}
+                  className="flex-1 bg-gray-800 border border-gray-700 rounded-xl py-2 text-xs font-semibold text-gray-300 active:bg-gray-700">
+                  Edit
+                </button>
+                <button onClick={onClear}
+                  className="px-3 bg-gray-800 border border-gray-700 rounded-xl py-2 text-xs text-gray-500 active:bg-gray-700">
+                  Clear
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Edit / entry form */}
+          {!loading && isEditing && (
+            <div className="space-y-2">
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1">Filter Size</label>
+                  <input className={inp} value={filterSize} onChange={e => setFilterSize(e.target.value)} placeholder="e.g. 20×25×2" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1">Filter Qty</label>
+                  <input className={inp} value={filterQty} onChange={e => setFilterQty(e.target.value)} placeholder="e.g. 4" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1">Belt Size</label>
+                  <input className={inp} value={beltSize} onChange={e => setBeltSize(e.target.value)} placeholder="e.g. B55" />
+                </div>
+                <div>
+                  <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1">Belt Qty</label>
+                  <input className={inp} value={beltQty} onChange={e => setBeltQty(e.target.value)} placeholder="e.g. 1" />
+                </div>
+              </div>
+              <div>
+                <label className="block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1">Belt Notes</label>
+                <input className={inp} value={beltNotes} onChange={e => setBeltNotes(e.target.value)} placeholder="e.g. B-section, verify with IOM" />
+              </div>
+              <button onClick={handleConfirm}
+                className="w-full bg-blue-700 text-white font-bold py-2.5 rounded-xl text-xs active:bg-blue-600 transition-colors flex items-center justify-center gap-1.5">
+                <CheckCircle size={12} /> Confirm &amp; Save to Unit Record
+              </button>
+              {confirmed && (
+                <button onClick={() => setEditing(false)}
+                  className="w-full bg-gray-800 border border-gray-700 text-gray-300 font-semibold py-2 rounded-xl text-xs active:bg-gray-700">
+                  Cancel
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Empty state — no result and not loading */}
+          {!loading && !result && (
+            <div className="text-[10px] text-gray-600 py-1">
+              Enter manufacturer and model number to look up filter and belt data.
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main modal ───────────────────────────────────────────────────────────────
 interface Props {
   onClose: () => void;
@@ -650,6 +898,28 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
   const [successMsg,    setSuccessMsg]    = useState('');
   const [rawExpanded,   setRawExpanded]   = useState(false);
   const [copyToast,     setCopyToast]     = useState(false);
+  const [partsResult,   setPartsResult]   = useState<PartsLookupResult | null>(null);
+  const [partsLoading,  setPartsLoading]  = useState(false);
+  const [confirmedParts, setConfirmedParts] = useState<ConfirmedParts | null>(null);
+
+  // ── Auto-fetch parts lookup when OCR result is ready ──────────────────────
+  useEffect(() => {
+    if (screen !== 'ocr_result') return;
+    if (!fields.manufacturer && !fields.modelNumber) return;
+    let cancelled = false;
+    setPartsLoading(true);
+    setPartsResult(null);
+    fetch('/api/nameplate/parts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ manufacturer: fields.manufacturer, modelNumber: fields.modelNumber }),
+    })
+      .then(r => r.json())
+      .then(d => { if (!cancelled) setPartsResult((d as { parts: PartsLookupResult }).parts ?? null); })
+      .catch(() => { /* silent fail — parts lookup is best-effort */ })
+      .finally(() => { if (!cancelled) setPartsLoading(false); });
+    return () => { cancelled = true; };
+  }, [screen, fields.manufacturer, fields.modelNumber]);
 
   // ── Camera capture → run OCR ───────────────────────────────────────────────
   const handleCapture = useCallback(async (blob: Blob, capturedPreviewUrl: string) => {
@@ -679,6 +949,8 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
       if (filled.length === 0 && !ext.rawText) throw new Error('no_fields');
 
       setFields(ext);
+      setPartsResult(null);
+      setConfirmedParts(null);
       setScreen('ocr_result');
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'OCR failed';
@@ -780,6 +1052,15 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
 
               <ExtractedFieldsPanel fields={fields} />
 
+              {/* Parts lookup card */}
+              <PartsLookupCard
+                result={partsResult}
+                loading={partsLoading}
+                confirmed={confirmedParts}
+                onConfirm={setConfirmedParts}
+                onClear={() => setConfirmedParts(null)}
+              />
+
               {/* Raw OCR text (collapsible) */}
               {fields.rawText && (
                 <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
@@ -817,7 +1098,7 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
               {/* Action row: Retake / Edit / Copy */}
               <div className="flex gap-2">
                 <button
-                  onClick={() => { setScannerOpen(true); setScreen('scanning'); setPreviewUrl(null); }}
+                  onClick={() => { setScannerOpen(true); setScreen('scanning'); setPreviewUrl(null); setPartsResult(null); setConfirmedParts(null); }}
                   className="flex-1 flex items-center justify-center gap-1.5 bg-gray-800 border border-gray-700 rounded-2xl py-3 text-xs font-semibold text-gray-300 active:bg-gray-700"
                 >
                   <RefreshCw size={12} /> Retake
@@ -863,7 +1144,7 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
                 <div className="text-xs text-gray-400 max-w-xs leading-relaxed">{ocrError || 'No readable nameplate found. Try again closer to the data plate.'}</div>
               </div>
               <div className="w-full max-w-xs space-y-2">
-                <button onClick={() => { setOcrError(''); setScannerOpen(true); setScreen('scanning'); }}
+                <button onClick={() => { setOcrError(''); setScannerOpen(true); setScreen('scanning'); setPartsResult(null); setConfirmedParts(null); }}
                   className="w-full flex items-center justify-center gap-2 bg-blue-700 text-white font-bold py-4 rounded-2xl text-sm">
                   <Camera size={15} /> Retake Photo
                 </button>
@@ -935,6 +1216,7 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
         {screen === 'link_existing' && (
           <LinkExistingScreen
             fields={fields}
+            confirmedParts={confirmedParts}
             onLinked={() => { setSuccessMsg('Nameplate linked to existing unit.'); setScreen('success'); }}
             onBack={() => setScreen('choose_action')}
           />
@@ -944,6 +1226,7 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
         {screen === 'customer_search' && (
           <CustomerSearchScreen
             fields={fields}
+            confirmedParts={confirmedParts}
             onCreated={() => { setSuccessMsg('New unit created successfully.'); setScreen('success'); }}
             onBack={() => setScreen('choose_action')}
           />
@@ -953,6 +1236,7 @@ export function NameplateWorkflowModal({ onClose, onViewUnassigned }: Props) {
         {screen === 'create_new' && (
           <CreateNewScreen
             fields={fields}
+            confirmedParts={confirmedParts}
             onCreated={() => { setSuccessMsg('New customer and unit created.'); setScreen('success'); }}
             onBack={() => setScreen('choose_action')}
           />

@@ -1,6 +1,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import multer from "multer";
 import { openai } from "@workspace/integrations-openai-ai-server";
+import { lookupParts } from "../data/partsLookup.js";
 
 const nameplateRouter = Router();
 
@@ -635,5 +636,18 @@ nameplateRouter.post(
     }
   },
 );
+
+// ─── POST /api/nameplate/parts ────────────────────────────────────────────────
+// Returns filter/belt size lookup for a given manufacturer + model number.
+// Does NOT require authentication — lookup is entirely from static data.
+// Body: { manufacturer?: string; modelNumber?: string }
+nameplateRouter.post("/nameplate/parts", async (req: Request, res: Response) => {
+  const { manufacturer, modelNumber } = req.body ?? {};
+  const parts = lookupParts(
+    typeof manufacturer === "string" ? manufacturer : null,
+    typeof modelNumber  === "string" ? modelNumber  : null,
+  );
+  res.json({ parts });
+});
 
 export default nameplateRouter;

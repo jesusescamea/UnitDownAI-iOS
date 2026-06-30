@@ -228,6 +228,12 @@ unitsRouter.post("/units", async (req: Request, res: Response) => {
     capacityTons: unit.capacityTons ?? null,
     manufactureDate: unit.manufactureDate ?? null,
     notes: unit.notes ?? null,
+    filterSize:            unit.filterSize            ?? null,
+    filterQty:             unit.filterQty             ?? null,
+    beltSize:              unit.beltSize              ?? null,
+    beltQty:               unit.beltQty              ?? null,
+    beltNotes:             unit.beltNotes             ?? null,
+    maintenanceVerifiedAt: unit.maintenanceVerifiedAt ?? null,
     nameplateImageUrl: unit.nameplateImageUrl ?? null,
     nameplatePreviewUrl: unit.nameplatePreviewUrl ?? null,
     isFavorite: typeof unit.isFavorite === "boolean" ? unit.isFavorite : false,
@@ -257,6 +263,7 @@ unitsRouter.patch("/units/:id", async (req: Request, res: Response) => {
     "equipmentType","systemType","refrigerantType","voltage","phase","mca","mocp","rla",
     "lra","capacityTons","manufactureDate","notes","nameplateImageUrl","nameplatePreviewUrl",
     "isFavorite",
+    "filterSize","filterQty","beltSize","beltQty","beltNotes","maintenanceVerifiedAt",
   ];
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   for (const key of allowed) {

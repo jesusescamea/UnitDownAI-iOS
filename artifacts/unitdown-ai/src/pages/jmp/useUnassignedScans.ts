@@ -20,10 +20,16 @@ export interface NameplateFields {
   capacityTons?:      string | null;
   gasType?:           string | null;
   manufactureDate?:   string | null;
-  confidence?:        number;
-  reviewFields?:      string[];
-  missing_fields?:    string[];
-  rawText?:           string;
+  confidence?:           number;
+  reviewFields?:         string[];
+  missing_fields?:       string[];
+  rawText?:              string;
+  filterSize?:           string | null;
+  filterQty?:            string | null;
+  beltSize?:             string | null;
+  beltQty?:              string | null;
+  beltNotes?:            string | null;
+  maintenanceVerifiedAt?: string | null;
 }
 
 export interface UnassignedScan {
