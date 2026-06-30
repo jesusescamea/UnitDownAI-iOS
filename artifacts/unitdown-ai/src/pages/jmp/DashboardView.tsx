@@ -103,6 +103,9 @@ export function DashboardView({ onStartJob }: Props) {
   const [selectedJob,     setSelectedJob]     = useState<TodayJob | null>(null);
   const [selectedDay,     setSelectedDay]     = useState<{ day: number; events: CalendarEvent[] } | null>(null);
   const [calFullScreen,   setCalFullScreen]   = useState(false);
+  const [calendarMonth,   setCalendarMonth]   = useState<Date>(() => {
+    const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
   const [accountOpen,     setAccountOpen]     = useState(false);
   const [overviewFilter,  setOverviewFilter]  = useState<string | null>(null);
   const [equipmentDetail, setEquipmentDetail] = useState<EquipmentAttention | null>(null);
@@ -189,12 +192,41 @@ export function DashboardView({ onStartJob }: Props) {
   }
 
   function handleAddJobFromCalendar() {
-    const today = new Date();
-    const date = selectedDay
-      ? new Date(today.getFullYear(), today.getMonth(), selectedDay.day).toISOString().split('T')[0]
-      : today.toISOString().split('T')[0];
+    const realToday = new Date();
+    const isCurrentMonth =
+      calendarMonth.getFullYear() === realToday.getFullYear() &&
+      calendarMonth.getMonth()    === realToday.getMonth();
+    const day = selectedDay?.day ?? (isCurrentMonth ? realToday.getDate() : 1);
+    const date = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), day)
+      .toISOString().split('T')[0];
     setPrefillDate(date);
     setWizardOpen(true);
+  }
+
+  function handlePrevMonth() {
+    setCalendarMonth(d => new Date(d.getFullYear(), d.getMonth() - 1, 1));
+    setSelectedDay(prev => {
+      if (!prev) return prev;
+      const nm = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() - 1, 1);
+      const days = new Date(nm.getFullYear(), nm.getMonth() + 1, 0).getDate();
+      return prev.day <= days ? prev : { ...prev, day: days };
+    });
+  }
+
+  function handleNextMonth() {
+    setCalendarMonth(d => new Date(d.getFullYear(), d.getMonth() + 1, 1));
+    setSelectedDay(prev => {
+      if (!prev) return prev;
+      const nm = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 1);
+      const days = new Date(nm.getFullYear(), nm.getMonth() + 1, 0).getDate();
+      return prev.day <= days ? prev : { ...prev, day: days };
+    });
+  }
+
+  function handleGoToday() {
+    const d = new Date();
+    setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    setSelectedDay({ day: d.getDate(), events: [] });
   }
 
   const { realJobs, realCalEvents, realStats, realEquipment, realActivity } = useDashboardData(clerkUser?.id ?? '');
@@ -283,6 +315,10 @@ export function DashboardView({ onStartJob }: Props) {
         <CalendarCard
           events={[...realCalEvents, ...userCalEvents]}
           currentDate={now}
+          calendarMonth={calendarMonth}
+          onPrevMonth={handlePrevMonth}
+          onNextMonth={handleNextMonth}
+          onGoToday={handleGoToday}
           jobsToday={allJobs.length}
           onDayTap={(day, evts) => setSelectedDay({ day, events: evts })}
           onExpand={() => setCalFullScreen(true)}
@@ -586,7 +622,9 @@ export function DashboardView({ onStartJob }: Props) {
       <AnimatePresence>
         {calFullScreen && (
           <FullScreenCalendar
-            events={[...realCalEvents, ...userCalEvents]} currentDate={now}
+            events={[...realCalEvents, ...userCalEvents]}
+            currentDate={now}
+            initialMonth={calendarMonth}
             onClose={() => setCalFullScreen(false)}
             onDayTap={(d, e) => { setCalFullScreen(false); setSelectedDay({ day: d, events: e }); }}
           />
@@ -677,7 +715,10 @@ export function DashboardView({ onStartJob }: Props) {
           <Sheet onClose={() => setSelectedDay(null)}>
             <div className="px-5 pt-5 pb-4 border-b border-gray-800 flex items-center justify-between">
               <div>
-                <div className="text-xs text-gray-500 font-mono mb-1">June {selectedDay.day}, 2026</div>
+                <div className="text-xs text-gray-500 font-mono mb-1">
+                  {new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), selectedDay.day)
+                    .toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                </div>
                 <h2 className="text-lg font-bold text-white">
                   {selectedDay.events.length === 0 ? 'No scheduled work' : `${selectedDay.events.length} event${selectedDay.events.length !== 1 ? 's' : ''}`}
                 </h2>
@@ -987,32 +1028,61 @@ function AiDayBrief({ jobCount = 0, jobs = [] }: { jobCount?: number; jobs?: Tod
 // ─── Compact Calendar Card ─────────────────────────────────────────────────────
 const DAY_LABELS = ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'];
 
-function CalendarCard({ events, currentDate, jobsToday, onDayTap, onExpand, onAddJob }: {
-  events: CalendarEvent[]; currentDate: Date; jobsToday: number;
+function CalendarCard({ events, currentDate, calendarMonth, onPrevMonth, onNextMonth, onGoToday, jobsToday, onDayTap, onExpand, onAddJob }: {
+  events: CalendarEvent[];
+  currentDate: Date;
+  calendarMonth: Date;
+  onPrevMonth: () => void;
+  onNextMonth: () => void;
+  onGoToday: () => void;
+  jobsToday: number;
   onDayTap: (day: number, events: CalendarEvent[]) => void;
   onExpand: () => void;
   onAddJob: () => void;
 }) {
-  const today = currentDate.getDate();
-  const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
-  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-  const monthYear = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const eventMap = buildEventMap(events);
-  const cells = buildCells(firstDay, daysInMonth);
+  const realToday = currentDate;
+  const isCurrentMonth =
+    calendarMonth.getFullYear() === realToday.getFullYear() &&
+    calendarMonth.getMonth()    === realToday.getMonth();
+  const todayDayNum  = isCurrentMonth ? realToday.getDate() : -1;
+  const firstDay    = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay();
+  const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
+  const monthYear   = calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+  const eventMap    = buildEventMap(events);
+  const cells       = buildCells(firstDay, daysInMonth);
   const rows: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
 
-  const pmsThisWeek = events.filter(e => e.type === 'pm' && e.day >= today && e.day <= today + 7).length;
-  const followups = events.filter(e => e.type === 'followup').length;
+  const pmsThisMonth = events.filter(e => e.type === 'pm').length;
+  const followups    = events.filter(e => e.type === 'followup').length;
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-gray-800">
-        <div className="flex items-center gap-2">
-          <CalIcon size={12} className="text-blue-400" />
-          <span className="text-xs font-bold text-white tracking-wide">{monthYear}</span>
+      {/* Header row */}
+      <div className="flex items-center justify-between px-3 py-2.5 border-b border-gray-800">
+        {/* Month navigator */}
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onPrevMonth}
+            aria-label="Previous month"
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 active:scale-90 transition-all"
+          >
+            <ChevronLeft size={14} />
+          </button>
+          <div className="flex items-center gap-1.5 px-1">
+            <CalIcon size={11} className="text-blue-400 flex-shrink-0" />
+            <span className="text-xs font-bold text-white tracking-wide">{monthYear}</span>
+          </div>
+          <button
+            onClick={onNextMonth}
+            aria-label="Next month"
+            className="w-7 h-7 flex items-center justify-center rounded-lg text-gray-400 hover:text-white hover:bg-gray-800 active:scale-90 transition-all"
+          >
+            <ChevronRight size={14} />
+          </button>
         </div>
-        <div className="flex items-center gap-3">
+        {/* Right controls */}
+        <div className="flex items-center gap-2">
           <button onClick={onAddJob} className="flex items-center gap-1 text-[10px] font-semibold text-blue-400 hover:text-blue-300 active:scale-95 transition-all">
             <Plus size={11} /><span>Add Job</span>
           </button>
@@ -1033,12 +1103,12 @@ function CalendarCard({ events, currentDate, jobsToday, onDayTap, onExpand, onAd
             {row.map((day, ci) => {
               if (day === null) return <div key={ci} className="py-1" />;
               const dayEvents = eventMap.get(day) ?? [];
-              const isToday = day === today;
-              const isPast = day < today;
+              const isToday  = day === todayDayNum;
+              const isPast   = isCurrentMonth && day < todayDayNum;
               return (
                 <button key={ci}
                   onClick={() => onDayTap(day, dayEvents)}
-                  className={`flex flex-col items-center py-1 rounded-xl ${dayEvents.length > 0 ? 'cursor-pointer active:bg-gray-800' : 'cursor-default'}`}>
+                  className={`flex flex-col items-center py-1 rounded-xl active:bg-gray-800 transition-colors`}>
                   <div className={`w-6 h-6 flex items-center justify-center rounded-full text-[11px] font-semibold ${
                     isToday ? 'bg-blue-500 text-white font-bold' : isPast ? 'text-gray-600' : 'text-gray-300'
                   }`}>{day}</div>
@@ -1067,72 +1137,142 @@ function CalendarCard({ events, currentDate, jobsToday, onDayTap, onExpand, onAd
         <div className="flex items-center gap-2 text-[10px]">
           <span className="text-amber-400 font-bold">{jobsToday} Jobs Today</span>
           <span className="text-gray-700">·</span>
-          <span className="text-blue-400 font-semibold">{pmsThisWeek} PMs This Week</span>
+          <span className="text-blue-400 font-semibold">{pmsThisMonth} PMs</span>
           <span className="text-gray-700">·</span>
           <span className="text-yellow-400 font-semibold">{followups} Follow-up{followups !== 1 ? 's' : ''}</span>
         </div>
-        <button onClick={() => onDayTap(today, eventMap.get(today) ?? [])}
-          className="text-[9px] text-blue-400 font-semibold flex-shrink-0">Today →</button>
+        {!isCurrentMonth ? (
+          <button onClick={onGoToday}
+            className="text-[9px] text-blue-400 font-semibold flex-shrink-0 hover:text-blue-300 active:scale-95 transition-all">Today →</button>
+        ) : (
+          <button onClick={() => onDayTap(todayDayNum, eventMap.get(todayDayNum) ?? [])}
+            className="text-[9px] text-blue-400 font-semibold flex-shrink-0">Today →</button>
+        )}
       </div>
     </div>
   );
 }
 
 // ─── Full-Screen Calendar Modal ────────────────────────────────────────────────
-function FullScreenCalendar({ events, currentDate, onClose, onDayTap }: {
-  events: CalendarEvent[]; currentDate: Date;
+function FullScreenCalendar({ events, currentDate, initialMonth, onClose, onDayTap }: {
+  events: CalendarEvent[];
+  currentDate: Date;
+  initialMonth: Date;
   onClose: () => void;
   onDayTap: (day: number, evts: CalendarEvent[]) => void;
 }) {
-  const today = currentDate.getDate();
-  const firstDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), 1).getDay();
-  const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
-  const monthYear = currentDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const [activeDay, setActiveDay] = useState<number | null>(today);
+  const [calMonth, setCalMonth] = useState<Date>(
+    () => new Date(initialMonth.getFullYear(), initialMonth.getMonth(), 1)
+  );
+  const isCurrentMonth =
+    calMonth.getFullYear() === currentDate.getFullYear() &&
+    calMonth.getMonth()    === currentDate.getMonth();
+  const todayDayNum  = isCurrentMonth ? currentDate.getDate() : -1;
+  const firstDay    = new Date(calMonth.getFullYear(), calMonth.getMonth(), 1).getDay();
+  const daysInMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + 1, 0).getDate();
+  const monthYear   = calMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+  const [activeDay, setActiveDay] = useState<number | null>(
+    isCurrentMonth ? currentDate.getDate() : 1
+  );
+
   const eventMap = buildEventMap(events);
   const cells = buildCells(firstDay, daysInMonth);
   const rows: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
   const activeDayEvents = activeDay ? (eventMap.get(activeDay) ?? []) : [];
 
+  function goToPrevMonth() {
+    setCalMonth(d => {
+      const nm = new Date(d.getFullYear(), d.getMonth() - 1, 1);
+      const days = new Date(nm.getFullYear(), nm.getMonth() + 1, 0).getDate();
+      setActiveDay(prev => (prev !== null && prev <= days ? prev : days));
+      return nm;
+    });
+  }
+
+  function goToNextMonth() {
+    setCalMonth(d => {
+      const nm = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+      const days = new Date(nm.getFullYear(), nm.getMonth() + 1, 0).getDate();
+      setActiveDay(prev => (prev !== null && prev <= days ? prev : days));
+      return nm;
+    });
+  }
+
+  function goToToday() {
+    const d = currentDate;
+    setCalMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    setActiveDay(d.getDate());
+  }
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
       className="fixed inset-0 bg-gray-950 z-50 flex flex-col overflow-hidden">
-      <div className="px-4 pt-12 pb-4 border-b border-gray-800 flex items-center justify-between flex-shrink-0">
+      {/* Top bar */}
+      <div className="px-4 pt-12 pb-3 border-b border-gray-800 flex items-center justify-between flex-shrink-0">
         <div>
           <div className="text-xs text-gray-500 mb-0.5">Full Calendar</div>
-          <h2 className="text-xl font-bold">{monthYear}</h2>
+          <h2 className="text-xl font-bold text-white">{monthYear}</h2>
         </div>
-        <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center">
-          <X size={18} className="text-gray-400" />
-        </button>
+        <div className="flex items-center gap-2">
+          {!isCurrentMonth && (
+            <button
+              onClick={goToToday}
+              className="px-3 py-1.5 rounded-xl bg-gray-800 text-xs font-semibold text-blue-400 hover:text-blue-300 hover:bg-gray-700 active:scale-95 transition-all"
+            >
+              Today
+            </button>
+          )}
+          <button onClick={onClose} className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center active:scale-95 transition-all">
+            <X size={18} className="text-gray-400" />
+          </button>
+        </div>
       </div>
+
       <div className="flex-1 overflow-y-auto">
+        {/* Month navigator */}
         <div className="flex items-center justify-between px-4 py-3">
-          <button className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center"><ChevronLeft size={16} className="text-gray-400" /></button>
+          <button
+            onClick={goToPrevMonth}
+            aria-label="Previous month"
+            className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center active:scale-90 hover:bg-gray-700 transition-all"
+          >
+            <ChevronLeft size={18} className="text-gray-300" />
+          </button>
           <span className="text-sm font-bold text-white">{monthYear}</span>
-          <button className="w-9 h-9 rounded-full bg-gray-800 flex items-center justify-center"><ChevronRight size={16} className="text-gray-400" /></button>
+          <button
+            onClick={goToNextMonth}
+            aria-label="Next month"
+            className="w-10 h-10 rounded-full bg-gray-800 flex items-center justify-center active:scale-90 hover:bg-gray-700 transition-all"
+          >
+            <ChevronRight size={18} className="text-gray-300" />
+          </button>
         </div>
+
+        {/* Day headers */}
         <div className="grid grid-cols-7 px-3 mb-1">
           {DAY_LABELS.map(d => <div key={d} className="text-[10px] font-bold text-gray-600 text-center">{d}</div>)}
         </div>
+
+        {/* Day grid */}
         <div className="px-2">
           {rows.map((row, ri) => (
             <div key={ri} className="grid grid-cols-7 mb-1">
               {row.map((day, ci) => {
                 if (day === null) return <div key={ci} />;
                 const dayEvents = eventMap.get(day) ?? [];
-                const isToday = day === today;
+                const isToday  = day === todayDayNum;
                 const isActive = day === activeDay;
-                const isPast = day < today;
+                const isPast   = isCurrentMonth && day < todayDayNum;
                 return (
                   <button key={ci} onClick={() => setActiveDay(day)}
-                    className={`flex flex-col items-center py-2 rounded-2xl transition-colors ${isActive ? 'bg-gray-800' : ''}`}>
+                    className={`flex flex-col items-center py-2 rounded-2xl transition-colors ${isActive ? 'bg-gray-800' : 'hover:bg-gray-800/50'}`}>
                     <div className={`w-8 h-8 flex items-center justify-center rounded-full text-sm font-semibold ${
                       isToday ? 'bg-blue-500 text-white' : isActive ? 'text-white' : isPast ? 'text-gray-600' : 'text-gray-200'
                     }`}>{day}</div>
                     <div className="flex gap-0.5 mt-1 h-2 items-center">
-                      {dayEvents.slice(0, 2).map((e, i) => (
+                      {dayEvents.slice(0, 3).map((e, i) => (
                         <div key={i} className={`w-1.5 h-1.5 rounded-full ${EVENT_COLORS[e.type]}`} />
                       ))}
                     </div>
@@ -1142,6 +1282,8 @@ function FullScreenCalendar({ events, currentDate, onClose, onDayTap }: {
             </div>
           ))}
         </div>
+
+        {/* Legend */}
         <div className="flex flex-wrap gap-x-4 gap-y-1.5 px-4 py-3 border-t border-gray-800 mt-2">
           {Object.entries(EVENT_LABELS).map(([type, label]) => (
             <div key={type} className="flex items-center gap-1.5">
@@ -1150,9 +1292,14 @@ function FullScreenCalendar({ events, currentDate, onClose, onDayTap }: {
             </div>
           ))}
         </div>
+
+        {/* Selected day detail */}
         {activeDay !== null && (
           <div className="px-4 pb-8">
-            <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">{monthYear} {activeDay}</div>
+            <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">
+              {new Date(calMonth.getFullYear(), calMonth.getMonth(), activeDay)
+                .toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+            </div>
             {activeDayEvents.length === 0 ? (
               <div className="bg-gray-900 border border-gray-800 rounded-2xl p-4 text-center">
                 <div className="text-gray-500 text-sm">No scheduled work</div>
@@ -1171,7 +1318,7 @@ function FullScreenCalendar({ events, currentDate, onClose, onDayTap }: {
                   </div>
                 ))}
                 <button onClick={() => { onClose(); onDayTap(activeDay, activeDayEvents); }}
-                  className="w-full bg-blue-700 text-white font-bold py-3.5 rounded-2xl text-sm mt-1">
+                  className="w-full bg-blue-700 text-white font-bold py-3.5 rounded-2xl text-sm mt-1 active:scale-[0.98] transition-all">
                   Open Day Schedule
                 </button>
               </div>
