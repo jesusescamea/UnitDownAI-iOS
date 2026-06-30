@@ -4,7 +4,7 @@ import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronRight, ChevronLeft, X, Wrench, Calendar as CalIcon, Plus,
-  AlertTriangle, MapPin, Clock, Search, Cpu, FileText,
+  AlertTriangle, MapPin, Clock, Search, Cpu, Mic, FileText,
   Zap, CheckCircle, Maximize2, User, Settings, LogOut, ChevronDown,
   TrendingUp, TrendingDown, Minus, Lightbulb, Sparkles,
 } from 'lucide-react';
@@ -29,8 +29,8 @@ import {
 import { AppNav } from '../../components/AppNav';
 import { NameplateWorkflowModal } from './NameplateWorkflowModal';
 import { UnassignedScansModal }   from './UnassignedScansModal';
-import { DispatchInboxModal } from './dispatch/DispatchInboxModal';
-import { useDispatchInbox } from './dispatch/useDispatchInbox';
+import { TalkScheduleModal, type ReminderData } from './TalkScheduleModal';
+import { useReminders } from './reminders/useReminders';
 import { EquipmentSearchModal } from './EquipmentSearchModal';
 import { JmpAiAssistantModal } from './JmpAiAssistantModal';
 import { RemindersSection } from './reminders/RemindersSection';
@@ -118,11 +118,10 @@ export function DashboardView({ onStartJob }: Props) {
   const [prefillDate,     setPrefillDate]      = useState<string | null>(null);
   const [nameplateOpen,   setNameplateOpen]    = useState(false);
   const [unassignedOpen,  setUnassignedOpen]   = useState(false);
-  const [inboxOpen,       setInboxOpen]        = useState(false);
-  const [searchOpen,      setSearchOpen]       = useState(false);
-  const [assistantOpen,   setAssistantOpen]    = useState(false);
-  const { pendingJobs, dupJobs } = useDispatchInbox();
-  const inboxBadge = pendingJobs.length + dupJobs.length;
+  const [talkScheduleOpen, setTalkScheduleOpen] = useState(false);
+  const [searchOpen,       setSearchOpen]        = useState(false);
+  const [assistantOpen,    setAssistantOpen]     = useState(false);
+  const { reminders, addReminder, markDone, deleteReminder } = useReminders(clerkUser?.id ?? '');
 
   const LS_KEY = 'unitdown_jmp_scheduled_jobs';
 
@@ -161,6 +160,32 @@ export function DashboardView({ onStartJob }: Props) {
       : new Date(scheduledDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
     setSchedToast(`Job scheduled for ${dateLabel}`);
     setTimeout(() => setSchedToast(null), 3500);
+  }
+
+  function handleTalkScheduleSaved(
+    results: ScheduleWizardResult[],
+    reminderData: ReminderData[],
+  ) {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      const records = raw
+        ? (JSON.parse(raw) as Array<{ job: TodayJob; calEvent: CalendarEvent; scheduledDate?: string; isToday?: boolean }>)
+        : [];
+      for (const result of results) {
+        records.push({ job: result.job, calEvent: result.calEvent, scheduledDate: result.job.scheduledDate ?? todayStr });
+      }
+      localStorage.setItem(LS_KEY, JSON.stringify(records));
+    } catch { /* ignore write errors */ }
+    const todayResults = results.filter(r => (r.job.scheduledDate ?? todayStr) === todayStr);
+    if (todayResults.length > 0) setUserJobs(prev => [...prev, ...todayResults.map(r => r.job)]);
+    setUserCalEvents(prev => [...prev, ...results.map(r => r.calEvent)]);
+    for (const rem of reminderData) addReminder(rem);
+    setTalkScheduleOpen(false);
+    const n = results.length;
+    const r = reminderData.length;
+    const remStr = r > 0 ? ` + ${r} reminder${r === 1 ? '' : 's'}` : '';
+    setSchedToast(`${n} job${n === 1 ? '' : 's'} added to schedule${remStr}`);
+    setTimeout(() => setSchedToast(null), 4000);
   }
 
   function handleAddJobFromCalendar() {
@@ -394,18 +419,13 @@ export function DashboardView({ onStartJob }: Props) {
               <div className="text-[9px] text-orange-400/80">Checklist</div>
             </div>
           </button>
-          {/* Dispatch Inbox tile */}
-          <button onClick={() => setInboxOpen(true)}
-            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-blue-900/30 border-blue-800 active:scale-95 transition-transform">
-            {inboxBadge > 0 && (
-              <div className="absolute top-1.5 right-1.5 text-[9px] font-black px-1.5 py-0.5 rounded-full bg-blue-600 text-white">
-                {inboxBadge}
-              </div>
-            )}
-            <FileText size={18} className="text-blue-400" />
+          {/* Talk Schedule tile */}
+          <button onClick={() => setTalkScheduleOpen(true)}
+            className="relative flex flex-col items-center gap-2 py-4 rounded-2xl border bg-violet-900/30 border-violet-800 active:scale-95 transition-transform">
+            <Mic size={18} className="text-violet-400" />
             <div className="text-center">
-              <div className="text-[10px] text-gray-200 font-bold leading-tight">Dispatch</div>
-              <div className="text-[9px] text-blue-400/80">Inbox</div>
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">Talk</div>
+              <div className="text-[9px] text-violet-400/80">Schedule</div>
             </div>
           </button>
           {/* Search Equipment */}
@@ -518,7 +538,12 @@ export function DashboardView({ onStartJob }: Props) {
       </div>
 
       {/* ── Important Reminders ──────────────────────────────────── */}
-      <RemindersSection userId={clerkUser?.id ?? ''} />
+      <RemindersSection
+        reminders={reminders}
+        onAddReminder={addReminder}
+        onMarkDone={markDone}
+        onDeleteReminder={deleteReminder}
+      />
 
       {/* ── Recent Activity ──────────────────────────────────────── */}
       <div className="px-4 pt-5">
@@ -626,11 +651,11 @@ export function DashboardView({ onStartJob }: Props) {
       </AnimatePresence>
 
       <AnimatePresence>
-        {inboxOpen && (
-          <DispatchInboxModal
-            onClose={() => setInboxOpen(false)}
-            onStartJob={() => { setInboxOpen(false); onStartJob({}); }}
-            onJobAccepted={handleJobCreated}
+        {talkScheduleOpen && (
+          <TalkScheduleModal
+            userId={clerkUser?.id ?? ''}
+            onSaved={handleTalkScheduleSaved}
+            onClose={() => setTalkScheduleOpen(false)}
           />
         )}
       </AnimatePresence>

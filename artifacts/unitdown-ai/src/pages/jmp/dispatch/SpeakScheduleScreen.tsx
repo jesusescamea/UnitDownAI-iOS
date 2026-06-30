@@ -194,6 +194,27 @@ function DraftJobCard({
           {job.phone && (
             <div className="text-[10px] text-blue-400 mt-0.5">{job.phone}</div>
           )}
+          {((job.partsNeeded?.length ?? 0) + (job.toolsNeeded?.length ?? 0)) > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {[...(job.partsNeeded ?? []), ...(job.toolsNeeded ?? [])].slice(0, 4).map((p, i) => (
+                <span key={i} className="text-[9px] font-semibold bg-amber-900/40 text-amber-300 border border-amber-800/50 px-1.5 py-0.5 rounded-full">
+                  Bring: {p}
+                </span>
+              ))}
+              {(job.partsNeeded?.length ?? 0) + (job.toolsNeeded?.length ?? 0) > 4 && (
+                <span className="text-[9px] text-gray-500">+more</span>
+              )}
+            </div>
+          )}
+          {(job.reminders?.length ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-1 mt-1">
+              {(job.reminders ?? []).slice(0, 2).map((r, i) => (
+                <span key={i} className="text-[9px] font-semibold bg-blue-900/40 text-blue-300 border border-blue-800/50 px-1.5 py-0.5 rounded-full">
+                  {r}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Actions */}
@@ -586,13 +607,13 @@ export default function SpeakScheduleScreen({
   return (
     <div className="flex flex-col h-full">
       <Header
-        title="Speak Your Schedule"
+        title="Talk Schedule"
         subtitle={
           phase === 'recording'
             ? `Recording ${fmtSecs} — speak each job clearly`
             : phase === 'transcribed'
             ? 'Review and extract jobs'
-            : "Say each job like you'd explain it to another tech"
+            : 'Tell me your schedule naturally'
         }
       />
 
@@ -630,7 +651,7 @@ export default function SpeakScheduleScreen({
               <p className="text-sm font-bold text-red-400">{fmtSecs} — Tap to stop</p>
             )}
             {phase === 'idle' && (
-              <p className="text-sm text-gray-500">Tap the mic to start recording</p>
+              <p className="text-sm text-gray-500">Tap the mic and speak your day</p>
             )}
           </div>
         )}
@@ -657,7 +678,7 @@ export default function SpeakScheduleScreen({
               onChange={e => setTranscript(e.target.value)}
               rows={8}
               placeholder={
-                `Example:\n"Tomorrow I have Lowe's job 2606-37730 at 7 AM in Lincoln.\nVendor meet at 10 AM. POC 510-472-1230.\nThen Best Buy job 2606-07588 at 7:30 in North Sac. PM survey."`
+                `Example:\n"Tomorrow at 8 AM I have a PM at Survey in Redding. Bring Sealtite. Then at 11 AM I have a no-cool at ABC Manufacturing — compressor starts then trips. Bring nitrogen. Last job around 3 PM at Mercy Hospital. Trane RTU. Economizer not opening."`
               }
               className="w-full bg-gray-900 border border-gray-700 rounded-2xl px-4 py-3 text-sm text-gray-200 placeholder-gray-600 focus:outline-none focus:border-blue-600 resize-none leading-relaxed transition-colors"
             />

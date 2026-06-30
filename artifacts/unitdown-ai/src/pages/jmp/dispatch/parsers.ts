@@ -323,6 +323,7 @@ const FIELD_ALIASES: Record<keyof ImportedJob, string[]> = {
   notes:           ['notes', 'dispatch notes', 'internal notes', 'comments'],
   equipment:       ['unit', 'equipment', 'asset', 'hvac unit', 'asset tag'],
   id: [], source: [], attachments: [], rawData: [], importedAt: [], status: [], duplicateOf: [],
+  partsNeeded: [], toolsNeeded: [], reminders: [], manufacturer: [], equipmentModel: [],
 };
 
 function matchHeader(header: string): keyof ImportedJob | null {

@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, Plus, Check, Trash2, ChevronRight } from 'lucide-react';
-import { useReminders } from './useReminders';
 import type { Reminder, ReminderPriority, ReminderType } from './useReminders';
 import { AddReminderModal } from './AddReminderModal';
 
@@ -38,12 +37,12 @@ const PRIORITY_LABEL: Record<ReminderPriority, string> = {
 const PRIORITY_ORDER: Record<ReminderPriority, number> = { high: 0, normal: 1, low: 2 };
 
 function formatDue(dueDate: string, dueTime?: string): { label: string; overdue: boolean } {
-  const today = new Date().toISOString().split('T')[0];
+  const today    = new Date().toISOString().split('T')[0];
   const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-  const overdue = dueDate < today;
+  const overdue  = dueDate < today;
 
   let dateLabel: string;
-  if (dueDate === today)    dateLabel = 'Today';
+  if (dueDate === today)         dateLabel = 'Today';
   else if (dueDate === tomorrow) dateLabel = 'Tomorrow';
   else {
     const d = new Date(dueDate + 'T00:00:00');
@@ -67,7 +66,7 @@ function ReminderCard({
   reminder, onDone, onDelete,
 }: {
   reminder: Reminder;
-  onDone: () => void;
+  onDone:   () => void;
   onDelete: () => void;
 }) {
   const { label: dueLabel, overdue } = formatDue(reminder.dueDate, reminder.dueTime);
@@ -80,28 +79,20 @@ function ReminderCard({
       animate={{ opacity: done ? 0.45 : 1, y: 0 }}
       exit={{ opacity: 0, height: 0, marginBottom: 0 }}
       className={`bg-gray-900 border rounded-2xl px-4 py-3.5 ${
-        done
-          ? 'border-gray-800'
-          : overdue
-          ? 'border-red-900/60'
-          : 'border-gray-800'
+        done ? 'border-gray-800' : overdue ? 'border-red-900/60' : 'border-gray-800'
       }`}
     >
       <div className="flex items-start gap-3">
-        {/* Done toggle */}
         <button
           onClick={onDone}
           disabled={done}
           className={`mt-0.5 w-5 h-5 rounded-full border flex-shrink-0 flex items-center justify-center transition-colors ${
-            done
-              ? 'bg-green-700 border-green-600'
-              : 'border-gray-600 hover:border-green-500'
+            done ? 'bg-green-700 border-green-600' : 'border-gray-600 hover:border-green-500'
           }`}
         >
           {done && <Check size={11} className="text-white" />}
         </button>
 
-        {/* Content */}
         <div className="flex-1 min-w-0">
           <div className={`text-sm font-semibold leading-snug ${done ? 'line-through text-gray-500' : 'text-white'}`}>
             {reminder.title}
@@ -132,7 +123,6 @@ function ReminderCard({
           )}
         </div>
 
-        {/* Delete */}
         <button
           onClick={onDelete}
           className="w-6 h-6 rounded-lg flex items-center justify-center text-gray-700 hover:text-red-400 hover:bg-red-950/40 transition-colors flex-shrink-0 mt-0.5"
@@ -147,11 +137,13 @@ function ReminderCard({
 // ─── Section ──────────────────────────────────────────────────────────────────
 
 interface Props {
-  userId: string;
+  reminders:       Reminder[];
+  onAddReminder:   (data: Omit<Reminder, 'id' | 'status' | 'createdAt'>) => void;
+  onMarkDone:      (id: string) => void;
+  onDeleteReminder:(id: string) => void;
 }
 
-export function RemindersSection({ userId }: Props) {
-  const { reminders, addReminder, markDone, deleteReminder } = useReminders(userId);
+export function RemindersSection({ reminders, onAddReminder, onMarkDone, onDeleteReminder }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
 
   const sorted = [...reminders].sort((a, b) => {
@@ -166,7 +158,6 @@ export function RemindersSection({ userId }: Props) {
   return (
     <>
       <div className="px-4 pt-5">
-        {/* Section header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <div>
@@ -192,7 +183,6 @@ export function RemindersSection({ userId }: Props) {
           </button>
         </div>
 
-        {/* Cards or empty state */}
         {sorted.length === 0 ? (
           <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
             <div className="w-10 h-10 rounded-2xl bg-amber-900/30 flex items-center justify-center mx-auto mb-3">
@@ -217,8 +207,8 @@ export function RemindersSection({ userId }: Props) {
                 <ReminderCard
                   key={r.id}
                   reminder={r}
-                  onDone={() => markDone(r.id)}
-                  onDelete={() => deleteReminder(r.id)}
+                  onDone={() => onMarkDone(r.id)}
+                  onDelete={() => onDeleteReminder(r.id)}
                 />
               ))}
             </AnimatePresence>
@@ -229,7 +219,7 @@ export function RemindersSection({ userId }: Props) {
       <AnimatePresence>
         {modalOpen && (
           <AddReminderModal
-            onSave={(data) => { addReminder(data); setModalOpen(false); }}
+            onSave={(data) => { onAddReminder(data); setModalOpen(false); }}
             onCancel={() => setModalOpen(false)}
           />
         )}

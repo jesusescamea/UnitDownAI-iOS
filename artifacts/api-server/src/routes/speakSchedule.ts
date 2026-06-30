@@ -11,19 +11,24 @@ function validateClientId(id: unknown): id is string {
 }
 
 const DraftJobSchema = z.object({
-  jobNumber:       z.string().optional().default(""),
-  customerName:    z.string().optional().default(""),
-  siteName:        z.string().optional().default(""),
-  location:        z.string().optional().default(""),
-  appointmentDate: z.string().optional().default(""),
-  appointmentTime: z.string().optional().default(""),
-  timeWindow:      z.string().optional().default(""),
-  jobType:         z.string().optional().default("Service Call"),
-  priority:        z.enum(["emergency", "high", "normal", "pm"]).optional().default("normal"),
-  phoneNumber:     z.string().optional().default(""),
-  contactName:     z.string().optional().default(""),
-  complaintOrTask: z.string().optional().default(""),
-  notes:           z.string().optional().default(""),
+  jobNumber:         z.string().optional().default(""),
+  customerName:      z.string().optional().default(""),
+  siteName:          z.string().optional().default(""),
+  location:          z.string().optional().default(""),
+  appointmentDate:   z.string().optional().default(""),
+  appointmentTime:   z.string().optional().default(""),
+  timeWindow:        z.string().optional().default(""),
+  jobType:           z.string().optional().default("Service Call"),
+  priority:          z.enum(["emergency", "high", "normal", "pm"]).optional().default("normal"),
+  phoneNumber:       z.string().optional().default(""),
+  contactName:       z.string().optional().default(""),
+  complaintOrTask:   z.string().optional().default(""),
+  notes:             z.string().optional().default(""),
+  partsNeeded:       z.array(z.string()).optional().default([]),
+  toolsNeeded:       z.array(z.string()).optional().default([]),
+  personalReminders: z.array(z.string()).optional().default([]),
+  manufacturer:      z.string().optional().default(""),
+  equipmentType:     z.string().optional().default(""),
 });
 
 const AiResponseSchema = z.object({
@@ -88,6 +93,16 @@ HVAC recognition:
 - "RTU N" → include in complaintOrTask (e.g. "RTU 3 no cooling")
 - "POC XXXXXXXXXX" → phoneNumber
 - "vendor meet" → jobType=Vendor Meet
+
+Parts, tools, and reminders (REQUIRED — always extract, use [] if nothing applies):
+- partsNeeded: Physical parts to bring. e.g. ["dual capacitor 35/5uF", "Sealtite", "contactor"].
+  Extract from: "bring X", "need X", "grab X", "pick up X", "load X", carrying language for physical parts.
+- toolsNeeded: Tools, gases, materials. e.g. ["nitrogen", "gauges", "vacuum pump", "manifold gauges"].
+  Same extraction patterns. Nitrogen, CO2, refrigerant go here when used as tools/gases.
+- personalReminders: Scheduling or site reminders. e.g. ["Call customer before arrival", "Badge required at entrance", "Pickup warranty compressor from supply house"].
+  Extract from: "call before", "badge required", "remember", "don't forget", "make sure", "pickup X from".
+- manufacturer: Equipment brand if mentioned. e.g. "Carrier", "Lennox", "Trane", "York", "Daikin", "Rheem".
+- equipmentType: Equipment category if mentioned. e.g. "RTU", "AHU", "chiller", "boiler", "heat pump".
 
 Return ONLY the JSON object. No commentary or markdown.`;
 }
@@ -157,8 +172,13 @@ speakScheduleRouter.post("/speak-schedule/parse", async (req: Request, res: Resp
       priority:        job.priority,
       complaint:       job.complaintOrTask || "",
       notes:           job.notes || "",
-      equipment:       "",
+      equipment:       [job.manufacturer, job.equipmentType].filter(Boolean).join(" ") || "",
       attachments:     [] as string[],
+      partsNeeded:     job.partsNeeded ?? [],
+      toolsNeeded:     job.toolsNeeded ?? [],
+      reminders:       job.personalReminders ?? [],
+      manufacturer:    job.manufacturer ?? "",
+      equipmentModel:  "",
       rawData:         { transcript: transcript.trim().slice(0, 500), jobIndex: i },
       importedAt:      new Date().toISOString(),
       status:          "pending" as const,

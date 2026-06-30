@@ -45,6 +45,12 @@ export interface ImportedJob {
   importedAt:      string;   // ISO timestamp
   status:          ImportStatus;
   duplicateOf?:    string;   // id of existing job if flagged as duplicate
+  // ── AI-extracted extras (voice / Talk Schedule) ──
+  partsNeeded?:    string[];
+  toolsNeeded?:    string[];
+  reminders?:      string[];
+  manufacturer?:   string;
+  equipmentModel?: string;
 }
 
 export interface ParseResult {
