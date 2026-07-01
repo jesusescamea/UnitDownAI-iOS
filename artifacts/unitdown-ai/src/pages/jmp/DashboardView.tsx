@@ -730,17 +730,24 @@ export function DashboardView({ onStartJob }: Props) {
               {selectedDay.events.length === 0 ? (
                 <>
                   <p className="text-sm text-gray-400 mb-4">Nothing scheduled for this day.</p>
-                  {[
-                    { icon: <Search size={16} className="text-blue-400" />,   label: 'Browse Equipment',       bg: 'bg-blue-950/40 border-blue-900' },
-                    { icon: <FileText size={16} className="text-gray-300" />, label: 'View Service Records',   bg: 'bg-gray-800 border-gray-700' },
-                    { icon: <Cpu size={16} className="text-purple-400" />,    label: 'AI Assistant',           bg: 'bg-purple-950/40 border-purple-900' },
-                  ].map((a, i) => (
-                    <button key={i} className={`w-full flex items-center gap-3 ${a.bg} border rounded-2xl px-4 py-3.5`}>
-                      {a.icon}
-                      <span className="font-semibold text-white text-sm">{a.label}</span>
-                      <ChevronRight size={14} className="text-gray-600 ml-auto" />
-                    </button>
-                  ))}
+                  <button onClick={() => { setSelectedDay(null); navigate('/records'); }}
+                    className="w-full flex items-center gap-3 bg-blue-950/40 border-blue-900 border rounded-2xl px-4 py-3.5">
+                    <Search size={16} className="text-blue-400" />
+                    <span className="font-semibold text-white text-sm">Browse Equipment</span>
+                    <ChevronRight size={14} className="text-gray-600 ml-auto" />
+                  </button>
+                  <button onClick={() => { setSelectedDay(null); navigate('/job'); }}
+                    className="w-full flex items-center gap-3 bg-gray-800 border-gray-700 border rounded-2xl px-4 py-3.5">
+                    <FileText size={16} className="text-gray-300" />
+                    <span className="font-semibold text-white text-sm">View Service Records</span>
+                    <ChevronRight size={14} className="text-gray-600 ml-auto" />
+                  </button>
+                  <button onClick={() => { setSelectedDay(null); setAssistantOpen(true); }}
+                    className="w-full flex items-center gap-3 bg-purple-950/40 border-purple-900 border rounded-2xl px-4 py-3.5">
+                    <Cpu size={16} className="text-purple-400" />
+                    <span className="font-semibold text-white text-sm">AI Assistant</span>
+                    <ChevronRight size={14} className="text-gray-600 ml-auto" />
+                  </button>
                 </>
               ) : (
                 selectedDay.events.map((e, i) => (

@@ -172,7 +172,18 @@ export default function UnitFormPage() {
   const { toast } = useToast();
   const isEdit = !!params.id && params.id !== "new";
 
-  const [form, setForm] = useState<UnitFormData>(emptyForm());
+  // Pre-fill customer name from query param when creating from Customers page
+  const initialForm = (): UnitFormData => {
+    const f = emptyForm();
+    if (!isEdit) {
+      const params = new URLSearchParams(window.location.search);
+      const customerName = params.get("customerName");
+      if (customerName) f.siteCustomerName = customerName;
+    }
+    return f;
+  };
+
+  const [form, setForm] = useState<UnitFormData>(initialForm);
   const [uncertainFields, setUncertainFields] = useState<Set<string>>(new Set());
   const [rawOcrText, setRawOcrText] = useState<string | null>(null);
   const [ocrLoading, setOcrLoading] = useState(false);

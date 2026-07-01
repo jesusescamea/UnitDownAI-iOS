@@ -379,10 +379,31 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     }
     const start = state.job.startedAt;
     setElapsedSeconds(Math.floor((Date.now() - start) / 1000));
-    const timer = setInterval(() => {
-      setElapsedSeconds(Math.floor((Date.now() - start) / 1000));
-    }, 1000);
-    return () => clearInterval(timer);
+
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    function startInterval() {
+      interval = setInterval(() => {
+        setElapsedSeconds(Math.floor((Date.now() - start) / 1000));
+      }, 1000);
+    }
+
+    function handleVisibility() {
+      if (document.hidden) {
+        if (interval) { clearInterval(interval); interval = null; }
+      } else {
+        setElapsedSeconds(Math.floor((Date.now() - start) / 1000));
+        if (!interval) startInterval();
+      }
+    }
+
+    startInterval();
+    document.addEventListener("visibilitychange", handleVisibility);
+
+    return () => {
+      if (interval) clearInterval(interval);
+      document.removeEventListener("visibilitychange", handleVisibility);
+    };
   }, [state.job?.id, state.job?.status, state.job?.startedAt]);
 
   // ── localStorage persistence (fires after every state change) ─────────────

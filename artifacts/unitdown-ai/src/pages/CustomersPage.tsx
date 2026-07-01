@@ -67,6 +67,10 @@ interface CustomerSite {
 interface Customer {
   id: string;
   name: string;
+  address?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
   contactName?: string | null;
   phone?: string | null;
   email?: string | null;
@@ -613,7 +617,7 @@ function DetailScreen({
             <Plus size={14} /> Add Job
           </button>
           <button
-            onClick={() => navigate(`/records/new`)}
+            onClick={() => navigate(`/records/new?customerId=${encodeURIComponent(customer.id)}&customerName=${encodeURIComponent(customer.name)}`)}
             className="flex items-center justify-center gap-2 py-3 rounded-2xl bg-green-900/30 border border-green-800 text-green-400 font-bold text-xs active:scale-[0.98] transition-transform"
           >
             <Plus size={14} /> Add Equipment
@@ -753,6 +757,10 @@ function DetailScreen({
 
 interface CustomerFormState {
   name:         string;
+  address:      string;
+  city:         string;
+  state:        string;
+  zip:          string;
   contactName:  string;
   phone:        string;
   email:        string;
@@ -773,6 +781,10 @@ function CustomerForm({
 }) {
   const [form, setForm] = useState<CustomerFormState>({
     name:         existing?.name         ?? '',
+    address:      existing?.address      ?? '',
+    city:         existing?.city         ?? '',
+    state:        existing?.state        ?? '',
+    zip:          existing?.zip          ?? '',
     contactName:  existing?.contactName  ?? '',
     phone:        existing?.phone        ?? '',
     email:        existing?.email        ?? '',
@@ -794,6 +806,10 @@ function CustomerForm({
       const payload = {
         clientId,
         name:         form.name.trim()         || undefined,
+        address:      form.address.trim()       || null,
+        city:         form.city.trim()          || null,
+        state:        form.state.trim()         || null,
+        zip:          form.zip.trim()           || null,
         contactName:  form.contactName.trim()   || null,
         phone:        form.phone.trim()         || null,
         email:        form.email.trim()         || null,
@@ -837,6 +853,24 @@ function CustomerForm({
           <div>
             <label className={LABEL}>Business / Customer Name *</label>
             <input className={INPUT} value={form.name} onChange={e => set('name', e.target.value)} placeholder="Acme Property Management" autoFocus />
+          </div>
+          <div>
+            <label className={LABEL}>Street Address</label>
+            <input className={INPUT} value={form.address} onChange={e => set('address', e.target.value)} placeholder="123 Industrial Blvd" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="col-span-1">
+              <label className={LABEL}>City</label>
+              <input className={INPUT} value={form.city} onChange={e => set('city', e.target.value)} placeholder="Austin" />
+            </div>
+            <div>
+              <label className={LABEL}>State</label>
+              <input className={INPUT} value={form.state} onChange={e => set('state', e.target.value)} placeholder="TX" maxLength={2} />
+            </div>
+            <div>
+              <label className={LABEL}>ZIP</label>
+              <input className={INPUT} value={form.zip} onChange={e => set('zip', e.target.value)} placeholder="78701" />
+            </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>

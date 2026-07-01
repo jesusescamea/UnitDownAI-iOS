@@ -53,6 +53,10 @@ function siteUid(): string {
 const CustomerBodySchema = z.object({
   clientId:     z.string(),
   name:         z.string().min(1).max(200),
+  address:      z.string().max(500).optional().nullable(),
+  city:         z.string().max(100).optional().nullable(),
+  state:        z.string().max(50).optional().nullable(),
+  zip:          z.string().max(20).optional().nullable(),
   contactName:  z.string().max(200).optional().nullable(),
   phone:        z.string().max(50).optional().nullable(),
   email:        z.string().max(200).optional().nullable(),

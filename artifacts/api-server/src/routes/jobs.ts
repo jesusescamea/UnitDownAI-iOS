@@ -4,6 +4,7 @@ import { z } from "zod/v4";
 import { db } from "@workspace/db";
 import { jobs, jobTimelineEvents, usrSequences } from "@workspace/db";
 import type { Job, JobTimelineEvent } from "@workspace/db";
+import { openai } from "@workspace/integrations-openai-ai-server";
 
 const jobsRouter: IRouter = Router();
 
@@ -498,11 +499,156 @@ jobsRouter.post("/jobs/:jobId/complete", async (req: Request, res: Response) => 
 
     req.log.info({ jobId, usrId }, "Job completed, USR ID generated");
     res.json({ job: completedJob, events });
+
+    // Fire-and-forget: generate AI service report in background
+    void generateServiceReport(jobId, userId, completedJob, events, req.log).catch(() => {});
   } catch (err) {
     req.log.error({ err }, "Failed to complete job");
     res.status(500).json({ error: "Failed to complete job" });
   }
 });
+
+// ─── AI service report generation ────────────────────────────────────────────
+// Called asynchronously after job completion. Generates professional report,
+// customer summary, and invoice summary using the job timeline. Falls back to
+// a structured plaintext report if AI is unavailable.
+
+function buildFallbackReport(job: Job, evts: JobTimelineEvent[]): Record<string, unknown> {
+  const lines: string[] = [];
+  lines.push(`SERVICE REPORT — ${job.usrId ?? job.id}`);
+  lines.push(`Customer: ${job.customer ?? "Unknown"}`);
+  if (job.site)      lines.push(`Site: ${job.site}`);
+  if (job.unitLabel) lines.push(`Equipment: ${job.unitLabel}`);
+  lines.push("");
+
+  const typeOrder = ["arrived", "equipment_identified", "alarm_review", "measurement",
+    "voice_note", "note", "part", "photo", "verification", "recommendation", "completed"];
+
+  const sorted = [...evts].sort((a, b) => {
+    const ai = typeOrder.indexOf(a.eventType); const bi = typeOrder.indexOf(b.eventType);
+    return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi) || a.timestamp - b.timestamp;
+  });
+
+  lines.push("TIMELINE:");
+  for (const e of sorted) {
+    lines.push(`• [${e.eventType.toUpperCase()}] ${e.title}`);
+    if (e.notes)           lines.push(`  Notes: ${e.notes}`);
+    if (e.voiceCorrected)  lines.push(`  Voice: ${e.voiceCorrected}`);
+    if (e.measurements) {
+      const m = e.measurements as Record<string, string>;
+      Object.entries(m).forEach(([k, v]) => lines.push(`  ${k}: ${v}`));
+    }
+    if (e.parts) {
+      const p = e.parts as { description?: string; partNumber?: string; qty?: number }[];
+      if (Array.isArray(p)) p.forEach(pt => lines.push(`  Part: ${pt.description ?? pt.partNumber ?? "unknown"}`));
+    }
+  }
+
+  const professional     = lines.join("\n");
+  const customerSummary  = `Service was completed on your ${job.unitLabel ?? "equipment"} at ${job.site ?? "your location"}. ${evts.length} items were documented during the service call. Please contact us with any questions.`;
+  const invoiceSummary   = `Labor: On-site HVAC service call. ${evts.filter(e => e.eventType === "part").length} part(s) installed. See timeline for details.`;
+  const doneTypes        = new Set(evts.map(e => e.eventType));
+  const completenessScore = Math.min(100, [
+    "equipment_identified", "measurement", "part", "photo", "verification", "recommendation",
+  ].filter(t => doneTypes.has(t)).length * 17);
+
+  return { professional, customerSummary, invoiceSummary, confidence: 70, officeReady: completenessScore >= 50, completenessScore };
+}
+
+interface SimpleLogger { info(obj: object, msg: string): void; warn(obj: object, msg: string): void; }
+
+async function generateServiceReport(
+  jobId: string,
+  userId: string,
+  job: Job,
+  evts: JobTimelineEvent[],
+  log: SimpleLogger,
+): Promise<void> {
+  try {
+    const timelineText = evts.map(e => {
+      const parts = [`[${e.eventType.toUpperCase()}] ${e.title}`];
+      if (e.notes)          parts.push(`Notes: ${e.notes}`);
+      if (e.voiceCorrected) parts.push(`Voice: ${e.voiceCorrected}`);
+      if (e.measurements) {
+        const m = e.measurements as Record<string, string>;
+        parts.push(`Measurements: ${Object.entries(m).map(([k, v]) => `${k}=${v}`).join(", ")}`);
+      }
+      if (e.parts) {
+        const p = e.parts as { description?: string; partNumber?: string; qty?: number }[];
+        if (Array.isArray(p)) parts.push(`Parts: ${p.map(pt => pt.description ?? pt.partNumber ?? "part").join(", ")}`);
+      }
+      return parts.join(" | ");
+    }).join("\n");
+
+    const duration = (job.startedAt && job.completedAt)
+      ? `${Math.round((job.completedAt - job.startedAt) / 60000)} minutes`
+      : "Unknown";
+
+    const doneTypes = new Set(evts.map(e => e.eventType));
+    const completenessScore = Math.min(100, [
+      "equipment_identified", "measurement", "part", "photo", "verification", "recommendation",
+    ].filter(t => doneTypes.has(t)).length * 17);
+
+    const prompt = `You are an expert HVAC field service documentation AI for UnitDown Field OS.
+Generate a professional service record from this job timeline. Respond ONLY with valid JSON.
+
+JOB DETAILS:
+USR: ${job.usrId ?? job.id}
+Customer: ${job.customer ?? "Unknown"}
+Site: ${job.site ?? "Unknown"}
+Equipment: ${job.unitLabel ?? "Unknown"}
+Duration: ${duration}
+Events logged: ${evts.length}
+Completeness: ${completenessScore}%
+
+TIMELINE (chronological):
+${timelineText || "No events recorded."}
+
+Required JSON format (all keys required, null for missing data):
+{
+  "professional": "3-5 paragraph technical report: equipment overview, findings, diagnosis rationale, repair performed, measurements before/after, verification, recommendations. Professional tone for other technicians or OEM.",
+  "customerSummary": "1-2 plain English paragraphs for property owner. No jargon. What was wrong, what was done, system status now.",
+  "invoiceSummary": "Concise labor + parts description for billing. What work was performed.",
+  "confidence": <integer 0-100 confidence in diagnosis accuracy based on evidence in timeline>,
+  "officeReady": <true if record has enough detail for billing, false if major items missing>
+}`;
+
+    const completion = await openai.chat.completions.create({
+      model: "gpt-4o",
+      messages: [{ role: "user", content: prompt }],
+      response_format: { type: "json_object" },
+      temperature: 0.25,
+      max_tokens: 1200,
+    });
+
+    const raw = completion.choices[0]?.message?.content ?? "{}";
+    let aiReport: Record<string, unknown>;
+    try {
+      aiReport = JSON.parse(raw) as Record<string, unknown>;
+    } catch {
+      aiReport = buildFallbackReport(job, evts);
+    }
+    aiReport.completenessScore = completenessScore;
+
+    const existing = (job.metadata as Record<string, unknown>) ?? {};
+    await db.update(jobs)
+      .set({ metadata: { ...existing, aiReport }, updatedAt: Date.now() })
+      .where(eq(jobs.id, jobId));
+
+    log.info({ jobId }, "AI service report generated successfully");
+  } catch (err) {
+    log.warn({ err, jobId }, "AI report generation failed — using fallback");
+    try {
+      const fallback = buildFallbackReport(job, evts);
+      const existing = (job.metadata as Record<string, unknown>) ?? {};
+      await db.update(jobs)
+        .set({ metadata: { ...existing, aiReport: fallback }, updatedAt: Date.now() })
+        .where(eq(jobs.id, jobId));
+    } catch {
+      // Ignore — service record will show "no report yet" but never crash
+    }
+  }
+}
 
 // ─── GET /jobs/:jobId/service-record — assemble the USS service record ─────────
 // Returns the full USS-structured service record assembled from job + all events.

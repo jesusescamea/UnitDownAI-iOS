@@ -60,14 +60,23 @@ type JobStage =
   | "REPAIR_COMPLETED" | "VERIFICATION_COMPLETE" | "RECOMMENDATIONS_ADDED"
   | "CUSTOMER_REVIEWED";
 
+function getSkipped(events: LocalEvent[]): Set<string> {
+  return new Set(
+    events
+      .filter((e) => e.eventType === "note" && (e.metadata as Record<string, unknown> | null)?.skipped)
+      .map((e) => (e.metadata as Record<string, string>).skipped),
+  );
+}
+
 function deriveStage(events: LocalEvent[]): JobStage {
-  const types = new Set(events.map((e) => e.eventType));
-  if (types.has("verification")) return "VERIFICATION_COMPLETE";
-  if (types.has("recommendation")) return "RECOMMENDATIONS_ADDED";
-  if (types.has("part")) return "REPAIR_IN_PROGRESS";
-  if (types.has("measurement")) return "MEASUREMENTS_CAPTURED";
-  if (types.has("alarm_review")) return "INITIAL_OBSERVATION";
-  if (types.has("equipment_identified")) return "EQUIPMENT_VERIFIED";
+  const types   = new Set(events.map((e) => e.eventType));
+  const skipped = getSkipped(events);
+  if (types.has("verification")  || skipped.has("verification"))  return "VERIFICATION_COMPLETE";
+  if (types.has("recommendation"))                                 return "RECOMMENDATIONS_ADDED";
+  if (types.has("part"))                                           return "REPAIR_IN_PROGRESS";
+  if (types.has("measurement")   || skipped.has("measurement"))   return "MEASUREMENTS_CAPTURED";
+  if (types.has("alarm_review"))                                   return "INITIAL_OBSERVATION";
+  if (types.has("equipment_identified"))                           return "EQUIPMENT_VERIFIED";
   return "ARRIVED";
 }
 
@@ -252,6 +261,35 @@ export function JobActiveView({ job, events, elapsedSeconds, onComplete, onBack 
                 </button>
               )}
             </div>
+            {/* Skip / Not Applicable for optional measurement stages */}
+            {(stage === "INITIAL_OBSERVATION" || stage === "REPAIR_COMPLETED") && (
+              <div className="flex gap-2 mt-1.5">
+                <button
+                  onClick={() => {
+                    const which = stage === "INITIAL_OBSERVATION" ? "measurement" : "verification";
+                    void doAddEvent("note", which === "measurement" ? "Measurements Skipped" : "Verification Skipped", {
+                      metadata: { skipped: which, reason: "Not applicable for this repair" },
+                    });
+                    showToast("Skipped — continuing without readings");
+                  }}
+                  className="flex-1 text-[10px] text-gray-500 border border-gray-700 rounded-xl py-1.5 hover:text-gray-300 hover:border-gray-600 transition-colors"
+                >
+                  Skip — Not Applicable
+                </button>
+                <button
+                  onClick={() => {
+                    const which = stage === "INITIAL_OBSERVATION" ? "measurement" : "verification";
+                    void doAddEvent("note", which === "measurement" ? "Measurements Skipped" : "Verification Skipped", {
+                      metadata: { skipped: which, reason: "Will complete later" },
+                    });
+                    showToast("Continuing — readings can be added later");
+                  }}
+                  className="flex-1 text-[10px] text-gray-500 border border-gray-700 rounded-xl py-1.5 hover:text-gray-300 hover:border-gray-600 transition-colors"
+                >
+                  Continue Without
+                </button>
+              </div>
+            )}
             <button onClick={() => openModal("fab-menu")}
               className="w-full text-[10px] text-gray-600 mt-1.5 py-0.5 text-center">
               or use + to do something else
