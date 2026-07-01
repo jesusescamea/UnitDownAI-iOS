@@ -145,16 +145,35 @@ export function DashboardView({ onStartJob }: Props) {
     } catch { /* ignore parse errors */ }
   }, []);
 
-  function handleJobCreated(result: ScheduleWizardResult) {
+  async function handleJobCreated(result: ScheduleWizardResult) {
     const scheduledDate = result.job.scheduledDate ?? todayStr;
+
+    // Persist to the database — this is the source of truth
     try {
-      const raw = localStorage.getItem(LS_KEY);
-      const records = raw
-        ? (JSON.parse(raw) as Array<{ job: TodayJob; calEvent: CalendarEvent; scheduledDate?: string; isToday?: boolean }>)
-        : [];
-      records.push({ job: result.job, calEvent: result.calEvent, scheduledDate });
-      localStorage.setItem(LS_KEY, JSON.stringify(records));
-    } catch { /* ignore write errors */ }
+      const res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          customer:  result.job.customer  || undefined,
+          site:      result.job.address !== '—' ? result.job.address : undefined,
+          unitLabel: result.job.unitTag  !== '—' ? result.job.unitTag  : undefined,
+          title:     result.job.symptom  || result.title,
+          startedAt: result.scheduledMs,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        setSchedToast(`⚠ Save failed: ${err.error ?? 'Server error'}`);
+        setTimeout(() => setSchedToast(null), 5000);
+        return;
+      }
+    } catch {
+      setSchedToast('⚠ Could not reach server — check your connection');
+      setTimeout(() => setSchedToast(null), 5000);
+      return;
+    }
+
+    // Update local UI state so the job appears immediately without a page refresh
     if (scheduledDate === todayStr) setUserJobs(prev => [...prev, result.job]);
     setUserCalEvents(prev => [...prev, result.calEvent]);
     setWizardOpen(false);
@@ -162,7 +181,7 @@ export function DashboardView({ onStartJob }: Props) {
     const dateLabel = isToday
       ? 'today'
       : new Date(scheduledDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    setSchedToast(`Job scheduled for ${dateLabel}`);
+    setSchedToast(`✓ Job scheduled for ${dateLabel}`);
     setTimeout(() => setSchedToast(null), 3500);
   }
 

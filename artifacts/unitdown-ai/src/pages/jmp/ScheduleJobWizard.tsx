@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useUser } from '@clerk/clerk-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -158,8 +158,7 @@ function getSavedEquipment(businessName: string): SavedEquipmentRecord[] {
   return [];
 }
 
-// ─── Saved customer & site (mock data — will be replaced by customer API) ─────
-// In production these would come from a real customer/site database.
+// ─── Customer / site types (real data from API) ────────────────────────────────
 
 interface SavedCustomerRecord {
   id:           string;
@@ -169,21 +168,12 @@ interface SavedCustomerRecord {
   email:        string;
 }
 
-const SAVED_CUSTOMERS: SavedCustomerRecord[] = [];
-
 interface SavedSiteRecord {
   id:             string;
   siteName:       string;
   serviceAddress: string;
   cityState:      string;
   accessNotes:    string;
-}
-
-const SAVED_SITES_BY_CUSTOMER: Record<string, SavedSiteRecord[]> = {};
-
-function getSavedSites(customerId: string | null): SavedSiteRecord[] {
-  if (!customerId) return [];
-  return SAVED_SITES_BY_CUSTOMER[customerId] ?? [];
 }
 
 // ─── Field components ─────────────────────────────────────────────────────────
@@ -229,6 +219,47 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
   const [showScanNote,   setShowScanNote]   = useState(false);
   const [showImportNote, setShowImportNote] = useState(false);
   const [siteMode,       setSiteMode]       = useState<'saved' | 'new'>('saved');
+
+  // ── Real customer data from API ─────────────────────────────────────────────
+  const [savedCustomers, setSavedCustomers] = useState<SavedCustomerRecord[]>([]);
+  const [savedSites,     setSavedSites]     = useState<SavedSiteRecord[]>([]);
+  const fetchedSitesFor = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    fetch(`/api/customers?clientId=${encodeURIComponent(user.id)}`)
+      .then(r => r.ok ? r.json() as Promise<{ customers: Array<{ id: string; name: string; contactName?: string | null; phone?: string | null; email?: string | null }> }> : null)
+      .then(data => {
+        if (!data) return;
+        setSavedCustomers(data.customers.map(c => ({
+          id:           c.id,
+          businessName: c.name,
+          contactName:  c.contactName ?? '',
+          phone:        c.phone       ?? '',
+          email:        c.email       ?? '',
+        })));
+      })
+      .catch(() => { /* keep empty on error */ });
+  }, [user?.id]);
+
+  // Fetch sites when a customer is selected
+  useEffect(() => {
+    if (!selectedCustomerId || !user?.id || fetchedSitesFor.current === selectedCustomerId) return;
+    fetchedSitesFor.current = selectedCustomerId;
+    fetch(`/api/customers/${encodeURIComponent(selectedCustomerId)}?clientId=${encodeURIComponent(user.id)}`)
+      .then(r => r.ok ? r.json() as Promise<{ customer: { sites?: Array<{ id: string; siteName: string; address?: string | null; city?: string | null; state?: string | null; accessNotes?: string | null }> } }> : null)
+      .then(data => {
+        if (!data?.customer?.sites) return;
+        setSavedSites(data.customer.sites.map(s => ({
+          id:             s.id,
+          siteName:       s.siteName,
+          serviceAddress: s.address ?? '',
+          cityState:      [s.city, s.state].filter(Boolean).join(', '),
+          accessNotes:    s.accessNotes ?? '',
+        })));
+      })
+      .catch(() => { /* keep empty on error */ });
+  }, [selectedCustomerId, user?.id]);
 
   // Auto-assign logged-in user as technician once Clerk user loads
   useEffect(() => {
@@ -290,7 +321,6 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
   }
 
   const savedEquipment = getSavedEquipment(data.businessName);
-  const savedSites     = getSavedSites(selectedCustomerId);
 
   function validate(): boolean {
     const e: typeof errors = {};
@@ -484,19 +514,21 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                             setData(prev => ({ ...prev, businessName: '', contactName: '', phone: '', email: '' }));
                             return;
                           }
-                          const cust = SAVED_CUSTOMERS.find(c => c.id === id);
+                          const cust = savedCustomers.find(c => c.id === id);
                           if (cust) selectCustomer(cust);
                         }}
                       >
-                        <option value="">Search or select customer…</option>
-                        {SAVED_CUSTOMERS.map(c => (
+                        <option value="">
+                          {savedCustomers.length === 0 ? 'No saved customers — use New Customer' : 'Select customer…'}
+                        </option>
+                        {savedCustomers.map(c => (
                           <option key={c.id} value={c.id}>{c.businessName}</option>
                         ))}
                       </select>
                     </Field>
 
                     {selectedCustomerId && (() => {
-                      const cust = SAVED_CUSTOMERS.find(c => c.id === selectedCustomerId);
+                      const cust = savedCustomers.find(c => c.id === selectedCustomerId);
                       return cust ? (
                         <motion.div
                           initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }}

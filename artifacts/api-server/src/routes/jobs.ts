@@ -205,6 +205,7 @@ const CreateJobSchema = z.object({
   site:      z.string().optional(),
   unitLabel: z.string().optional(),
   title:     z.string().optional(),
+  startedAt: z.number().optional(),   // optional: caller can set scheduled date
 });
 
 const UpdateJobSchema = z.object({
@@ -258,7 +259,7 @@ jobsRouter.get("/jobs", async (req: Request, res: Response) => {
       .where(eq(jobs.userId, userId))
       .orderBy(desc(jobs.startedAt));
 
-    res.json(result);
+    res.json({ jobs: result });
   } catch (err) {
     req.log.error({ err }, "Failed to list jobs");
     res.status(500).json({ error: "Failed to list jobs" });
@@ -288,7 +289,7 @@ jobsRouter.post("/jobs", async (req: Request, res: Response) => {
     unitLabel:   parsed.data.unitLabel   ?? null,
     title:       parsed.data.title       ?? null,
     status:      "active" as const,
-    startedAt:   now,
+    startedAt:   parsed.data.startedAt   ?? now,
     updatedAt:   now,
     completedAt: null,
     usrId:       null,
