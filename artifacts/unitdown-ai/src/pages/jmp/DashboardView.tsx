@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useUser, useClerk } from '@clerk/clerk-react';
+import { useUser, useClerk, useAuth } from '@clerk/clerk-react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -79,6 +79,7 @@ function buildCells(firstDay: number, daysInMonth: number): (number | null)[] {
 export function DashboardView({ onStartJob }: Props) {
   const { user: clerkUser } = useUser();
   const { signOut } = useClerk();
+  const { getToken } = useAuth();
   const [, navigate] = useLocation();
 
   const displayName = clerkUser
@@ -150,9 +151,13 @@ export function DashboardView({ onStartJob }: Props) {
 
     // Persist to the database — this is the source of truth
     try {
+      const token = await getToken();
       const res = await fetch('/api/jobs', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
+        },
         body: JSON.stringify({
           customer:  result.job.customer  || undefined,
           site:      result.job.address !== '—' ? result.job.address : undefined,
