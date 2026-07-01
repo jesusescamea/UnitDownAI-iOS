@@ -29,6 +29,7 @@ import SponsorPage from "./pages/SponsorPage";
 import AccountPage from "./pages/AccountPage";
 import { AppNav } from "@/components/AppNav";
 import RecordsPage from "./pages/RecordsPage";
+import CustomersPage from "./pages/CustomersPage";
 import UnitFormPage from "./pages/UnitFormPage";
 import UnitDetailPage from "./pages/UnitDetailPage";
 import DiagnosticLogDetailPage from "./pages/DiagnosticLogDetailPage";
@@ -3577,6 +3578,7 @@ function App() {
               <Route path="/brand-guides/:slug" component={BrandPage} />
               <Route path="/sponsor" component={SponsorPage} />
               <Route path="/account" component={AccountPage} />
+              <Route path="/customers" component={CustomersPage} />
               <Route path="/records" component={RecordsPage} />
               <Route path="/records/new" component={UnitFormPage} />
               <Route path="/records/:id/edit" component={UnitFormPage} />
