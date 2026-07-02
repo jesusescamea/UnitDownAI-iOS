@@ -154,69 +154,67 @@ export function DashboardView({ onStartJob }: Props) {
   async function handleJobCreated(result: ScheduleWizardResult) {
     const scheduledDate = result.job.scheduledDate ?? todayStr;
 
-    const finishLocalSchedule = () => {
-      if (scheduledDate === todayStr) setUserJobs(prev => [...prev, result.job]);
-      setUserCalEvents(prev => [...prev, result.calEvent]);
-      setWizardOpen(false);
-      const isToday = scheduledDate === todayStr;
-      const dateLabel = isToday
-        ? 'today'
-        : new Date(scheduledDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      setSchedToast(`✓ Job scheduled for ${dateLabel}`);
-      setTimeout(() => setSchedToast(null), 3500);
-    };
+    // ── token: bypass first so Clerk never blocks this dev path ─────────
+    const bypassToken  = (import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined) || null;
+    const clerkToken   = bypassToken ? null : await getToken().catch(() => null);
+    const authToken    = bypassToken ?? clerkToken;
+    const tokenSource: 'bypass' | 'clerk' | 'none' =
+      bypassToken ? 'bypass' : clerkToken ? 'clerk' : 'none';
 
-    // Persist to the database — this is the source of truth
+    const url    = '/api/jobs';
+    const method = 'POST';
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
+    // ── debug (remove after auth issue resolved) ─────────────────────────
+    setCreateJobDebug({ url, method, hasAuth: !!authToken, tokenSource });
+    console.log('[CreateJobClick] url:', url, '| method:', method,
+      '| hasAuth:', !!authToken, '| tokenSource:', tokenSource);
+
     try {
-      // Dev bypass token takes priority so Clerk JWTs don't shadow it when the
-      // server cannot verify them (e.g. CLERK_SECRET_KEY not configured).
-      const bypassToken = (import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined) || null;
-      const clerkToken  = bypassToken ? null : await getToken().catch(() => null);
-      const authToken   = bypassToken ?? clerkToken;
-
-      const url         = '/api/jobs';
-      const method      = 'POST';
-      const tokenSource: 'bypass' | 'clerk' | 'none' =
-        bypassToken ? 'bypass' : clerkToken ? 'clerk' : 'none';
-
-      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-
-      // ── logs immediately before the request ──────────────────────────
-      console.log('[CreateJobClick] url:', url);
-      console.log('[CreateJobClick] method:', method);
-      console.log('[CreateJobClick] hasAuthorizationHeader:', !!authToken);
-      console.log('[CreateJobClick] tokenSource:', tokenSource);
-      setCreateJobDebug({ url, method, hasAuth: !!authToken, tokenSource });
-
-      const res = await fetch(url, { method, headers, body: JSON.stringify({
-        customer:  result.job.customer  || undefined,
-        site:      result.job.address !== '—' ? result.job.address : undefined,
-        unitLabel: result.job.unitTag  !== '—' ? result.job.unitTag  : undefined,
-        title:     result.job.symptom  || result.title,
-        startedAt: result.scheduledMs,
-      }) });
+      const res = await fetch(url, {
+        method,
+        headers,
+        body: JSON.stringify({
+          customer:  result.job.customer  || undefined,
+          site:      result.job.address !== '—' ? result.job.address : undefined,
+          unitLabel: result.job.unitTag  !== '—' ? result.job.unitTag  : undefined,
+          title:     result.job.symptom  || result.title,
+          startedAt: result.scheduledMs,
+        }),
+      });
 
       console.log('[CreateJobClick] responseStatus:', res.status);
       setCreateJobDebug(prev => prev ? { ...prev, status: res.status } : prev);
 
       if (!res.ok) {
-        const errBody = await res.json().catch(() => ({})) as { error?: string };
+        const errBody = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string };
         console.error('[CreateJobClick] errorBody:', errBody);
         setCreateJobDebug(prev => prev ? { ...prev, body: errBody } : prev);
-        setSchedToast(`⚠ Save failed: ${errBody.error ?? 'Server error'}`);
-        setTimeout(() => setSchedToast(null), 5000);
+        setSchedToast(`⚠ ${res.status}: ${errBody.error ?? 'Unknown error'}`);
+        setTimeout(() => setSchedToast(null), 6000);
         return;
       }
-    } catch (e) {
-      console.error('[CreateJobClick] fetch threw:', e);
+
+      // ── success: add job to local lists and close wizard ─────────────
+      if (scheduledDate === todayStr) setUserJobs(prev => [...prev, result.job]);
+      setUserCalEvents(prev => [...prev, result.calEvent]);
+      setWizardOpen(false);
+      setPrefillDate(null);
+
+      const dateLabel = scheduledDate === todayStr
+        ? 'today'
+        : new Date(scheduledDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      setSchedToast(`✓ Job created for ${dateLabel}`);
+      setTimeout(() => setSchedToast(null), 3500);
+
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error('[CreateJobClick] fetch threw:', msg);
+      setCreateJobDebug(prev => prev ? { ...prev, body: { error: msg } } : prev);
       setSchedToast('⚠ Could not reach server — check your connection');
       setTimeout(() => setSchedToast(null), 5000);
-      return;
     }
-
-    // Update local UI state so the job appears immediately without a page refresh
-    finishLocalSchedule();
   }
 
   function handleTalkScheduleSaved(
