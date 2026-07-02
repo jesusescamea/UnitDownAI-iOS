@@ -131,6 +131,35 @@ export function DashboardView({ onStartJob }: Props) {
     tokenSource: 'bypass' | 'clerk' | 'none';
     status?: number; body?: unknown;
   } | null>(null);
+  const [testJobResult, setTestJobResult] = useState<{
+    hasViteOwnerToken: boolean;
+    hasAuthorizationHeader: boolean;
+    status?: number;
+    body?: unknown;
+  } | null>(null);
+  const [testJobLoading, setTestJobLoading] = useState(false);
+
+  async function handleTestCreateJob() {
+    const token = import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined;
+    setTestJobResult({ hasViteOwnerToken: !!token, hasAuthorizationHeader: !!token });
+    setTestJobLoading(true);
+    try {
+      const res = await fetch('/api/jobs', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({ title: 'Frontend direct test job' }),
+      });
+      const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as unknown;
+      setTestJobResult({ hasViteOwnerToken: !!token, hasAuthorizationHeader: !!token, status: res.status, body });
+    } catch (err) {
+      setTestJobResult({ hasViteOwnerToken: !!token, hasAuthorizationHeader: !!token, body: { error: String(err) } });
+    } finally {
+      setTestJobLoading(false);
+    }
+  }
   const { reminders, addReminder, markDone, deleteReminder } = useReminders(clerkUser?.id ?? '');
 
   const LS_KEY = 'unitdown_jmp_scheduled_jobs';
@@ -329,6 +358,38 @@ export function DashboardView({ onStartJob }: Props) {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white overflow-y-auto pb-24">
+
+      {/* ── TEST CREATE JOB — remove after auth issue resolved ────────── */}
+      <div style={{ background: '#1e1b4b', borderBottom: '2px solid #6366f1', padding: '10px 14px' }}>
+        <button
+          onClick={() => { void handleTestCreateJob(); }}
+          disabled={testJobLoading}
+          style={{
+            background: testJobLoading ? '#4338ca' : '#6366f1',
+            color: '#fff', fontWeight: 700, fontSize: 13,
+            padding: '8px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
+            letterSpacing: '0.05em',
+          }}
+        >
+          {testJobLoading ? 'TESTING…' : '⚡ TEST CREATE JOB'}
+        </button>
+        {testJobResult && (
+          <div style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 11, lineHeight: 1.7 }}>
+            <div>hasViteOwnerToken: <span style={{ color: testJobResult.hasViteOwnerToken ? '#4ade80' : '#f87171' }}>{String(testJobResult.hasViteOwnerToken)}</span></div>
+            <div>hasAuthorizationHeader: <span style={{ color: testJobResult.hasAuthorizationHeader ? '#4ade80' : '#f87171' }}>{String(testJobResult.hasAuthorizationHeader)}</span></div>
+            {testJobResult.status !== undefined && (
+              <div>status: <span style={{ color: testJobResult.status < 300 ? '#4ade80' : '#f87171' }}>{testJobResult.status}</span></div>
+            )}
+            {testJobResult.body !== undefined && (
+              <div style={{ color: testJobResult.status !== undefined && testJobResult.status < 300 ? '#4ade80' : '#f87171', wordBreak: 'break-all' }}>
+                body: {JSON.stringify(testJobResult.body)}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      {/* ── END TEST ─────────────────────────────────────────────────── */}
+
       <AppNav active="dashboard" />
       <div className="max-w-2xl mx-auto">
 
