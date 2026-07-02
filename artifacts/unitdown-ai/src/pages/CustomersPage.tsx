@@ -17,7 +17,7 @@ import {
   ArrowLeft, Plus, Search, X, ChevronRight, Building2, Phone,
   Mail, MapPin, Wrench, Briefcase, Edit2, Archive, AlertTriangle,
   Loader2, CheckCircle, User, Users, Lock, FileText, StickyNote,
-  ChevronDown, ChevronUp, PlusCircle, Link, Unlink,
+  ChevronDown, ChevronUp, PlusCircle, Link, Unlink, Activity, Trash2,
 } from 'lucide-react';
 import { AppNav } from '@/components/AppNav';
 
@@ -44,6 +44,16 @@ interface JobRecord {
   status?: string | null;
   startedAt?: number | null;
   unitLabel?: string | null;
+}
+
+interface DiagnosticLog {
+  id: string;
+  unitId: string | null;
+  symptoms: string;
+  diagnosisTitle: string | null;
+  confidencePercent: number | null;
+  status: string;
+  timestamp: number;
 }
 
 interface CustomerSite {
@@ -83,6 +93,7 @@ interface Customer {
   sites?: CustomerSite[];
   units?: UnitRecord[];
   recentJobs?: JobRecord[];
+  diagnosticLogs?: DiagnosticLog[];
 }
 
 type Screen = 'list' | 'detail' | 'form-customer' | 'form-site';
@@ -93,6 +104,13 @@ const INPUT = 'w-full bg-gray-800 border border-gray-700 rounded-xl px-3 py-2.5 
 const TEXTAREA = `${INPUT} resize-none`;
 const LABEL = 'block text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1';
 const SEL = `${INPUT} appearance-none`;
+
+function formatDate(ts?: string | number | null): string {
+  if (!ts) return '—';
+  const date = typeof ts === 'number' ? new Date(ts) : new Date(ts);
+  if (Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 // ─── API helpers ──────────────────────────────────────────────────────────────
 
@@ -191,6 +209,10 @@ function ListScreen({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const load = useCallback(async (q: string) => {
+    if (!clientId) {
+      setLoading(true);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -309,12 +331,14 @@ function InfoRow({ icon, label, value }: { icon: React.ReactNode; label: string;
 }
 
 function SiteCard({
-  site, onEdit, onArchive, onAddUnit,
+  site, onEdit, onArchive, onAddUnit, onAddEquipment, onOpenUnit,
 }: {
   site:      CustomerSite;
   onEdit:    () => void;
   onArchive: () => void;
   onAddUnit: () => void;
+  onAddEquipment: () => void;
+  onOpenUnit: (unitId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const addr = [site.address, site.city, site.state, site.zip].filter(Boolean).join(', ');
@@ -404,7 +428,11 @@ function SiteCard({
                   <div className="text-[9px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">Equipment</div>
                   <div className="space-y-1.5">
                     {site.units!.map(unit => (
-                      <div key={unit.id} className="flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-800 border border-gray-700">
+                      <button
+                        key={unit.id}
+                        onClick={() => onOpenUnit(unit.id)}
+                        className="w-full flex items-center gap-2 px-3 py-2 rounded-xl bg-gray-800 border border-gray-700 text-left active:scale-[0.98] transition-transform"
+                      >
                         <Wrench size={12} className="text-gray-400 flex-shrink-0" />
                         <div className="flex-1 min-w-0">
                           <div className="text-xs text-white font-bold truncate">
@@ -414,16 +442,20 @@ function SiteCard({
                             {[unit.manufacturer, unit.modelNumber].filter(Boolean).join(' ')}
                           </div>
                         </div>
-                      </div>
+                        <ChevronRight size={12} className="text-gray-600" />
+                      </button>
                     ))}
                   </div>
                 </div>
               )}
 
               {/* Site actions */}
-              <div className="flex gap-2 pt-1">
+              <div className="grid grid-cols-2 sm:flex gap-2 pt-1">
                 <button onClick={onEdit} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-gray-800 text-gray-300 text-xs font-bold active:bg-gray-700">
                   <Edit2 size={12} /> Edit Site
+                </button>
+                <button onClick={onAddEquipment} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-green-900/30 border border-green-800 text-green-400 text-xs font-bold active:bg-green-900/50">
+                  <PlusCircle size={12} /> Add Unit
                 </button>
                 <button onClick={onAddUnit} className="flex-1 flex items-center justify-center gap-1.5 py-2 rounded-xl bg-blue-900/30 border border-blue-800 text-blue-400 text-xs font-bold active:bg-blue-900/50">
                   <Link size={12} /> Link Unit
@@ -466,6 +498,10 @@ function DetailScreen({
   const [showJobs, setShowJobs]   = useState(false);
 
   const load = useCallback(async () => {
+    if (!clientId) {
+      setLoading(true);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
@@ -484,14 +520,14 @@ function DetailScreen({
 
   async function handleArchiveCustomer() {
     if (!customer) return;
-    if (!confirm(`Archive "${customer.name}"? This hides it from the list but doesn't delete any data.`)) return;
+    if (!confirm(`Delete "${customer.name}" from your active customer list? Equipment, jobs, and diagnostics remain saved.`)) return;
     setArchiving(true);
     try {
       await apiDelete(`/api/customers/${customer.id}?clientId=${encodeURIComponent(clientId)}`);
       onRefresh();
       onBack();
     } catch {
-      alert('Failed to archive customer.');
+      alert('Failed to delete customer.');
     } finally {
       setArchiving(false);
     }
@@ -549,6 +585,7 @@ function DetailScreen({
 
   const allUnits = [...(customer.units ?? []), ...(customer.sites ?? []).flatMap(s => s.units ?? [])];
   const recentJobs = customer.recentJobs ?? [];
+  const diagnosticLogs = customer.diagnosticLogs ?? [];
 
   return (
     <div className="flex flex-col min-h-screen bg-gray-950">
@@ -570,9 +607,9 @@ function DetailScreen({
           <button
             onClick={handleArchiveCustomer}
             disabled={archiving}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gray-800 text-gray-500 text-xs font-bold active:bg-gray-700 disabled:opacity-40"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-950/30 border border-red-900/50 text-red-400 text-xs font-bold active:bg-red-950/50 disabled:opacity-40"
           >
-            <Archive size={12} /> Archive
+            <Trash2 size={12} /> Delete
           </button>
         </div>
 
@@ -651,6 +688,8 @@ function DetailScreen({
                   onEdit={() => onEditSite(customer, site)}
                   onArchive={() => handleArchiveSite(site.id)}
                   onAddUnit={() => handleLinkUnit(site.id)}
+                  onAddEquipment={() => navigate(`/records/new?customerId=${encodeURIComponent(customer.id)}&customerName=${encodeURIComponent(customer.name)}&siteId=${encodeURIComponent(site.id)}&siteName=${encodeURIComponent(site.siteName)}`)}
+                  onOpenUnit={(unitId) => navigate(`/records/${unitId}`)}
                 />
               ))}
             </div>
@@ -693,13 +732,13 @@ function DetailScreen({
         </button>
 
         {/* Recent Jobs */}
-        <div>
+        <div className="mb-4">
           <button
             onClick={() => setShowJobs(v => !v)}
             className="w-full flex items-center justify-between mb-2"
           >
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-              Recent Jobs {recentJobs.length > 0 ? `(${recentJobs.length})` : ''}
+              Jobs {recentJobs.length > 0 ? `(${recentJobs.length})` : ''}
             </div>
             {showJobs ? <ChevronUp size={14} className="text-gray-600" /> : <ChevronDown size={14} className="text-gray-600" />}
           </button>
@@ -714,7 +753,7 @@ function DetailScreen({
                 className="overflow-hidden"
               >
                 {recentJobs.length === 0 ? (
-                  <div className="text-xs text-gray-500 text-center py-4">No jobs found for this customer.</div>
+                  <div className="rounded-2xl bg-gray-900 border border-gray-800 border-dashed text-xs text-gray-500 text-center py-5">No jobs found for this customer.</div>
                 ) : (
                   <div className="space-y-1.5">
                     {recentJobs.map(job => (
@@ -729,6 +768,7 @@ function DetailScreen({
                             {job.title || job.unitLabel || 'Service Call'}
                           </div>
                           <div className="flex gap-2 mt-0.5">
+                            <span className="text-[9px] text-gray-500 truncate">{formatDate(job.startedAt)}</span>
                             {job.site && <span className="text-[9px] text-gray-500 truncate">{job.site}</span>}
                             {job.status && (
                               <span className={`text-[9px] px-1 rounded ${
@@ -747,6 +787,49 @@ function DetailScreen({
               </motion.div>
             )}
           </AnimatePresence>
+        </div>
+
+        {/* Diagnostic History */}
+        <div>
+          <div className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+            Diagnostic History {diagnosticLogs.length > 0 ? `(${diagnosticLogs.length})` : ''}
+          </div>
+          {diagnosticLogs.length === 0 ? (
+            <div className="rounded-2xl bg-gray-900 border border-gray-800 border-dashed flex flex-col items-center gap-2 py-6 text-center px-4">
+              <Activity size={20} className="text-gray-600" />
+              <div className="text-xs text-gray-500">No diagnostics linked to this customer's equipment yet.</div>
+              <button onClick={() => navigate('/diagnose')} className="text-[10px] text-blue-400 underline">Run diagnostic</button>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {diagnosticLogs.map(log => (
+                <button
+                  key={log.id}
+                  onClick={() => navigate(`/logs/${log.id}`)}
+                  className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl bg-gray-900 border border-gray-800 text-left active:scale-[0.98] transition-transform"
+                >
+                  <Activity size={14} className="text-blue-400 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-white font-bold truncate">
+                      {log.diagnosisTitle || log.symptoms || 'Diagnostic'}
+                    </div>
+                    <div className="flex gap-2 mt-0.5">
+                      <span className="text-[9px] text-gray-500">{formatDate(log.timestamp)}</span>
+                      <span className={`text-[9px] px-1 rounded ${
+                        log.status === 'resolved' ? 'bg-green-900/40 text-green-400' :
+                        log.status === 'monitoring' ? 'bg-blue-900/40 text-blue-400' :
+                        'bg-amber-900/40 text-amber-400'
+                      }`}>{log.status}</span>
+                      {typeof log.confidencePercent === 'number' && (
+                        <span className="text-[9px] text-gray-500">{log.confidencePercent}%</span>
+                      )}
+                    </div>
+                  </div>
+                  <ChevronRight size={14} className="text-gray-600" />
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1094,18 +1177,27 @@ function SiteForm({
 
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
-export default function CustomersPage() {
+export default function CustomersPage({ customerId }: { customerId?: string }) {
   const [, navigate] = useLocation();
   const { user }     = useUser();
   const clientId     = user?.id ?? '';
 
-  const [screen, setScreen]             = useState<Screen>('list');
+  const [screen, setScreen]             = useState<Screen>(customerId ? 'detail' : 'list');
   const [selectedCustomer, setSelected] = useState<Customer | null>(null);
   const [editingSite, setEditingSite]   = useState<CustomerSite | null>(null);
   const [listKey, setListKey]           = useState(0); // increment to force list reload
 
+  useEffect(() => {
+    if (customerId) {
+      setScreen('detail');
+    } else if (screen === 'detail' && !selectedCustomer) {
+      setScreen('list');
+    }
+  }, [customerId, screen, selectedCustomer]);
+
   function handleSelectCustomer(c: Customer) {
     setSelected(c);
+    navigate(`/customers/${c.id}`);
     setScreen('detail');
   }
 
@@ -1129,6 +1221,7 @@ export default function CustomersPage() {
   function handleCustomerSaved(c: Customer) {
     setSelected(c);
     setListKey(k => k + 1);
+    navigate(`/customers/${c.id}`);
     setScreen('detail');
   }
 
@@ -1152,12 +1245,12 @@ export default function CustomersPage() {
         </motion.div>
       )}
 
-      {screen === 'detail' && selectedCustomer && (
-        <motion.div key="detail" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.15 }}>
+      {screen === 'detail' && (selectedCustomer || customerId) && (
+        <motion.div key={`detail-${customerId ?? selectedCustomer?.id}`} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }} transition={{ duration: 0.15 }}>
           <DetailScreen
-            customerId={selectedCustomer.id}
+            customerId={customerId ?? selectedCustomer!.id}
             clientId={clientId}
-            onBack={() => setScreen('list')}
+            onBack={() => { navigate('/customers'); setSelected(null); setScreen('list'); }}
             onEditCustomer={handleEditCustomer}
             onAddSite={handleAddSite}
             onEditSite={handleEditSite}

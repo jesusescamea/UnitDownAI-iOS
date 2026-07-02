@@ -1,5 +1,5 @@
 import { Router, type Request, type Response } from "express";
-import { db, unitRecords, jobs, jobTimelineEvents } from "@workspace/db";
+import { db, unitRecords, jobs, jobTimelineEvents, customers, customerSites } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 
 const unitsRouter = Router();
@@ -27,6 +27,39 @@ function normalizeSerial(s: string | null | undefined): string {
 function normalizeText(s: string | null | undefined): string {
   if (!s) return "";
   return s.toUpperCase().trim().replace(/\s+/g, " ");
+}
+
+async function validateCustomerSiteLink(
+  clientId: string,
+  unit: Record<string, unknown>,
+): Promise<string | null> {
+  const customerId = typeof unit.customerId === "string" ? unit.customerId : null;
+  const siteId = typeof unit.siteId === "string" ? unit.siteId : null;
+
+  if (!customerId && siteId) return "siteId requires customerId";
+  if (!customerId) return null;
+
+  const [customer] = await db
+    .select({ id: customers.id })
+    .from(customers)
+    .where(and(eq(customers.id, customerId), eq(customers.userId, clientId)));
+  if (!customer) return "Customer not found";
+
+  if (siteId) {
+    const [site] = await db
+      .select({ id: customerSites.id })
+      .from(customerSites)
+      .where(
+        and(
+          eq(customerSites.id, siteId),
+          eq(customerSites.customerId, customerId),
+          eq(customerSites.userId, clientId),
+        ),
+      );
+    if (!site) return "Site not found for customer";
+  }
+
+  return null;
 }
 
 // ─── GET /api/units ───────────────────────────────────────────────────────────
@@ -107,6 +140,12 @@ unitsRouter.post("/units/check-duplicate", async (req: Request, res: Response) =
   }
   if (!unit || typeof unit !== "object") {
     res.status(400).json({ error: "unit object required" });
+    return;
+  }
+
+  const linkError = await validateCustomerSiteLink(clientId, unit as Record<string, unknown>);
+  if (linkError) {
+    res.status(400).json({ error: linkError });
     return;
   }
 
@@ -200,8 +239,15 @@ unitsRouter.post("/units", async (req: Request, res: Response) => {
     res.status(401).json({ error: "Authentication required" });
     return;
   }
+
   if (!unit || typeof unit !== "object") {
     res.status(400).json({ error: "unit object required" });
+    return;
+  }
+
+  const linkError = await validateCustomerSiteLink(clientId, unit as Record<string, unknown>);
+  if (linkError) {
+    res.status(400).json({ error: linkError });
     return;
   }
 
@@ -236,6 +282,8 @@ unitsRouter.post("/units", async (req: Request, res: Response) => {
     maintenanceVerifiedAt: unit.maintenanceVerifiedAt ?? null,
     nameplateImageUrl: unit.nameplateImageUrl ?? null,
     nameplatePreviewUrl: unit.nameplatePreviewUrl ?? null,
+    customerId: typeof unit.customerId === "string" ? unit.customerId : null,
+    siteId: typeof unit.siteId === "string" ? unit.siteId : null,
     isFavorite: typeof unit.isFavorite === "boolean" ? unit.isFavorite : false,
   };
 
@@ -258,12 +306,21 @@ unitsRouter.patch("/units/:id", async (req: Request, res: Response) => {
     return;
   }
 
+  if (unit && typeof unit === "object" && ("customerId" in unit || "siteId" in unit)) {
+    const linkError = await validateCustomerSiteLink(clientId, unit as Record<string, unknown>);
+    if (linkError) {
+      res.status(400).json({ error: linkError });
+      return;
+    }
+  }
+
   const allowed = [
     "siteCustomerName","nickname","location","manufacturer","modelNumber","serialNumber",
     "equipmentType","systemType","refrigerantType","voltage","phase","mca","mocp","rla",
     "lra","capacityTons","manufactureDate","notes","nameplateImageUrl","nameplatePreviewUrl",
     "isFavorite",
     "filterSize","filterQty","beltSize","beltQty","beltNotes","maintenanceVerifiedAt",
+    "customerId","siteId",
   ];
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   for (const key of allowed) {

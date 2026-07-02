@@ -27,10 +27,12 @@ import {
   and,
   or,
   ilike,
+  asc,
   desc,
-  isNull,
+  inArray,
 } from "drizzle-orm";
 import { z } from "zod/v4";
+import { diagnosticLogs } from "@workspace/db";
 
 const customersRouter = Router();
 
@@ -92,17 +94,32 @@ customersRouter.get("/customers", async (req: Request, res: Response) => {
   const showArchived = req.query.archived === "true";
 
   try {
-    let rows = await db
+    const searchFilter = q
+      ? or(
+          ilike(customers.name, `%${q}%`),
+          ilike(customers.contactName, `%${q}%`),
+          ilike(customers.phone, `%${q}%`),
+          ilike(customers.email, `%${q}%`),
+          ilike(customers.city, `%${q}%`),
+        )
+      : undefined;
+
+    const rows = await db
       .select()
       .from(customers)
       .where(
-        and(
-          eq(customers.userId, clientId),
-          eq(customers.isArchived, showArchived),
-          q ? ilike(customers.name, `%${q}%`) : undefined,
-        ),
+        searchFilter
+          ? and(
+              eq(customers.userId, clientId),
+              eq(customers.isArchived, showArchived),
+              searchFilter,
+            )
+          : and(
+              eq(customers.userId, clientId),
+              eq(customers.isArchived, showArchived),
+            ),
       )
-      .orderBy(desc(customers.updatedAt));
+      .orderBy(asc(customers.name));
 
     // Also get site counts for each customer
     const customerIds = rows.map((r) => r.id);
@@ -147,33 +164,6 @@ customersRouter.get("/customers", async (req: Request, res: Response) => {
       siteCount: siteCounts[c.id] ?? 0,
       unitCount: unitCounts[c.id] ?? 0,
     }));
-
-    // If searching and not enough exact matches, also match on contact or phone
-    if (q && result.length < 20) {
-      const contactRows = await db
-        .select()
-        .from(customers)
-        .where(
-          and(
-            eq(customers.userId, clientId),
-            eq(customers.isArchived, showArchived),
-            or(
-              ilike(customers.contactName, `%${q}%`),
-              ilike(customers.phone, `%${q}%`),
-            ),
-          ),
-        );
-      const existing = new Set(result.map((r) => r.id));
-      for (const c of contactRows) {
-        if (!existing.has(c.id)) {
-          result.push({
-            ...c,
-            siteCount: siteCounts[c.id] ?? 0,
-            unitCount: unitCounts[c.id] ?? 0,
-          });
-        }
-      }
-    }
 
     res.json({ customers: result });
   } catch (err: unknown) {
@@ -235,7 +225,7 @@ customersRouter.get("/customers/:id", async (req: Request, res: Response) => {
       .orderBy(desc(unitRecords.updatedAt))
       .limit(50);
 
-    // Fetch recent jobs — match by customer name (text denormalized field)
+    // Fetch jobs — match by customer name (text denormalized field)
     const recentJobs = await db
       .select()
       .from(jobs)
@@ -246,7 +236,22 @@ customersRouter.get("/customers/:id", async (req: Request, res: Response) => {
         ),
       )
       .orderBy(desc(jobs.startedAt))
-      .limit(20);
+      .limit(100);
+
+    const linkedUnitIds = linkedUnits.map((unit) => unit.id);
+    const logs = linkedUnitIds.length > 0
+      ? await db
+          .select()
+          .from(diagnosticLogs)
+          .where(
+            and(
+              eq(diagnosticLogs.userId, clientId),
+              inArray(diagnosticLogs.unitId, linkedUnitIds),
+            ),
+          )
+          .orderBy(desc(diagnosticLogs.timestamp))
+          .limit(100)
+      : [];
 
     // Group units by siteId for each site
     const siteIds = new Set(sites.map((s) => s.id));
@@ -273,6 +278,7 @@ customersRouter.get("/customers/:id", async (req: Request, res: Response) => {
         sites: sitesWithUnits,
         units: customerUnits,
         recentJobs,
+        diagnosticLogs: logs,
       },
     });
   } catch (err: unknown) {

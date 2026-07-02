@@ -3578,7 +3578,12 @@ function App() {
               <Route path="/brand-guides/:slug" component={BrandPage} />
               <Route path="/sponsor" component={SponsorPage} />
               <Route path="/account" component={AccountPage} />
-              <Route path="/customers" component={CustomersPage} />
+              <Route path="/customers">
+                <CustomersPage />
+              </Route>
+              <Route path="/customers/:id">
+                {(params) => <CustomersPage customerId={params.id} />}
+              </Route>
               <Route path="/records" component={RecordsPage} />
               <Route path="/records/new" component={UnitFormPage} />
               <Route path="/records/:id/edit" component={UnitFormPage} />

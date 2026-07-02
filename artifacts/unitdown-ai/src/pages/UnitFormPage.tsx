@@ -178,7 +178,9 @@ export default function UnitFormPage() {
     if (!isEdit) {
       const params = new URLSearchParams(window.location.search);
       const customerName = params.get("customerName");
+      const siteName = params.get("siteName");
       if (customerName) f.siteCustomerName = customerName;
+      if (siteName) f.location = siteName;
     }
     return f;
   };
@@ -356,9 +358,19 @@ export default function UnitFormPage() {
   }, []);
 
   // ── Build the POST/PATCH payload from form state ──────────────────────────
-  const buildPayload = useCallback(() =>
-    Object.fromEntries(Object.entries(form).map(([k, v]) => [k, v.trim() || null])),
-  [form]);
+  const buildPayload = useCallback(() => {
+    const payload: Record<string, unknown> = Object.fromEntries(
+      Object.entries(form).map(([k, v]) => [k, v.trim() || null]),
+    );
+    if (!isEdit) {
+      const params = new URLSearchParams(window.location.search);
+      const customerId = params.get("customerId");
+      const siteId = params.get("siteId");
+      if (customerId) payload.customerId = customerId;
+      if (siteId) payload.siteId = siteId;
+    }
+    return payload;
+  }, [form, isEdit]);
 
   // ── Core POST/PATCH save (no duplicate check) ─────────────────────────────
   const performSave = useCallback(async (payload: Record<string, unknown>) => {
