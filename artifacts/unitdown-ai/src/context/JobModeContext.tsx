@@ -236,7 +236,9 @@ async function apiFetch<T>(
   opts?: RequestInit,
   getToken?: GetClerkToken,
 ): Promise<T> {
-  const token = getToken ? await getToken() : null;
+  const clerkToken = getToken ? await getToken() : null;
+  const bypassToken = (import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined) || null;
+  const token = clerkToken ?? bypassToken;
   const res = await fetch(`/api${path}`, {
     ...opts,
     headers: {

@@ -250,32 +250,55 @@ export interface DashboardData {
   loading:       boolean;
 }
 
-export function useDashboardData(clientId: string): DashboardData {
+export function useDashboardData(
+  clientId: string,
+  getToken?: () => Promise<string | null>,
+): DashboardData {
   const [loading, setLoading] = useState(true);
   const [jobs,    setJobs]    = useState<ApiJob[]>([]);
   const [units,   setUnits]   = useState<ApiUnit[]>([]);
   const [logs,    setLogs]    = useState<ApiDiagnosticLog[]>([]);
 
   useEffect(() => {
-    if (!clientId) { setLoading(false); return; }
-    setLoading(true);
-    const cid = encodeURIComponent(clientId);
-    Promise.all([
-      fetch(`/api/jobs?clientId=${cid}`)
-        .then(r => r.ok ? r.json() as Promise<{ jobs: ApiJob[] }> : { jobs: [] as ApiJob[] }),
-      fetch(`/api/units?clientId=${cid}`)
-        .then(r => r.ok ? r.json() as Promise<{ units: ApiUnit[] }> : { units: [] as ApiUnit[] }),
-      fetch(`/api/diagnostic-logs?clientId=${cid}`)
-        .then(r => r.ok ? r.json() as Promise<{ logs: ApiDiagnosticLog[] }> : { logs: [] as ApiDiagnosticLog[] }),
-    ])
-      .then(([jobsRes, unitsRes, logsRes]) => {
+    let active = true;
+    async function load() {
+      const clerkToken = getToken ? await getToken() : null;
+      const bypassToken = (import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined) || null;
+      const token = clerkToken ?? bypassToken;
+
+      // Need either a token (Bearer path) or a clientId (legacy ?clientId= path)
+      if (!token && !clientId) { setLoading(false); return; }
+
+      setLoading(true);
+      const authHeader: Record<string, string> = token
+        ? { Authorization: `Bearer ${token}` }
+        : {};
+      // Legacy clientId param for routes not yet on Bearer auth (diagnostic-logs)
+      const cid = clientId ? encodeURIComponent(clientId) : '';
+      const cidParam = (cid && !token) ? `?clientId=${cid}` : '';
+
+      try {
+        const [jobsRes, unitsRes, logsRes] = await Promise.all([
+          fetch(`/api/jobs${token ? '' : `?clientId=${cid}`}`, { headers: authHeader })
+            .then(r => r.ok ? r.json() as Promise<{ jobs: ApiJob[] }> : { jobs: [] as ApiJob[] }),
+          fetch(`/api/units${cidParam}`, { headers: authHeader })
+            .then(r => r.ok ? r.json() as Promise<{ units: ApiUnit[] }> : { units: [] as ApiUnit[] }),
+          fetch(`/api/diagnostic-logs${cidParam}`, { headers: authHeader })
+            .then(r => r.ok ? r.json() as Promise<{ logs: ApiDiagnosticLog[] }> : { logs: [] as ApiDiagnosticLog[] }),
+        ]);
+        if (!active) return;
         setJobs(jobsRes.jobs   ?? []);
         setUnits(unitsRes.units ?? []);
         setLogs(logsRes.logs   ?? []);
-      })
-      .catch(() => { /* stay on empty state on network error */ })
-      .finally(() => setLoading(false));
-  }, [clientId]);
+      } catch {
+        // stay on empty state on network error
+      } finally {
+        if (active) setLoading(false);
+      }
+    }
+    void load();
+    return () => { active = false; };
+  }, [clientId, getToken]);
 
   return {
     realJobs:      jobs.map(mapJob),
