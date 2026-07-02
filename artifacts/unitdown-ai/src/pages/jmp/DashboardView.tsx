@@ -168,20 +168,20 @@ export function DashboardView({ onStartJob }: Props) {
 
     // Persist to the database — this is the source of truth
     try {
-      const clerkToken = await getToken();
-      const bypassToken = (import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined) || null;
-      const token = clerkToken ?? bypassToken;
-      if (!token) {
-        setSchedToast('⚠ Save failed: Authentication required');
-        setTimeout(() => setSchedToast(null), 5000);
-        return;
-      }
+      const clerkToken = await getToken().catch(() => null);
+      const fallbackToken = import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined;
+      const authToken = clerkToken || fallbackToken;
+
+      console.log('[CreateJob] hasClerkToken:', !!clerkToken);
+      console.log('[CreateJob] hasViteOwnerToken:', !!fallbackToken);
+      console.log('[CreateJob] hasAuthorizationHeader:', !!authToken);
+
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
+
       const res = await fetch('/api/jobs', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers,
         body: JSON.stringify({
           customer:  result.job.customer  || undefined,
           site:      result.job.address !== '—' ? result.job.address : undefined,
@@ -191,12 +191,16 @@ export function DashboardView({ onStartJob }: Props) {
         }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: string };
-        setSchedToast(`⚠ Save failed: ${err.error ?? 'Server error'}`);
+        const errBody = await res.json().catch(() => ({})) as { error?: string };
+        if (res.status === 401) {
+          console.error('[CreateJob] 401 response body:', errBody);
+        }
+        setSchedToast(`⚠ Save failed: ${errBody.error ?? 'Server error'}`);
         setTimeout(() => setSchedToast(null), 5000);
         return;
       }
-    } catch {
+    } catch (e) {
+      console.error('[CreateJob] fetch threw:', e);
       setSchedToast('⚠ Could not reach server — check your connection');
       setTimeout(() => setSchedToast(null), 5000);
       return;
