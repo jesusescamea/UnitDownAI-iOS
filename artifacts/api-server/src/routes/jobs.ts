@@ -1,4 +1,5 @@
 import { Router, type IRouter, type Request, type Response } from "express";
+import { clerkMiddleware, getAuth } from "@clerk/express";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db } from "@workspace/db";
@@ -7,12 +8,12 @@ import type { Job, JobTimelineEvent } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
 const jobsRouter: IRouter = Router();
+jobsRouter.use(clerkMiddleware());
 
 // ─── Auth helper ──────────────────────────────────────────────────────────────
 
 function requireUserId(req: Request, res: Response): string | null {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const userId = (req as any).auth?.userId as string | undefined;
+  const { userId } = getAuth(req);
   if (!userId) {
     res.status(401).json({ error: "Authentication required" });
     return null;

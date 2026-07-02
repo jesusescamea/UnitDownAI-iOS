@@ -33,7 +33,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useUser } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/clerk-react";
 import {
   enqueueOp,
   getQueuedOps,
@@ -229,10 +229,21 @@ function getAllPendingJobIds(): string[] {
 
 // ─── API helper ───────────────────────────────────────────────────────────────
 
-async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
+type GetClerkToken = () => Promise<string | null>;
+
+async function apiFetch<T>(
+  path: string,
+  opts?: RequestInit,
+  getToken?: GetClerkToken,
+): Promise<T> {
+  const token = getToken ? await getToken() : null;
   const res = await fetch(`/api${path}`, {
     ...opts,
-    headers: { "Content-Type": "application/json", ...opts?.headers },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...opts?.headers,
+    },
   });
   if (!res.ok) throw new Error(`API ${path} → ${res.status}`);
   if (res.status === 204) return undefined as T;
@@ -244,13 +255,14 @@ async function apiFetch<T>(path: string, opts?: RequestInit): Promise<T> {
 async function executeOp(
   op: QueuedOp,
   dispatch: React.Dispatch<Action>,
+  getToken?: GetClerkToken,
 ): Promise<void> {
   switch (op.type) {
     case "create_job": {
       await apiFetch<LocalJob>("/jobs", {
         method: "POST",
         body: JSON.stringify(op.payload),
-      });
+      }, getToken);
       break;
     }
     case "patch_job": {
@@ -258,7 +270,7 @@ async function executeOp(
       await apiFetch(`/jobs/${jobId}`, {
         method: "PATCH",
         body: JSON.stringify(data),
-      });
+      }, getToken);
       break;
     }
     case "create_event": {
@@ -266,7 +278,7 @@ async function executeOp(
       await apiFetch(`/jobs/${jobId}/events`, {
         method: "POST",
         body: JSON.stringify(body),
-      });
+      }, getToken);
       dispatch({ type: "MARK_EVENT_SYNCED", eventId: op.id });
       break;
     }
@@ -279,12 +291,12 @@ async function executeOp(
       await apiFetch(`/jobs/${jobId}/events/${eventId}`, {
         method: "PATCH",
         body: JSON.stringify(data),
-      });
+      }, getToken);
       break;
     }
     case "delete_event": {
       const { jobId, eventId } = op.payload as { jobId: string; eventId: string };
-      await apiFetch(`/jobs/${jobId}/events/${eventId}`, { method: "DELETE" });
+      await apiFetch(`/jobs/${jobId}/events/${eventId}`, { method: "DELETE" }, getToken);
       break;
     }
     case "upload_photo": {
@@ -358,6 +370,7 @@ export function useJobMode(): JobModeContextValue {
 
 export function JobModeProvider({ children }: { children: ReactNode }) {
   const { user } = useUser();
+  const { getToken } = useAuth();
 
   const [state, dispatch] = useReducer(reducer, { job: null, events: [] });
   const [isLoaded, setIsLoaded] = useState(false);
@@ -440,7 +453,7 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     let hadError = false;
     for (const op of ops) {
       try {
-        await executeOp(op, dispatch);
+        await executeOp(op, dispatch, getToken);
         await dequeueOp(op.id);
       } catch (err) {
         await markOpFailed(op.id, String(err));
@@ -452,7 +465,7 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     setPendingCount(remaining);
     setSyncStatus(hadError ? "error" : remaining > 0 ? "pending" : "idle");
     isFlushingRef.current = false;
-  }, []);
+  }, [getToken]);
 
   useEffect(() => {
     const handleOnline = () => {
@@ -603,7 +616,7 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     // 2. Merge server state in background (if online)
     if (!navigator.onLine) return;
     try {
-      const data = await apiFetch<{ job: LocalJob; events: LocalEvent[] }>(`/jobs/${id}`);
+      const data = await apiFetch<{ job: LocalJob; events: LocalEvent[] }>(`/jobs/${id}`, undefined, getToken);
       const serverEventIds = new Set(data.events.map((e) => e.id));
       const localUnsyncedEvents = (snap?.events ?? []).filter(
         (e) => !e._synced && !serverEventIds.has(e.id),
@@ -622,7 +635,7 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     } catch {
       // Network error — localStorage data is still displayed, which is correct
     }
-  }, [scheduleFlush]);
+  }, [scheduleFlush, getToken]);
 
   // ── patchJob ──────────────────────────────────────────────────────────────
 
@@ -666,6 +679,7 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
         const result = await apiFetch<{ job: LocalJob; events: LocalEvent[] }>(
           `/jobs/${jobId}/complete`,
           { method: "POST" },
+          getToken,
         );
         // Server assigned the permanent USR ID — update local state
         dispatch({
@@ -735,7 +749,7 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
     const count = await getQueueSize();
     setPendingCount(count);
     setSyncStatus("offline");
-  }, [state.job, state.events.length, flushQueue]);
+  }, [state.job, state.events.length, flushQueue, getToken]);
 
   // ── clearJob ──────────────────────────────────────────────────────────────
 

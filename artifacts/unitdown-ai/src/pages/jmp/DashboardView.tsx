@@ -149,9 +149,31 @@ export function DashboardView({ onStartJob }: Props) {
   async function handleJobCreated(result: ScheduleWizardResult) {
     const scheduledDate = result.job.scheduledDate ?? todayStr;
 
+    const finishLocalSchedule = () => {
+      if (scheduledDate === todayStr) setUserJobs(prev => [...prev, result.job]);
+      setUserCalEvents(prev => [...prev, result.calEvent]);
+      setWizardOpen(false);
+      const isToday = scheduledDate === todayStr;
+      const dateLabel = isToday
+        ? 'today'
+        : new Date(scheduledDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      setSchedToast(`✓ Job scheduled for ${dateLabel}`);
+      setTimeout(() => setSchedToast(null), 3500);
+    };
+
+    if (!clerkUser) {
+      finishLocalSchedule();
+      return;
+    }
+
     // Persist to the database — this is the source of truth
     try {
       const token = await getToken();
+      if (!token) {
+        setSchedToast('⚠ Save failed: Authentication required');
+        setTimeout(() => setSchedToast(null), 5000);
+        return;
+      }
       const res = await fetch('/api/jobs', {
         method: 'POST',
         headers: {
@@ -179,15 +201,7 @@ export function DashboardView({ onStartJob }: Props) {
     }
 
     // Update local UI state so the job appears immediately without a page refresh
-    if (scheduledDate === todayStr) setUserJobs(prev => [...prev, result.job]);
-    setUserCalEvents(prev => [...prev, result.calEvent]);
-    setWizardOpen(false);
-    const isToday = scheduledDate === todayStr;
-    const dateLabel = isToday
-      ? 'today'
-      : new Date(scheduledDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-    setSchedToast(`✓ Job scheduled for ${dateLabel}`);
-    setTimeout(() => setSchedToast(null), 3500);
+    finishLocalSchedule();
   }
 
   function handleTalkScheduleSaved(
