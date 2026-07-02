@@ -126,6 +126,11 @@ export function DashboardView({ onStartJob }: Props) {
   const [talkScheduleOpen, setTalkScheduleOpen] = useState(false);
   const [searchOpen,       setSearchOpen]        = useState(false);
   const [assistantOpen,    setAssistantOpen]     = useState(false);
+  const [createJobDebug,  setCreateJobDebug]    = useState<{
+    url: string; method: string; hasAuth: boolean;
+    tokenSource: 'bypass' | 'clerk' | 'none';
+    status?: number; body?: unknown;
+  } | null>(null);
   const { reminders, addReminder, markDone, deleteReminder } = useReminders(clerkUser?.id ?? '');
 
   const LS_KEY = 'unitdown_jmp_scheduled_jobs';
@@ -169,33 +174,36 @@ export function DashboardView({ onStartJob }: Props) {
       const clerkToken  = bypassToken ? null : await getToken().catch(() => null);
       const authToken   = bypassToken ?? clerkToken;
 
-      const url    = '/api/jobs';
-      const method = 'POST';
-      console.log('[CreateJobClick] url:', url);
-      console.log('[CreateJobClick] method:', method);
-      console.log('[CreateJobClick] hasViteOwnerToken:', !!bypassToken);
-      console.log('[CreateJobClick] hasAuthorizationHeader:', !!authToken);
+      const url         = '/api/jobs';
+      const method      = 'POST';
+      const tokenSource: 'bypass' | 'clerk' | 'none' =
+        bypassToken ? 'bypass' : clerkToken ? 'clerk' : 'none';
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-      const res = await fetch(url, {
-        method,
-        headers,
-        body: JSON.stringify({
-          customer:  result.job.customer  || undefined,
-          site:      result.job.address !== '—' ? result.job.address : undefined,
-          unitLabel: result.job.unitTag  !== '—' ? result.job.unitTag  : undefined,
-          title:     result.job.symptom  || result.title,
-          startedAt: result.scheduledMs,
-        }),
-      });
+      // ── logs immediately before the request ──────────────────────────
+      console.log('[CreateJobClick] url:', url);
+      console.log('[CreateJobClick] method:', method);
+      console.log('[CreateJobClick] hasAuthorizationHeader:', !!authToken);
+      console.log('[CreateJobClick] tokenSource:', tokenSource);
+      setCreateJobDebug({ url, method, hasAuth: !!authToken, tokenSource });
+
+      const res = await fetch(url, { method, headers, body: JSON.stringify({
+        customer:  result.job.customer  || undefined,
+        site:      result.job.address !== '—' ? result.job.address : undefined,
+        unitLabel: result.job.unitTag  !== '—' ? result.job.unitTag  : undefined,
+        title:     result.job.symptom  || result.title,
+        startedAt: result.scheduledMs,
+      }) });
+
       console.log('[CreateJobClick] responseStatus:', res.status);
+      setCreateJobDebug(prev => prev ? { ...prev, status: res.status } : prev);
+
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({})) as { error?: string };
-        if (res.status === 401) {
-          console.error('[CreateJobClick] 401 body:', errBody);
-        }
+        console.error('[CreateJobClick] errorBody:', errBody);
+        setCreateJobDebug(prev => prev ? { ...prev, body: errBody } : prev);
         setSchedToast(`⚠ Save failed: ${errBody.error ?? 'Server error'}`);
         setTimeout(() => setSchedToast(null), 5000);
         return;
@@ -919,6 +927,27 @@ export function DashboardView({ onStartJob }: Props) {
           />
         )}
       </AnimatePresence>
+
+      {/* ── DEBUG PANEL — remove after auth issue resolved ─────────── */}
+      {wizardOpen && createJobDebug && (
+        <div style={{
+          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 9999,
+          background: 'rgba(0,0,0,0.92)', color: '#4ade80', fontFamily: 'monospace',
+          fontSize: 11, padding: '8px 12px', borderTop: '2px solid #4ade80',
+        }}>
+          <div style={{ color: '#fbbf24', fontWeight: 'bold', marginBottom: 3 }}>◆ CreateJob Debug</div>
+          <div>url: {createJobDebug.url}</div>
+          <div>method: {createJobDebug.method}</div>
+          <div>hasAuth: <span style={{ color: createJobDebug.hasAuth ? '#4ade80' : '#f87171' }}>{String(createJobDebug.hasAuth)}</span></div>
+          <div>tokenSource: <span style={{ color: createJobDebug.tokenSource === 'none' ? '#f87171' : '#4ade80' }}>{createJobDebug.tokenSource}</span></div>
+          {createJobDebug.status !== undefined && (
+            <div>status: <span style={{ color: createJobDebug.status < 300 ? '#4ade80' : '#f87171' }}>{createJobDebug.status}</span></div>
+          )}
+          {createJobDebug.body !== undefined && (
+            <div style={{ color: '#f87171' }}>body: {JSON.stringify(createJobDebug.body)}</div>
+          )}
+        </div>
+      )}
 
       {/* ── "Job scheduled" toast ─────────────────────────────────── */}
       <AnimatePresence>
