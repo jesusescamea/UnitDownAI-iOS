@@ -161,26 +161,26 @@ export function DashboardView({ onStartJob }: Props) {
       setTimeout(() => setSchedToast(null), 3500);
     };
 
-    if (!clerkUser) {
-      finishLocalSchedule();
-      return;
-    }
-
     // Persist to the database — this is the source of truth
     try {
-      const clerkToken = await getToken().catch(() => null);
-      const fallbackToken = import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined;
-      const authToken = clerkToken || fallbackToken;
+      // Dev bypass token takes priority so Clerk JWTs don't shadow it when the
+      // server cannot verify them (e.g. CLERK_SECRET_KEY not configured).
+      const bypassToken = (import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined) || null;
+      const clerkToken  = bypassToken ? null : await getToken().catch(() => null);
+      const authToken   = bypassToken ?? clerkToken;
 
-      console.log('[CreateJob] hasClerkToken:', !!clerkToken);
-      console.log('[CreateJob] hasViteOwnerToken:', !!fallbackToken);
-      console.log('[CreateJob] hasAuthorizationHeader:', !!authToken);
+      const url    = '/api/jobs';
+      const method = 'POST';
+      console.log('[CreateJobClick] url:', url);
+      console.log('[CreateJobClick] method:', method);
+      console.log('[CreateJobClick] hasViteOwnerToken:', !!bypassToken);
+      console.log('[CreateJobClick] hasAuthorizationHeader:', !!authToken);
 
       const headers: Record<string, string> = { 'Content-Type': 'application/json' };
       if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-      const res = await fetch('/api/jobs', {
-        method: 'POST',
+      const res = await fetch(url, {
+        method,
         headers,
         body: JSON.stringify({
           customer:  result.job.customer  || undefined,
@@ -190,17 +190,18 @@ export function DashboardView({ onStartJob }: Props) {
           startedAt: result.scheduledMs,
         }),
       });
+      console.log('[CreateJobClick] responseStatus:', res.status);
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({})) as { error?: string };
         if (res.status === 401) {
-          console.error('[CreateJob] 401 response body:', errBody);
+          console.error('[CreateJobClick] 401 body:', errBody);
         }
         setSchedToast(`⚠ Save failed: ${errBody.error ?? 'Server error'}`);
         setTimeout(() => setSchedToast(null), 5000);
         return;
       }
     } catch (e) {
-      console.error('[CreateJob] fetch threw:', e);
+      console.error('[CreateJobClick] fetch threw:', e);
       setSchedToast('⚠ Could not reach server — check your connection');
       setTimeout(() => setSchedToast(null), 5000);
       return;
