@@ -1,5 +1,6 @@
 {pkgs}: {
   deps = [
+    pkgs.lsof
     pkgs.chromium
     pkgs.libgbm
     pkgs.systemd
