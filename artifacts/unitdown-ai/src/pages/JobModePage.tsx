@@ -9,9 +9,10 @@
  *   events.length  >  0  → JobActiveView    (2.0 dark timeline)
  *   completing === true  → JobCompletionView (ceremony + USR generation)
  *
- * All auth, offline-sync, and resume logic preserved from the original.
- * Existing production modals (VoiceNoteModal, NoteModal, MeasurementModal)
- * are used inside JobActiveView via context — no changes required.
+ * "Start New Job" opens the shared ScheduleJobWizard (Customer → Site →
+ * Equipment → Schedule → Review) instead of the old free-text modal.
+ * The wizard result is POSTed to /api/jobs and then startJob() is called
+ * with the server-assigned ID so no duplicate job is ever created.
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -19,11 +20,14 @@ import { useLocation } from "wouter";
 import {
   Briefcase, Plus, Clock, ChevronRight, RefreshCw, AlertCircle,
 } from "lucide-react";
-import { useUser } from "@clerk/clerk-react";
+import { useUser, useAuth } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
 
 import { useJobMode, type LocalJob } from "@/context/JobModeContext";
-import { StartJobSheet } from "@/components/job/StartJobSheet";
+import {
+  ScheduleJobWizard,
+  type ScheduleWizardResult,
+} from "@/pages/jmp/ScheduleJobWizard";
 import { JobDispatchView, type JobUnitData } from "./job/JobDispatchView";
 import { JobActiveView } from "./job/JobActiveView";
 import { JobCompletionView } from "./job/JobCompletionView";
@@ -42,7 +46,7 @@ function formatRelativeTime(ts: number): string {
 
 // ─── Modal state ──────────────────────────────────────────────────────────────
 
-type ModalState = { type: "none" } | { type: "start_job" };
+type ModalState = { type: "none" } | { type: "wizard" };
 
 // ─── Jobs list screen (no active job) ────────────────────────────────────────
 
@@ -159,15 +163,22 @@ interface JobModePageProps {
 
 export function JobModePage({ jobId }: JobModePageProps) {
   const { isSignedIn: isUser, user } = useUser();
+  const { getToken }                  = useAuth();
   const {
     job, events, elapsedSeconds, startJob, resumeJob, addEvent,
     completeJob, isLoaded,
   } = useJobMode();
   const [, navigate] = useLocation();
   const [modal, setModal]         = useState<ModalState>({ type: "none" });
-  const [startLoading, setStartLoading] = useState(false);
   const [error, setError]         = useState("");
   const [completing, setCompleting] = useState(false);
+
+  // Dismiss the error banner after a few seconds
+  useEffect(() => {
+    if (!error) return;
+    const t = setTimeout(() => setError(""), 6000);
+    return () => clearTimeout(t);
+  }, [error]);
 
   // Resume by ID when navigating directly to /job/:id
   useEffect(() => {
@@ -177,7 +188,7 @@ export function JobModePage({ jobId }: JobModePageProps) {
     void resumeJob(jobId);
   }, [jobId, isLoaded]); // eslint-disable-line
 
-  // Derive unit data from job metadata (populated by StartJobSheet / linked unit)
+  // Derive unit data from job metadata (populated by the wizard's equipment step)
   function metaStr(key: string): string | null {
     const v = job?.metadata?.[key];
     return typeof v === "string" ? v : null;
@@ -194,23 +205,76 @@ export function JobModePage({ jobId }: JobModePageProps) {
       }
     : null;
 
-  // ── Start new job ───────────────────────────────────────────────────────────
+  // ── Wizard → Create + Start job ─────────────────────────────────────────────
+  //
+  // Called when the technician taps "Create Job" on the wizard's Review step.
+  // We POST to /api/jobs to create the server record, then call startJob() with
+  // the server-assigned ID so the offline queue uses ON CONFLICT DO NOTHING —
+  // guaranteeing exactly one row in the database.
 
-  const handleStartJob = useCallback(
-    async (opts: Parameters<typeof startJob>[0]) => {
-      setStartLoading(true);
-      setError("");
+  const handleWizardCreated = useCallback(
+    async (result: ScheduleWizardResult) => {
+      // Close the wizard immediately so the user sees progress
+      setModal({ type: "none" });
+
+      // ── Auth: bypass token first so Clerk never blocks this path ──────────
+      const bypassToken = (import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined) || null;
+      const clerkToken  = bypassToken ? null : await getToken().catch(() => null);
+      const authToken   = bypassToken ?? clerkToken;
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+
       try {
-        const newJob = await startJob(opts);
-        setModal({ type: "none" });
+        const res = await fetch("/api/jobs", {
+          method:  "POST",
+          headers,
+          body: JSON.stringify({
+            customer:  result.job.customer  || undefined,
+            site:      result.job.address !== "—" ? result.job.address : undefined,
+            unitLabel: result.job.unitTag  !== "—" ? result.job.unitTag  : undefined,
+            title:     result.job.symptom  || result.title,
+            startedAt: result.scheduledMs,
+          }),
+        });
+
+        let serverJobId: string | undefined;
+
+        if (res.ok) {
+          const body = await res.json().catch(() => null) as { id?: string } | null;
+          serverJobId = body?.id;
+        } else {
+          const errBody = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string };
+          setError(`Could not create job: ${errBody.error ?? `HTTP ${res.status}`}`);
+          return;
+        }
+
+        // Start the job, reusing the server-assigned ID so the sync queue's
+        // ON CONFLICT DO NOTHING keeps exactly one row.
+        const newJob = await startJob({
+          existingId: serverJobId,
+          customer:   result.job.customer  || undefined,
+          site:       result.job.address !== "—" ? result.job.address : undefined,
+          unitLabel:  result.job.unitTag  !== "—" ? result.job.unitTag  : undefined,
+          title:      result.job.symptom  || result.title,
+          metadata: {
+            model:         result.job.model,
+            equipment:     result.job.equipment,
+            dispatchNotes: result.job.dispatchNotes,
+            scheduledJobId: serverJobId,
+            symptom:        result.job.symptom,
+            address:        result.job.address,
+            scheduledTime:  result.job.scheduledTime,
+          },
+        });
+
         navigate(`/job/${newJob.id}`);
-      } catch {
-        setError("Could not start job — check your connection and try again.");
-      } finally {
-        setStartLoading(false);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setError(`Could not start job — ${msg}`);
       }
     },
-    [startJob, navigate],
+    [getToken, startJob, navigate],
   );
 
   // ── Resume existing job ─────────────────────────────────────────────────────
@@ -229,10 +293,10 @@ export function JobModePage({ jobId }: JobModePageProps) {
   // ── Complete job ────────────────────────────────────────────────────────────
 
   const handleCompleteJob = useCallback(async () => {
-    const jobId = job?.id;
+    const currentJobId = job?.id;
     await completeJob();
-    if (jobId) {
-      navigate(`/job/${jobId}/record`);
+    if (currentJobId) {
+      navigate(`/job/${currentJobId}/record`);
     } else {
       navigate("/job");
     }
@@ -316,6 +380,8 @@ export function JobModePage({ jobId }: JobModePageProps) {
 
   // ── Jobs list (landing) view ─────────────────────────────────────────────────
 
+  const todayStr = new Date().toISOString().split("T")[0];
+
   return (
     <>
       {error && (
@@ -326,15 +392,15 @@ export function JobModePage({ jobId }: JobModePageProps) {
       )}
 
       <JobsListScreen
-        onStartNew={() => setModal({ type: "start_job" })}
+        onStartNew={() => setModal({ type: "wizard" })}
         onResume={handleResume}
       />
 
-      {modal.type === "start_job" && (
-        <StartJobSheet
-          onStart={handleStartJob}
+      {modal.type === "wizard" && (
+        <ScheduleJobWizard
+          defaultDate={todayStr}
           onClose={() => setModal({ type: "none" })}
-          loading={startLoading}
+          onCreate={(result) => { void handleWizardCreated(result); }}
         />
       )}
     </>
