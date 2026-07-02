@@ -148,8 +148,9 @@ export function JobActiveView({ job, events, elapsedSeconds, onComplete, onBack 
   const [toast, setToast] = useState<string | null>(null);
   const [repairDone, setRepairDone] = useState(false);
 
-  const stage = repairDone ? "REPAIR_COMPLETED" : deriveStage(events);
-  const score = computeScore(events);
+  const stage   = repairDone ? "REPAIR_COMPLETED" : deriveStage(events);
+  const skipped = getSkipped(events);   // hoisted so skip-button guards can reference it
+  const score   = computeScore(events);
   const suggestion = SUGGESTION[stage];
 
   useEffect(() => {
@@ -267,6 +268,8 @@ export function JobActiveView({ job, events, elapsedSeconds, onComplete, onBack 
                 <button
                   onClick={() => {
                     const which = stage === "INITIAL_OBSERVATION" ? "measurement" : "verification";
+                    // Guard: prevent duplicate skip events on rapid taps or re-render
+                    if (skipped.has(which)) return;
                     void doAddEvent("note", which === "measurement" ? "Measurements Skipped" : "Verification Skipped", {
                       metadata: { skipped: which, reason: "Not applicable for this repair" },
                     });
@@ -279,6 +282,8 @@ export function JobActiveView({ job, events, elapsedSeconds, onComplete, onBack 
                 <button
                   onClick={() => {
                     const which = stage === "INITIAL_OBSERVATION" ? "measurement" : "verification";
+                    // Guard: prevent duplicate skip events on rapid taps or re-render
+                    if (skipped.has(which)) return;
                     void doAddEvent("note", which === "measurement" ? "Measurements Skipped" : "Verification Skipped", {
                       metadata: { skipped: which, reason: "Will complete later" },
                     });
