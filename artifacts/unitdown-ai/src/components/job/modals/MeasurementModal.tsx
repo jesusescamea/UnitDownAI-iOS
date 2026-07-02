@@ -72,30 +72,48 @@ export function MeasurementModal({ onClose }: MeasurementModalProps) {
     }
   };
 
+  // Save rows with both key + value (fully recorded measurements).
   const handleAdd = () => {
     const valid = rows.filter((r) => r.key.trim() && r.value.trim());
     if (valid.length === 0) return;
-
     const measurements: Record<string, string> = {};
-    valid.forEach((r) => {
-      measurements[r.key.trim()] = r.value.trim();
-    });
-
+    valid.forEach((r) => { measurements[r.key.trim()] = r.value.trim(); });
     const title =
       valid.length === 1
         ? `${valid[0]!.key}: ${valid[0]!.value}`
         : `${valid.length} Measurements Recorded`;
+    addEvent({ eventType: "measurement", title, notes: note.trim() || undefined, measurements });
+    onClose();
+  };
 
+  // Save partial — rows with a name but no value are stored as "Not recorded".
+  const handleSavePartial = () => {
+    const withKeys = rows.filter((r) => r.key.trim());
+    if (withKeys.length === 0) { onClose(); return; }
+    const measurements: Record<string, string> = {};
+    withKeys.forEach((r) => {
+      measurements[r.key.trim()] = r.value.trim() || "Not recorded";
+    });
+    const filled  = withKeys.filter((r) => r.value.trim()).length;
+    const title   = withKeys.length === 1
+      ? `${withKeys[0]!.key}: ${withKeys[0]!.value.trim() || "Not recorded"}`
+      : `${filled} of ${withKeys.length} Measurements Recorded`;
+    addEvent({ eventType: "measurement", title, notes: note.trim() || undefined, measurements });
+    onClose();
+  };
+
+  // Skip — advances the stage without recording any values.
+  const handleSkip = () => {
     addEvent({
-      eventType: "measurement",
-      title,
-      notes: note.trim() || undefined,
-      measurements,
+      eventType: "note",
+      title: "Measurements Skipped",
+      metadata: { skipped: { measurement: true } },
     });
     onClose();
   };
 
   const hasValidRows = rows.some((r) => r.key.trim() && r.value.trim());
+  const hasAnyKey    = rows.some((r) => r.key.trim());
 
   return (
     <>
@@ -207,18 +225,33 @@ export function MeasurementModal({ onClose }: MeasurementModalProps) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 pb-6 pt-3 border-t border-zinc-100 dark:border-zinc-800 shrink-0">
-          <div className="flex gap-3">
-            <Button variant="outline" className="flex-1 h-11" onClick={onClose}>
-              Cancel
-            </Button>
+        <div className="px-5 pb-6 pt-3 border-t border-zinc-100 dark:border-zinc-800 shrink-0 space-y-2">
+          {/* Primary: save all fully-completed rows */}
+          <Button
+            className="w-full h-11 bg-cyan-600 hover:bg-cyan-700 text-white"
+            onClick={handleAdd}
+            disabled={!hasValidRows}
+          >
+            <CheckCircle2 className="w-4 h-4 mr-1.5" />
+            Save Measurements
+          </Button>
+          <div className="flex gap-2">
+            {/* Save whatever is filled — empty values stored as "Not recorded" */}
             <Button
-              className="flex-1 h-11 bg-cyan-600 hover:bg-cyan-700 text-white"
-              onClick={handleAdd}
-              disabled={!hasValidRows}
+              variant="outline"
+              className="flex-1 h-10 text-sm"
+              onClick={handleSavePartial}
+              disabled={!hasAnyKey}
             >
-              <CheckCircle2 className="w-4 h-4 mr-1.5" />
-              Add to Timeline
+              Save Partial
+            </Button>
+            {/* Skip this step entirely — advances stage without measurements */}
+            <Button
+              variant="outline"
+              className="flex-1 h-10 text-sm text-zinc-500"
+              onClick={handleSkip}
+            >
+              Skip — No Readings
             </Button>
           </div>
         </div>

@@ -3499,6 +3499,7 @@ function DashboardRoute() {
   async function handleStartJob(info: import("./pages/jmp/DashboardView").JobStartInfo) {
     try {
       const newJob = await startJob({
+        existingId: info.existingJobId,   // resume wizard-created job if present
         customer: info.customer,
         site: info.site,
         unitLabel: info.unitLabel,

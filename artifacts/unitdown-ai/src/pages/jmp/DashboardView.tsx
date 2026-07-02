@@ -41,6 +41,9 @@ export interface JobStartInfo {
   site?: string;
   unitLabel?: string;
   title?: string;
+  /** Server-assigned ID of an existing scheduled job. When present the
+   *  start handler resumes this job instead of creating a new one. */
+  existingJobId?: string;
   metadata?: Record<string, unknown>;
 }
 
@@ -225,8 +228,13 @@ export function DashboardView({ onStartJob }: Props) {
         return;
       }
 
-      // ── success: add job to local lists and close wizard ─────────────
-      if (scheduledDate === todayStr) setUserJobs(prev => [...prev, result.job]);
+      // ── success: read server-assigned ID so userJobs deduplicates correctly ──
+      const created = await res.json().catch(() => null) as { id?: string } | null;
+      const serverJobId = created?.id ?? result.job.id;
+
+      if (scheduledDate === todayStr) {
+        setUserJobs(prev => [...prev, { ...result.job, id: serverJobId }]);
+      }
       setUserCalEvents(prev => [...prev, result.calEvent]);
       setWizardOpen(false);
       setPrefillDate(null);
@@ -311,7 +319,10 @@ export function DashboardView({ onStartJob }: Props) {
   }
 
   const { realJobs, realCalEvents, realStats, realEquipment, realActivity } = useDashboardData(clerkUser?.id ?? '', getToken);
-  const allJobs = [...realJobs, ...userJobs];
+  // realJobs is the server source of truth; deduplicate so wizard-added
+  // userJobs entries don't double-appear once the server fetch returns them.
+  const realJobIds = new Set(realJobs.map(j => j.id));
+  const allJobs = [...realJobs, ...userJobs.filter(j => !realJobIds.has(j.id))];
 
   const now = new Date();
   const hour = now.getHours();
@@ -324,6 +335,7 @@ export function DashboardView({ onStartJob }: Props) {
       site: job.address,
       unitLabel: job.unitTag,
       title: job.symptom,
+      existingJobId: job.id,
       metadata: {
         symptom: job.symptom,
         address: job.address,

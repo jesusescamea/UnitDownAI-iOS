@@ -116,6 +116,10 @@ export interface CreateEventInput {
 }
 
 export interface StartJobOptions {
+  /** Server-assigned ID of an existing job (e.g. wizard-scheduled job).
+   *  When set, startJob uses this ID instead of generating a new one.
+   *  The server-side ON CONFLICT DO NOTHING prevents duplicate rows. */
+  existingId?: string;
   unitId?: string;
   customer?: string;
   site?: string;
@@ -521,7 +525,9 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
 
   const startJob = useCallback(async (opts?: StartJobOptions): Promise<LocalJob> => {
     const now = Date.now();
-    const jobId = clientId("job");
+    // Use an existing server-assigned ID when provided (e.g. wizard-scheduled job).
+    // The server's ON CONFLICT DO NOTHING keeps the row idempotent.
+    const jobId = opts?.existingId ?? clientId("job");
     const userId = user?.id ?? "offline";
 
     const localJob: LocalJob = {
