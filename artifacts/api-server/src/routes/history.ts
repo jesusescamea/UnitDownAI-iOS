@@ -1,16 +1,15 @@
 import { Router, type Request, type Response } from "express";
 import { db, userDiagnostics } from "@workspace/db";
 import { eq, desc } from "drizzle-orm";
+import { conditionalClerkMiddleware, clientIdAuthMiddleware, requireClientId } from "../lib/serverAuth";
 
 const historyRouter = Router();
+historyRouter.use(conditionalClerkMiddleware(), clientIdAuthMiddleware());
 
 // GET /api/history?clientId=xxx  — returns up to 20 entries newest-first
 historyRouter.get("/history", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!clientId || typeof clientId !== "string" || clientId.length > 200) {
-    res.status(400).json({ error: "clientId required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   try {
     const rows = await db

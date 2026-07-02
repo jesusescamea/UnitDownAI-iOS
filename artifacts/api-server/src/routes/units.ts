@@ -2,13 +2,12 @@ import { Router, type Request, type Response } from "express";
 import { db, unitRecords, jobs, jobTimelineEvents, customers, customerSites } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 
+import { conditionalClerkMiddleware, clientIdAuthMiddleware, requireClientId } from "../lib/serverAuth";
+
 const unitsRouter = Router();
+unitsRouter.use(conditionalClerkMiddleware(), clientIdAuthMiddleware());
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function validateClientId(clientId: unknown): clientId is string {
-  return typeof clientId === "string" && clientId.startsWith("user_") && clientId.length < 200;
-}
 
 /**
  * Normalizes a serial/model/text for duplicate matching:
@@ -65,11 +64,8 @@ async function validateCustomerSiteLink(
 // ─── GET /api/units ───────────────────────────────────────────────────────────
 
 unitsRouter.get("/units", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const q = (req.query.q as string | undefined)?.trim();
   const showArchived = req.query.archived === "true";
@@ -101,11 +97,8 @@ unitsRouter.get("/units", async (req: Request, res: Response) => {
 // ─── GET /api/units/:id ───────────────────────────────────────────────────────
 
 unitsRouter.get("/units/:id", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   try {
     const unitId = String(req.params.id);
@@ -133,11 +126,9 @@ unitsRouter.get("/units/:id", async (req: Request, res: Response) => {
 // Pass excludeId when editing an existing unit to exclude it from results.
 
 unitsRouter.post("/units/check-duplicate", async (req: Request, res: Response) => {
-  const { clientId, unit, excludeId } = req.body ?? {};
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bClientId, unit, excludeId } = req.body ?? {};
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
   if (!unit || typeof unit !== "object") {
     res.status(400).json({ error: "unit object required" });
     return;
@@ -234,11 +225,9 @@ unitsRouter.post("/units/check-duplicate", async (req: Request, res: Response) =
 // ─── POST /api/units ──────────────────────────────────────────────────────────
 
 unitsRouter.post("/units", async (req: Request, res: Response) => {
-  const { clientId, unit } = req.body ?? {};
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bClientId3, unit } = req.body ?? {};
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   if (!unit || typeof unit !== "object") {
     res.status(400).json({ error: "unit object required" });
@@ -300,11 +289,9 @@ unitsRouter.post("/units", async (req: Request, res: Response) => {
 // ─── PATCH /api/units/:id ─────────────────────────────────────────────────────
 
 unitsRouter.patch("/units/:id", async (req: Request, res: Response) => {
-  const { clientId, unit } = req.body ?? {};
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bClientId4, unit } = req.body ?? {};
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   if (unit && typeof unit === "object" && ("customerId" in unit || "siteId" in unit)) {
     const linkError = await validateCustomerSiteLink(clientId, unit as Record<string, unknown>);
@@ -355,11 +342,8 @@ unitsRouter.patch("/units/:id", async (req: Request, res: Response) => {
 // ─── DELETE /api/units/:id — soft-archive ─────────────────────────────────────
 
 unitsRouter.delete("/units/:id", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   try {
     const unitId = String(req.params.id);
@@ -385,11 +369,8 @@ unitsRouter.delete("/units/:id", async (req: Request, res: Response) => {
 // Queries all job_timeline_events linked to this unit across every completed job
 // and synthesizes: repeated parts, chronic alarms, and accumulated memory facts.
 unitsRouter.get("/units/:id/memory", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const unitId = String(req.params.id);
 

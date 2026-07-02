@@ -3,15 +3,10 @@ import { eq, and } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { vanInventory, toolChecklist } from "@workspace/db";
 
+import { conditionalClerkMiddleware, clientIdAuthMiddleware, requireClientId } from "../lib/serverAuth";
+
 const vanRouter = Router();
-
-// ─── Auth helper (clientId from query/body, consistent with units.ts pattern) ──
-
-function getClientId(req: Request): string | null {
-  const id = (req.query.clientId as string | undefined) ?? (req.body?.clientId as string | undefined);
-  if (typeof id !== "string" || !id.startsWith("user_") || id.length > 200) return null;
-  return id;
-}
+vanRouter.use(conditionalClerkMiddleware(), clientIdAuthMiddleware());
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // Van Inventory
@@ -19,11 +14,8 @@ function getClientId(req: Request): string | null {
 
 // ─── GET /api/van/inventory — list all active items for the user ───────────────
 vanRouter.get("/van/inventory", async (req: Request, res: Response) => {
-  const userId = getClientId(req);
-  if (!userId) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const userId = requireClientId(req, res);
+  if (!userId) return;
 
   try {
     const items = await db
@@ -39,11 +31,8 @@ vanRouter.get("/van/inventory", async (req: Request, res: Response) => {
 
 // ─── POST /api/van/inventory/bulk — seed default inventory if empty ────────────
 vanRouter.post("/van/inventory/bulk", async (req: Request, res: Response) => {
-  const userId = getClientId(req);
-  if (!userId) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const userId = requireClientId(req, res);
+  if (!userId) return;
 
   const { items } = req.body as {
     items?: Array<{
@@ -98,11 +87,8 @@ vanRouter.post("/van/inventory/bulk", async (req: Request, res: Response) => {
 
 // ─── PATCH /api/van/inventory/:id — update qty for one item ───────────────────
 vanRouter.patch("/van/inventory/:id", async (req: Request, res: Response) => {
-  const userId = getClientId(req);
-  if (!userId) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const userId = requireClientId(req, res);
+  if (!userId) return;
 
   const { id } = req.params as { id: string };
   const { qty } = req.body as { qty?: unknown };
@@ -126,11 +112,8 @@ vanRouter.patch("/van/inventory/:id", async (req: Request, res: Response) => {
 
 // ─── DELETE /api/van/inventory/:id — soft-delete (deactivate) ─────────────────
 vanRouter.delete("/van/inventory/:id", async (req: Request, res: Response) => {
-  const userId = getClientId(req);
-  if (!userId) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const userId = requireClientId(req, res);
+  if (!userId) return;
 
   const { id } = req.params as { id: string };
 
@@ -152,11 +135,8 @@ vanRouter.delete("/van/inventory/:id", async (req: Request, res: Response) => {
 
 // ─── GET /api/van/tools — list all tools for the user ─────────────────────────
 vanRouter.get("/van/tools", async (req: Request, res: Response) => {
-  const userId = getClientId(req);
-  if (!userId) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const userId = requireClientId(req, res);
+  if (!userId) return;
 
   try {
     const items = await db
@@ -172,11 +152,8 @@ vanRouter.get("/van/tools", async (req: Request, res: Response) => {
 
 // ─── POST /api/van/tools/bulk — seed default tools if empty ───────────────────
 vanRouter.post("/van/tools/bulk", async (req: Request, res: Response) => {
-  const userId = getClientId(req);
-  if (!userId) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const userId = requireClientId(req, res);
+  if (!userId) return;
 
   const { items } = req.body as {
     items?: Array<{
@@ -225,11 +202,8 @@ vanRouter.post("/van/tools/bulk", async (req: Request, res: Response) => {
 
 // ─── PATCH /api/van/tools/:id — update hasItem for one tool ───────────────────
 vanRouter.patch("/van/tools/:id", async (req: Request, res: Response) => {
-  const userId = getClientId(req);
-  if (!userId) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const userId = requireClientId(req, res);
+  if (!userId) return;
 
   const { id } = req.params as { id: string };
   const { hasItem } = req.body as { hasItem?: unknown };

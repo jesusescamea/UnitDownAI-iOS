@@ -2,19 +2,15 @@ import { Router, type Request, type Response } from "express";
 import { db, scheduledEvents } from "@workspace/db";
 import { eq, and, desc, asc } from "drizzle-orm";
 
-const scheduledEventsRouter = Router();
+import { conditionalClerkMiddleware, clientIdAuthMiddleware, requireClientId } from "../lib/serverAuth";
 
-function validateClientId(clientId: unknown): clientId is string {
-  return typeof clientId === "string" && clientId.startsWith("user_") && clientId.length < 200;
-}
+const scheduledEventsRouter = Router();
+scheduledEventsRouter.use(conditionalClerkMiddleware(), clientIdAuthMiddleware());
 
 // GET /api/scheduled-events?clientId=xxx&upcoming=true&unitId=xxx
 scheduledEventsRouter.get("/scheduled-events", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const upcomingOnly = req.query.upcoming === "true";
   const unitId = req.query.unitId as string | undefined;
@@ -52,11 +48,9 @@ scheduledEventsRouter.get("/scheduled-events", async (req: Request, res: Respons
 
 // POST /api/scheduled-events
 scheduledEventsRouter.post("/scheduled-events", async (req: Request, res: Response) => {
-  const { clientId, event } = req.body ?? {};
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bClientId, event } = req.body ?? {};
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
   if (!event || typeof event.title !== "string" || !event.title.trim()) {
     res.status(400).json({ error: "event.title required" });
     return;
@@ -91,11 +85,9 @@ scheduledEventsRouter.post("/scheduled-events", async (req: Request, res: Respon
 
 // PATCH /api/scheduled-events/:id
 scheduledEventsRouter.patch("/scheduled-events/:id", async (req: Request, res: Response) => {
-  const { clientId, ...fields } = req.body ?? {};
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bClientId2, ...fields } = req.body ?? {};
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const updates: Record<string, unknown> = { updatedAt: new Date() };
   if (typeof fields.title === "string") updates.title = fields.title.trim().slice(0, 500);
@@ -128,11 +120,8 @@ scheduledEventsRouter.patch("/scheduled-events/:id", async (req: Request, res: R
 
 // DELETE /api/scheduled-events/:id?clientId=xxx
 scheduledEventsRouter.delete("/scheduled-events/:id", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   try {
     const eventId = String(req.params.id);

@@ -102,6 +102,77 @@ export function requireAuth(req: Request, res: Response): string | null {
   return result ? result.userId : null;
 }
 
+// ─── clientId-pattern auth (for routes that use ?clientId= / body.clientId) ──
+//
+// Drop-in replacement for the per-file validateClientId + query extraction.
+// Priority:
+//   1. Bearer token resolved userId (_authUserId set by clientIdAuthMiddleware)
+//   2. req.query.clientId  — must start with "user_" (Clerk ID guard)
+//   3. req.body.clientId   — same guard
+//
+// Owner bypass IDs are accepted unconditionally in path #1.
+
+export function clientIdAuthMiddleware(): RequestHandler {
+  return (req, _res, next) => {
+    const authHeader = req.headers["authorization"] as string | undefined;
+    const token = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (!token) return next();
+
+    // Owner bypass
+    const bypassId = checkOwnerBypass(token);
+    if (bypassId) {
+      (req as unknown as Record<string, unknown>)["_authUserId"] = bypassId;
+      // Also inject into body so Zod schemas that require clientId still pass
+      if (req.body && typeof req.body === "object" && !Array.isArray(req.body)) {
+        (req.body as Record<string, unknown>)["clientId"] = bypassId;
+      }
+      return next();
+    }
+
+    // Clerk JWT (only when middleware ran, i.e. secret key is present)
+    if (process.env["CLERK_SECRET_KEY"]) {
+      try {
+        const { userId } = getAuth(req);
+        if (userId) {
+          (req as unknown as Record<string, unknown>)["_authUserId"] = userId;
+          if (req.body && typeof req.body === "object" && !Array.isArray(req.body)) {
+            (req.body as Record<string, unknown>)["clientId"] = userId;
+          }
+        }
+      } catch {
+        // clerkMiddleware not mounted yet on this router — skip
+      }
+    }
+
+    return next();
+  };
+}
+
+function isValidLegacyClientId(id: unknown): id is string {
+  return typeof id === "string" && id.startsWith("user_") && id.length < 200;
+}
+
+/**
+ * Resolves the authenticated user ID for clientId-pattern routes.
+ * Returns null and sends a 401 when no valid identity is found.
+ */
+export function requireClientId(req: Request, res: Response): string | null {
+  // 1. Pre-resolved by Bearer token (owner bypass or Clerk JWT)
+  const pre = (req as unknown as Record<string, unknown>)["_authUserId"] as string | undefined;
+  if (pre) return pre;
+
+  // 2. Legacy query param
+  const fromQuery = req.query["clientId"] as string | undefined;
+  if (isValidLegacyClientId(fromQuery)) return fromQuery;
+
+  // 3. Legacy body clientId
+  const fromBody = (req.body as Record<string, unknown> | undefined)?.["clientId"] as string | undefined;
+  if (isValidLegacyClientId(fromBody)) return fromBody;
+
+  res.status(401).json({ error: "Authentication required" });
+  return null;
+}
+
 // ─── Auth-debug payload (no secrets) ─────────────────────────────────────────
 
 export function buildAuthDebugPayload(req: Request): Record<string, unknown> {

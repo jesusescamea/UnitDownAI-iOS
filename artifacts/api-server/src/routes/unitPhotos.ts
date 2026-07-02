@@ -6,14 +6,13 @@ import { randomUUID } from "crypto";
 import { z } from "zod";
 import { ObjectStorageService, ObjectNotFoundError } from "../lib/objectStorage";
 
+import { conditionalClerkMiddleware, clientIdAuthMiddleware, requireClientId } from "../lib/serverAuth";
+
 const unitPhotosRouter = Router();
 const objectStorageService = new ObjectStorageService();
+unitPhotosRouter.use(conditionalClerkMiddleware(), clientIdAuthMiddleware());
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function getClientId(req: Request): string | null {
-  return (req.query.clientId as string | undefined)?.trim() || null;
-}
 
 // ─── OCR prompt for field photos ─────────────────────────────────────────────
 
@@ -97,12 +96,8 @@ async function runOcrAsync(
 
 unitPhotosRouter.get("/units/:unitId/photos", async (req: Request, res: Response) => {
   const unitId = String(req.params.unitId);
-  const clientId = getClientId(req);
-
-  if (!clientId) {
-    res.status(400).json({ error: "clientId required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   try {
     const photos = await db
@@ -134,12 +129,8 @@ const PostPhotoBody = z.object({
 
 unitPhotosRouter.post("/units/:unitId/photos", async (req: Request, res: Response) => {
   const unitId = String(req.params.unitId);
-  const clientId = getClientId(req);
-
-  if (!clientId) {
-    res.status(400).json({ error: "clientId required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const parsed = PostPhotoBody.safeParse(req.body);
   if (!parsed.success) {
@@ -190,12 +181,8 @@ unitPhotosRouter.patch(
   async (req: Request, res: Response) => {
     const unitId = String(req.params.unitId);
     const photoId = String(req.params.photoId);
-    const clientId = getClientId(req);
-
-    if (!clientId) {
-      res.status(400).json({ error: "clientId required" });
-      return;
-    }
+    const clientId = requireClientId(req, res);
+    if (!clientId) return;
 
     const parsed = PatchPhotoBody.safeParse(req.body);
     if (!parsed.success) {
@@ -240,12 +227,8 @@ unitPhotosRouter.delete(
   async (req: Request, res: Response) => {
     const unitId = String(req.params.unitId);
     const photoId = String(req.params.photoId);
-    const clientId = getClientId(req);
-
-    if (!clientId) {
-      res.status(400).json({ error: "clientId required" });
-      return;
-    }
+    const clientId = requireClientId(req, res);
+    if (!clientId) return;
 
     try {
       // Fetch first to get objectPath for GCS deletion

@@ -2,22 +2,18 @@ import { Router, type Request, type Response } from "express";
 import { db, equipmentTimeline, diagnosticLogs, unitRecords } from "@workspace/db";
 import { eq, and, desc } from "drizzle-orm";
 
-const timelineRouter = Router();
+import { conditionalClerkMiddleware, clientIdAuthMiddleware, requireClientId } from "../lib/serverAuth";
 
-function validateClientId(clientId: unknown): clientId is string {
-  return typeof clientId === "string" && clientId.startsWith("user_") && clientId.length < 200;
-}
+const timelineRouter = Router();
+timelineRouter.use(conditionalClerkMiddleware(), clientIdAuthMiddleware());
 
 // ─── GET /api/units/:unitId/timeline ─────────────────────────────────────────
 // Returns merged timeline: manual entries from equipment_timeline table PLUS
 // diagnostic events synthesized from diagnostic_logs. Sorted newest-first.
 // Query: clientId (required), type (filter), q (search)
 timelineRouter.get("/units/:unitId/timeline", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const unitId = String(req.params.unitId);
   const typeFilter = (req.query.type as string | undefined)?.trim();
@@ -112,11 +108,9 @@ timelineRouter.get("/units/:unitId/timeline", async (req: Request, res: Response
 
 // ─── POST /api/units/:unitId/timeline ────────────────────────────────────────
 timelineRouter.post("/units/:unitId/timeline", async (req: Request, res: Response) => {
-  const { clientId, event } = req.body ?? {};
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bClientId, event } = req.body ?? {};
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const unitId = String(req.params.unitId);
 
@@ -179,11 +173,9 @@ timelineRouter.post("/units/:unitId/timeline", async (req: Request, res: Respons
 
 // ─── PATCH /api/timeline/:id ──────────────────────────────────────────────────
 timelineRouter.patch("/timeline/:id", async (req: Request, res: Response) => {
-  const { clientId, ...fields } = req.body ?? {};
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bClientId2, ...fields } = req.body ?? {};
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const entryId = String(req.params.id);
   const validStatuses = ["unresolved", "monitoring", "resolved"];
@@ -230,11 +222,8 @@ timelineRouter.patch("/timeline/:id", async (req: Request, res: Response) => {
 
 // ─── DELETE /api/timeline/:id?clientId= ──────────────────────────────────────
 timelineRouter.delete("/timeline/:id", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const entryId = String(req.params.id);
 

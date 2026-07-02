@@ -34,13 +34,10 @@ import {
 import { z } from "zod/v4";
 import { diagnosticLogs } from "@workspace/db";
 
+import { conditionalClerkMiddleware, clientIdAuthMiddleware, requireClientId } from "../lib/serverAuth";
+
 const customersRouter = Router();
-
-// ─── Auth ─────────────────────────────────────────────────────────────────────
-
-function validateClientId(id: unknown): id is string {
-  return typeof id === "string" && id.startsWith("user_") && id.length < 200;
-}
+customersRouter.use(conditionalClerkMiddleware(), clientIdAuthMiddleware());
 
 function uid(): string {
   return `cust_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -84,11 +81,8 @@ const SiteBodySchema = z.object({
 // ─── GET /api/customers ───────────────────────────────────────────────────────
 
 customersRouter.get("/customers", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const q           = (req.query.q as string | undefined)?.trim() ?? "";
   const showArchived = req.query.archived === "true";
@@ -177,11 +171,8 @@ customersRouter.get("/customers", async (req: Request, res: Response) => {
 // ─── GET /api/customers/:id ───────────────────────────────────────────────────
 
 customersRouter.get("/customers/:id", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const customerId = String(req.params.id);
 
@@ -296,11 +287,9 @@ customersRouter.post("/customers", async (req: Request, res: Response) => {
     return;
   }
 
-  const { clientId, ...fields } = body.data;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bodyClientId, ...fields } = body.data;
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   try {
     const now = new Date();
@@ -332,11 +321,9 @@ customersRouter.patch("/customers/:id", async (req: Request, res: Response) => {
     return;
   }
 
-  const { clientId, ...fields } = body.data;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bodyClientId2, ...fields } = body.data;
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const customerId = String(req.params.id);
 
@@ -362,11 +349,8 @@ customersRouter.patch("/customers/:id", async (req: Request, res: Response) => {
 // ─── DELETE /api/customers/:id (archive) ─────────────────────────────────────
 
 customersRouter.delete("/customers/:id", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const customerId = String(req.params.id);
 
@@ -392,11 +376,9 @@ customersRouter.post("/customers/:id/sites", async (req: Request, res: Response)
     return;
   }
 
-  const { clientId, ...fields } = body.data;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bodyClientId3, ...fields } = body.data;
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const customerId = String(req.params.id);
 
@@ -442,11 +424,9 @@ customersRouter.patch("/customer-sites/:siteId", async (req: Request, res: Respo
     return;
   }
 
-  const { clientId, ...fields } = body.data;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bodyClientId4, ...fields } = body.data;
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const siteId = String(req.params.siteId);
 
@@ -472,11 +452,8 @@ customersRouter.patch("/customer-sites/:siteId", async (req: Request, res: Respo
 // ─── DELETE /api/customer-sites/:siteId (archive) ────────────────────────────
 
 customersRouter.delete("/customer-sites/:siteId", async (req: Request, res: Response) => {
-  const clientId = req.query.clientId as string;
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const siteId = String(req.params.siteId);
 
@@ -498,12 +475,9 @@ customersRouter.delete("/customer-sites/:siteId", async (req: Request, res: Resp
 // Also updates siteCustomerName to the customer's name for display compatibility.
 
 customersRouter.patch("/units/:unitId/link-customer", async (req: Request, res: Response) => {
-  const { clientId, customerId, siteId } = req.body ?? {};
-
-  if (!validateClientId(clientId)) {
-    res.status(401).json({ error: "Authentication required" });
-    return;
-  }
+  const { clientId: _bodyClientId5, customerId, siteId } = req.body ?? {};
+  const clientId = requireClientId(req, res);
+  if (!clientId) return;
 
   const unitId = String(req.params.unitId);
 
