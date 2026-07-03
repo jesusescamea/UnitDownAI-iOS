@@ -12,6 +12,7 @@
 
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useAuth } from "@clerk/clerk-react";
 import {
   ArrowLeft,
   FileText,
@@ -354,6 +355,101 @@ function ExportSheet({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ─── Local snapshot → ServiceRecord builder ───────────────────────────────────
+// Synthesizes a ServiceRecord from the JobModeContext localStorage snapshot
+// (key: unitdown_job_<id>) when the server endpoint is unavailable.
+
+function buildRecordFromLocalSnapshot(raw: string, jobId: string): ServiceRecord | null {
+  try {
+    const snap = JSON.parse(raw) as {
+      job?: Record<string, unknown>;
+      events?: Array<Record<string, unknown>>;
+    };
+    if (!snap.job) return null;
+    const j = snap.job;
+    const evts = Array.isArray(snap.events) ? snap.events : [];
+
+    // Aggregate measurements
+    const measurementMap: Record<string, string[]> = {};
+    for (const e of evts) {
+      const m = e.measurements as Record<string, unknown> | null | undefined;
+      if (m && typeof m === "object") {
+        for (const [k, v] of Object.entries(m)) {
+          if (v !== null && v !== undefined && v !== "") {
+            if (!measurementMap[k]) measurementMap[k] = [];
+            measurementMap[k].push(String(v));
+          }
+        }
+      }
+    }
+
+    // Aggregate parts
+    const partsReplaced: PartEntry[] = [];
+    const partsRecommended: PartEntry[] = [];
+    for (const e of evts) {
+      if (e.eventType === "part" && e.parts) {
+        const p = e.parts as Record<string, unknown>;
+        const entry: PartEntry = {
+          description: String(p.description ?? p.name ?? "Unknown part"),
+          quantity:    p.quantity as string | number | undefined,
+          partNumber:  p.partNumber as string | undefined,
+          eventId:     String(e.id),
+          timestamp:   Number(e.timestamp ?? 0),
+        };
+        if (p.status === "recommended") partsRecommended.push(entry);
+        else partsReplaced.push(entry);
+      }
+    }
+
+    return {
+      job: {
+        id:                  String(j.id ?? jobId),
+        userId:              String(j.userId ?? ""),
+        customer:            (j.customer  as string | null) ?? null,
+        site:                (j.site      as string | null) ?? null,
+        unitLabel:           (j.unitLabel as string | null) ?? null,
+        title:               (j.title     as string | null) ?? null,
+        status:              String(j.status ?? "completed"),
+        startedAt:           Number(j.startedAt ?? 0),
+        completedAt:         (j.completedAt as number | null) ?? null,
+        usrId:               (j.usrId     as string | null) ?? null,
+        serviceRecordStatus: (j.serviceRecordStatus as string) ?? "completed",
+        metadata:            (j.metadata  as Record<string, unknown> | null) ?? null,
+      },
+      usrId:               (j.usrId     as string | null) ?? null,
+      serviceRecordStatus: (j.serviceRecordStatus as string) ?? "completed",
+      generatedAt:         Number(j.completedAt ?? Date.now()),
+      timeline: evts.map(e => ({
+        id:              String(e.id),
+        eventType:       String(e.eventType ?? "note"),
+        title:           String(e.title ?? ""),
+        timestamp:       Number(e.timestamp ?? 0),
+        notes:           (e.notes           as string | null) ?? null,
+        voiceTranscript: (e.voiceTranscript as string | null) ?? null,
+        voiceCorrected:  (e.voiceCorrected  as string | null) ?? null,
+        measurements:    (e.measurements    as Record<string, unknown> | null) ?? null,
+        parts:            e.parts ?? null,
+        metadata:        (e.metadata        as Record<string, unknown> | null) ?? null,
+      })),
+      measurements: Object.keys(measurementMap).length > 0 ? measurementMap : null,
+      parts: { replaced: partsReplaced, recommended: partsRecommended, pending: [], unknown: [] },
+      photos: {},
+      aiReport: {
+        professional: null, customerSummary: null, invoiceSummary: null,
+        confidence: null, officeReady: null, completenessScore: null,
+      },
+      equipmentMemory: { updates: [] },
+      verification: {
+        operationalStatus: null, verifiedBy: null, notes: null,
+        followUpRequired: false, returnVisit: false, safetyConcerns: false, warrantyMention: false,
+      },
+      exportFormats: [],
+    };
+  } catch {
+    return null;
+  }
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 interface ServiceRecordPageProps {
@@ -362,38 +458,57 @@ interface ServiceRecordPageProps {
 
 export function ServiceRecordPage({ jobId }: ServiceRecordPageProps) {
   const [, navigate] = useLocation();
-  const [record, setRecord] = useState<ServiceRecord | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const { getToken } = useAuth();
+  const [record,     setRecord]    = useState<ServiceRecord | null>(null);
+  const [loading,    setLoading]   = useState(true);
+  const [error,      setError]     = useState<string | null>(null);
   const [showExport, setShowExport] = useState(false);
+  const [fromLocal,  setFromLocal] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
+    setFromLocal(false);
 
-    fetch(`/api/jobs/${jobId}/service-record`, {
-      headers: { "Content-Type": "application/json" },
-    })
-      .then((r) => {
+    void (async () => {
+      // ── Auth token: owner bypass first, then Clerk ────────────────────────
+      const bypassToken = (import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined) || null;
+      const clerkToken  = bypassToken ? null : await getToken().catch(() => null);
+      const authToken   = bypassToken ?? clerkToken;
+
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+
+      // ── 1. Try server endpoint ────────────────────────────────────────────
+      try {
+        const r = await fetch(`/api/jobs/${jobId}/service-record`, { headers });
         if (!r.ok) throw new Error(`${r.status}`);
-        return r.json() as Promise<ServiceRecord>;
-      })
-      .then((data) => {
-        if (!cancelled) {
-          setRecord(data);
-          setLoading(false);
+        const data = await r.json() as ServiceRecord;
+        if (!cancelled) { setRecord(data); setLoading(false); }
+        return;
+      } catch {
+        // Fall through to local fallback below
+      }
+
+      // ── 2. Fallback: localStorage snapshot (unitdown_job_<jobId>) ─────────
+      try {
+        const raw = localStorage.getItem(`unitdown_job_${jobId}`);
+        if (raw) {
+          const localRecord = buildRecordFromLocalSnapshot(raw, jobId);
+          if (localRecord) {
+            if (!cancelled) { setRecord(localRecord); setFromLocal(true); setLoading(false); }
+            return;
+          }
         }
-      })
-      .catch((err) => {
-        if (!cancelled) {
-          setError(err instanceof Error ? err.message : "Failed to load service record");
-          setLoading(false);
-        }
-      });
+      } catch { /* ignore storage errors */ }
+
+      // ── 3. Both sources failed → show unavailable ─────────────────────────
+      if (!cancelled) { setError("404"); setLoading(false); }
+    })();
 
     return () => { cancelled = true; };
-  }, [jobId]);
+  }, [jobId, getToken]);
 
   // ── Loading skeleton ───────────────────────────────────────────────────────
 
@@ -515,6 +630,16 @@ export function ServiceRecordPage({ jobId }: ServiceRecordPageProps) {
 
       {/* ── Content ──────────────────────────────────────────────────────── */}
       <div className="max-w-2xl mx-auto px-4 py-5 space-y-4 pb-12">
+
+        {/* ── Local-data notice ──────────────────────────────────────────── */}
+        {fromLocal && (
+          <div className="flex items-center gap-2.5 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+            <RefreshCw className="w-4 h-4 text-amber-500 shrink-0" />
+            <p className="text-xs text-amber-700">
+              Showing locally-saved record. AI report and USR ID will appear once this job syncs online.
+            </p>
+          </div>
+        )}
 
         {/* ── Cover Card ─────────────────────────────────────────────────── */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
