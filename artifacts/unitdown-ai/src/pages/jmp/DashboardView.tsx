@@ -170,12 +170,14 @@ export function DashboardView({ onStartJob }: Props) {
         method,
         headers,
         body: JSON.stringify({
-          customer:  result.job.customer  || undefined,
-          site:      result.job.address !== '—' ? result.job.address : undefined,
-          unitLabel: result.job.unitTag  !== '—' ? result.job.unitTag  : undefined,
-          title:     result.job.symptom  || result.title,
-          startedAt: result.scheduledMs,
-          unitId:    result.unitId       || undefined,
+          customer:   result.job.customer  || undefined,
+          site:       result.job.address !== '—' ? result.job.address : undefined,
+          unitLabel:  result.job.unitTag  !== '—' ? result.job.unitTag  : undefined,
+          title:      result.job.symptom  || result.title,
+          startedAt:  result.scheduledMs,
+          unitId:     result.unitId      || undefined,
+          customerId: result.customerId  || undefined,
+          siteId:     result.siteId      || undefined,
         }),
       });
 

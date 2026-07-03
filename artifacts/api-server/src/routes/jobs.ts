@@ -2,7 +2,7 @@ import { Router, type IRouter, type Request, type Response } from "express";
 import { eq, and, desc, sql } from "drizzle-orm";
 import { z } from "zod/v4";
 import { db } from "@workspace/db";
-import { jobs, jobTimelineEvents, usrSequences } from "@workspace/db";
+import { jobs, jobTimelineEvents, usrSequences, unitRecords } from "@workspace/db";
 import type { Job, JobTimelineEvent } from "@workspace/db";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { conditionalClerkMiddleware, requireAuth } from "../lib/serverAuth";
@@ -195,13 +195,15 @@ function assembleServiceRecord(job: Job, events: JobTimelineEvent[]) {
 // ─── Validation schemas ───────────────────────────────────────────────────────
 
 const CreateJobSchema = z.object({
-  id:        z.string().optional(),
-  unitId:    z.string().optional(),
-  customer:  z.string().optional(),
-  site:      z.string().optional(),
-  unitLabel: z.string().optional(),
-  title:     z.string().optional(),
-  startedAt: z.number().optional(),   // optional: caller can set scheduled date
+  id:         z.string().optional(),
+  unitId:     z.string().optional(),
+  customerId: z.string().optional(),   // FK to customers table
+  siteId:     z.string().optional(),   // FK to customer_sites table
+  customer:   z.string().optional(),
+  site:       z.string().optional(),
+  unitLabel:  z.string().optional(),
+  title:      z.string().optional(),
+  startedAt:  z.number().optional(),   // optional: caller can set scheduled date
 });
 
 const UpdateJobSchema = z.object({
@@ -280,6 +282,8 @@ jobsRouter.post("/jobs", async (req: Request, res: Response) => {
     id:          jobId,
     userId,
     unitId:      parsed.data.unitId      ?? null,
+    customerId:  parsed.data.customerId  ?? null,
+    siteId:      parsed.data.siteId      ?? null,
     customer:    parsed.data.customer    ?? null,
     site:        parsed.data.site        ?? null,
     unitLabel:   parsed.data.unitLabel   ?? null,
@@ -453,7 +457,22 @@ jobsRouter.post("/jobs/:jobId/complete", async (req: Request, res: Response) => 
     // Generate the permanent USR ID
     const usrId = await generateUsrId();
 
-    // Update job: completed status + USR ID + service record status
+    // Derive customerId/siteId from linked unit if the job doesn't already have them
+    let resolvedCustomerId = existing.customerId ?? null;
+    let resolvedSiteId     = existing.siteId     ?? null;
+
+    if (existing.unitId && (!resolvedCustomerId || !resolvedSiteId)) {
+      const [unit] = await db
+        .select({ customerId: unitRecords.customerId, siteId: unitRecords.siteId })
+        .from(unitRecords)
+        .where(eq(unitRecords.id, existing.unitId));
+      if (unit) {
+        resolvedCustomerId = resolvedCustomerId ?? unit.customerId ?? null;
+        resolvedSiteId     = resolvedSiteId     ?? unit.siteId     ?? null;
+      }
+    }
+
+    // Update job: completed status + USR ID + service record status + customer/site FKs
     const [completedJob] = await db
       .update(jobs)
       .set({
@@ -462,6 +481,8 @@ jobsRouter.post("/jobs/:jobId/complete", async (req: Request, res: Response) => 
         updatedAt: now,
         usrId,
         serviceRecordStatus: "completed",
+        customerId: resolvedCustomerId,
+        siteId:     resolvedSiteId,
       })
       .where(and(eq(jobs.id, jobId), eq(jobs.userId, userId)))
       .returning();

@@ -14,6 +14,12 @@ export const jobs = pgTable("jobs", {
   // have identified the equipment when they first start a job.
   unitId:      text("unit_id"),
 
+  // Optional FK-style links to customers + customer_sites tables.
+  // Populated when the tech selects a customer/site in the wizard, or derived
+  // from the linked unit_record at job completion. Null = "unlinked".
+  customerId:  text("customer_id"),
+  siteId:      text("site_id"),
+
   // Denormalized display fields — duplicated from unit_records so that the job
   // header renders instantly without a join.
   customer:    text("customer"),

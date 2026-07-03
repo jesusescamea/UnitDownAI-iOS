@@ -21,6 +21,10 @@ export interface ScheduleWizardResult {
   title: string;
   /** unit_records.id for the selected piece of equipment, if any. */
   unitId?: string;
+  /** customers.id for the selected customer, if any. */
+  customerId?: string;
+  /** customer_sites.id for the selected site, if any. */
+  siteId?: string;
 }
 
 interface Props {
@@ -424,7 +428,16 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
       label: `${job.customer} — ${effectiveJobType}`,
     };
 
-    onCreate({ job, calEvent, isToday, scheduledMs: selectedDate.getTime(), title: calEvent.label, unitId: selectedUnitId ?? undefined });
+    onCreate({
+      job,
+      calEvent,
+      isToday,
+      scheduledMs: selectedDate.getTime(),
+      title: calEvent.label,
+      unitId:     selectedUnitId     ?? undefined,
+      customerId: selectedCustomerId ?? undefined,
+      siteId:     selectedSiteId     ?? undefined,
+    });
   }
 
   const StepIcon = STEPS[step].icon;

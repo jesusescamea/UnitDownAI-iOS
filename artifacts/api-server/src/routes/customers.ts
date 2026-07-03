@@ -216,8 +216,20 @@ customersRouter.get("/customers/:id", async (req: Request, res: Response) => {
       .orderBy(desc(unitRecords.updatedAt))
       .limit(50);
 
-    // Fetch jobs — prefer unitId FK link, fall back to name-match for legacy free-text jobs
+    // Fetch jobs — three paths merged, deduped:
+    //   1. Direct customerId FK (most reliable — set at creation or completion)
+    //   2. unitId FK — jobs linked to any unit belonging to this customer
+    //   3. Name-match fallback — legacy free-text customer field
     const customerUnitIds = linkedUnits.map((u) => u.id);
+
+    const jobsByCustomerId = await db
+      .select()
+      .from(jobs)
+      .where(and(eq(jobs.userId, clientId), eq(jobs.customerId, customerId)))
+      .orderBy(desc(jobs.startedAt))
+      .limit(100);
+
+    const seenJobIds = new Set(jobsByCustomerId.map((j) => j.id));
 
     const jobsByUnit = customerUnitIds.length > 0
       ? await db
@@ -228,7 +240,7 @@ customersRouter.get("/customers/:id", async (req: Request, res: Response) => {
           .limit(100)
       : [];
 
-    const seenJobIds = new Set(jobsByUnit.map((j) => j.id));
+    for (const j of jobsByUnit) seenJobIds.add(j.id);
 
     const jobsByName = await db
       .select()
@@ -237,7 +249,11 @@ customersRouter.get("/customers/:id", async (req: Request, res: Response) => {
       .orderBy(desc(jobs.startedAt))
       .limit(100);
 
-    const recentJobs = [...jobsByUnit, ...jobsByName.filter((j) => !seenJobIds.has(j.id))];
+    const recentJobs = [
+      ...jobsByCustomerId,
+      ...jobsByUnit.filter((j) => !seenJobIds.has(j.id)),
+      ...jobsByName.filter((j) => !seenJobIds.has(j.id)),
+    ];
 
     const linkedUnitIds = linkedUnits.map((unit) => unit.id);
     const logs = linkedUnitIds.length > 0
