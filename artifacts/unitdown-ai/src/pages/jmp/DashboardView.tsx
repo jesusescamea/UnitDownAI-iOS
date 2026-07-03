@@ -148,7 +148,7 @@ export function DashboardView({ onStartJob }: Props) {
       // this step a completed job would reappear every time the dashboard mounts.
       let dirty = false;
       const synced = records.map(r => {
-        if (r.job.status === 'complete') return r;
+        if (r.job.status === 'complete' || (r.job.status as string) === 'completed') return r;
         try {
           const snap = localStorage.getItem(`unitdown_job_${r.job.id}`);
           if (snap) {
@@ -177,7 +177,7 @@ export function DashboardView({ onStartJob }: Props) {
 
       // Filter jobs whose scheduledDate matches today — also handles legacy records that used isToday
       setUserJobs(synced.filter(r => {
-        if (r.job.status === 'complete') return false;
+        if (r.job.status === 'complete' || (r.job.status as string) === 'completed') return false;
         if (r.scheduledDate) return r.scheduledDate === todayStr;
         return r.isToday === true;
       }).map(r => r.job));
@@ -314,7 +314,14 @@ export function DashboardView({ onStartJob }: Props) {
   // realJobs is the server source of truth; deduplicate so wizard-added
   // userJobs entries don't double-appear once the server fetch returns them.
   const realJobIds = new Set(realJobs.map(j => j.id));
-  const allJobs = [...realJobs, ...userJobs.filter(j => !realJobIds.has(j.id))];
+  const allJobs = [
+    ...realJobs,
+    ...userJobs.filter(j =>
+      !realJobIds.has(j.id) &&
+      j.status !== 'complete' &&
+      (j.status as string) !== 'completed',
+    ),
+  ];
 
   // Merge server-completed jobs with any locally-completed jobs not yet synced
   const serverCompletedIds = new Set(realCompletedJobs.map(j => j.id));
