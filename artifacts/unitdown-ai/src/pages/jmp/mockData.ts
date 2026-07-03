@@ -125,6 +125,10 @@ export interface TodayJob {
   techNote: string | null;
   dispatchNotes?: string[];
   isPrototype: boolean;
+  /** Unix ms timestamp set when the job is completed locally */
+  completedAt?: number;
+  /** Permanent UnitDown Service Record ID assigned on completion */
+  usrId?: string;
 }
 
 export const TODAY_JOBS: TodayJob[] = [

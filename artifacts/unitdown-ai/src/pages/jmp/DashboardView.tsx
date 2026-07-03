@@ -140,13 +140,48 @@ export function DashboardView({ onStartJob }: Props) {
       const raw = localStorage.getItem(LS_KEY);
       if (!raw) return;
       const records = JSON.parse(raw) as Array<{ job: TodayJob; calEvent: CalendarEvent; scheduledDate?: string; isToday?: boolean }>;
+
+      // Cross-reference each scheduled job against the JobModeContext snapshot
+      // (key: unitdown_job_<id>) to pick up completions that happened mid-session.
+      // JobModeContext writes status:"completed" to its own snapshot on completeJob();
+      // that status is never propagated back to the scheduled-jobs list, so without
+      // this step a completed job would reappear every time the dashboard mounts.
+      let dirty = false;
+      const synced = records.map(r => {
+        if (r.job.status === 'complete') return r;
+        try {
+          const snap = localStorage.getItem(`unitdown_job_${r.job.id}`);
+          if (snap) {
+            const parsed = JSON.parse(snap) as { job?: { status?: string; completedAt?: number; usrId?: string | null } };
+            if (parsed.job?.status === 'completed') {
+              dirty = true;
+              return {
+                ...r,
+                job: {
+                  ...r.job,
+                  status:      'complete' as const,
+                  completedAt: parsed.job.completedAt,
+                  usrId:       parsed.job.usrId ?? undefined,
+                },
+              };
+            }
+          }
+        } catch { /* ignore per-job read errors */ }
+        return r;
+      });
+
+      // Write back only if something actually changed so we don't thrash storage
+      if (dirty) {
+        try { localStorage.setItem(LS_KEY, JSON.stringify(synced)); } catch { /* quota */ }
+      }
+
       // Filter jobs whose scheduledDate matches today — also handles legacy records that used isToday
-      setUserJobs(records.filter(r => {
+      setUserJobs(synced.filter(r => {
         if (r.job.status === 'complete') return false;
         if (r.scheduledDate) return r.scheduledDate === todayStr;
         return r.isToday === true;
       }).map(r => r.job));
-      setUserCalEvents(records.map(r => r.calEvent));
+      setUserCalEvents(synced.map(r => r.calEvent));
     } catch { /* ignore parse errors */ }
   }, []);
 
