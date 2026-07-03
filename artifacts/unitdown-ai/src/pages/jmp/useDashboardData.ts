@@ -107,10 +107,12 @@ function mapJob(job: ApiJob): TodayJob {
 }
 
 function jobToCalEvent(job: ApiJob): CalendarEvent {
+  const d = new Date(job.startedAt);
   return {
-    day:   new Date(job.startedAt).getDate(),
-    type:  job.status === 'completed' ? 'completed' : 'appointment',
-    label: job.customer ?? job.title ?? 'Job',
+    day:           d.getDate(),
+    type:          job.status === 'completed' ? 'completed' : 'appointment',
+    label:         job.customer ?? job.title ?? 'Job',
+    scheduledDate: d.toISOString().split('T')[0],
   };
 }
 

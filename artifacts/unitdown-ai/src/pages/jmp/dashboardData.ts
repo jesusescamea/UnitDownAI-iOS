@@ -4,6 +4,8 @@ export interface CalendarEvent {
   day: number;
   type: 'pm' | 'training' | 'appointment' | 'vacation' | 'emergency' | 'followup' | 'completed';
   label: string;
+  /** ISO date string (YYYY-MM-DD). When present the event is only shown in its exact month/year. */
+  scheduledDate?: string;
 }
 
 export const JUNE_EVENTS: CalendarEvent[] = [

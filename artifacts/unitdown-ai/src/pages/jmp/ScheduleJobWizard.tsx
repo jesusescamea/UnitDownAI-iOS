@@ -423,9 +423,10 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
       data.jobType === 'Follow-up'     ? 'followup' : 'appointment';
 
     const calEvent: CalendarEvent = {
-      day:   dayNum,
-      type:  calEventType,
-      label: `${job.customer} — ${effectiveJobType}`,
+      day:           dayNum,
+      type:          calEventType,
+      label:         `${job.customer} — ${effectiveJobType}`,
+      scheduledDate: data.date,
     };
 
     onCreate({

@@ -227,6 +227,19 @@ export function DashboardView({ onStartJob }: Props) {
       const created = await res.json().catch(() => null) as { id?: string } | null;
       const serverJobId = created?.id ?? result.job.id;
 
+      // ── persist so future sessions and refreshes see this job ────────────
+      try {
+        const existing = localStorage.getItem(LS_KEY);
+        const records = existing
+          ? (JSON.parse(existing) as Array<{ job: TodayJob; calEvent: CalendarEvent; scheduledDate?: string; isToday?: boolean }>)
+          : [];
+        const upsertIdx = records.findIndex(r => r.job.id === result.job.id || r.job.id === serverJobId);
+        const record = { job: { ...result.job, id: serverJobId }, calEvent: result.calEvent, scheduledDate };
+        if (upsertIdx >= 0) records[upsertIdx] = record;
+        else records.push(record);
+        localStorage.setItem(LS_KEY, JSON.stringify(records));
+      } catch { /* ignore quota / parse errors */ }
+
       if (scheduledDate === todayStr) {
         setUserJobs(prev => [...prev, { ...result.job, id: serverJobId }]);
       }
@@ -1049,13 +1062,18 @@ function CalendarCard({ events, currentDate, calendarMonth, onPrevMonth, onNextM
   const firstDay    = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1).getDay();
   const daysInMonth = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0).getDate();
   const monthYear   = calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-  const eventMap    = buildEventMap(events);
+  // Filter events to only those belonging to this calendar month.
+  // Events with a scheduledDate are month-specific; events without one
+  // (legacy server records or static mock data) are always shown.
+  const monthPrefix = `${calendarMonth.getFullYear()}-${String(calendarMonth.getMonth() + 1).padStart(2, '0')}`;
+  const monthEvents = events.filter(e => !e.scheduledDate || e.scheduledDate.startsWith(monthPrefix));
+  const eventMap    = buildEventMap(monthEvents);
   const cells       = buildCells(firstDay, daysInMonth);
   const rows: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
 
-  const pmsThisMonth = events.filter(e => e.type === 'pm').length;
-  const followups    = events.filter(e => e.type === 'followup').length;
+  const pmsThisMonth = monthEvents.filter(e => e.type === 'pm').length;
+  const followups    = monthEvents.filter(e => e.type === 'followup').length;
 
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-2xl overflow-hidden">
@@ -1177,7 +1195,9 @@ function FullScreenCalendar({ events, currentDate, initialMonth, onClose, onDayT
     isCurrentMonth ? currentDate.getDate() : 1
   );
 
-  const eventMap = buildEventMap(events);
+  const fsMonthPrefix = `${calMonth.getFullYear()}-${String(calMonth.getMonth() + 1).padStart(2, '0')}`;
+  const fsMonthEvents = events.filter(e => !e.scheduledDate || e.scheduledDate.startsWith(fsMonthPrefix));
+  const eventMap = buildEventMap(fsMonthEvents);
   const cells = buildCells(firstDay, daysInMonth);
   const rows: (number | null)[][] = [];
   for (let i = 0; i < cells.length; i += 7) rows.push(cells.slice(i, i + 7));
