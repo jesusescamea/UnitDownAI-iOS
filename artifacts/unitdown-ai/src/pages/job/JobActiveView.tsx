@@ -68,12 +68,20 @@ function getSkipped(events: LocalEvent[]): Set<string> {
   );
 }
 
+function hasCustomerReview(events: LocalEvent[]): boolean {
+  return events.some(
+    (e) => e.eventType === "note" && e.title === "Customer Review Complete",
+  );
+}
+
 function deriveStage(events: LocalEvent[]): JobStage {
   const types   = new Set(events.map((e) => e.eventType));
   const skipped = getSkipped(events);
-  if (types.has("verification")  || skipped.has("verification"))  return "VERIFICATION_COMPLETE";
+  if (hasCustomerReview(events))                                   return "CUSTOMER_REVIEWED";
   if (types.has("recommendation"))                                 return "RECOMMENDATIONS_ADDED";
+  if (types.has("verification")  || skipped.has("verification"))  return "VERIFICATION_COMPLETE";
   if (types.has("part"))                                           return "REPAIR_IN_PROGRESS";
+  if (types.has("voice_note"))                                      return "ROOT_CAUSE_IDENTIFIED";
   if (types.has("measurement")   || skipped.has("measurement"))   return "MEASUREMENTS_CAPTURED";
   if (types.has("alarm_review"))                                   return "INITIAL_OBSERVATION";
   if (types.has("equipment_identified"))                           return "EQUIPMENT_VERIFIED";
@@ -83,13 +91,15 @@ function deriveStage(events: LocalEvent[]): JobStage {
 function computeScore(events: LocalEvent[]): number {
   const types = new Set(events.map((e) => e.eventType));
   let score = 10;
-  if (types.has("equipment_identified")) score += 15;
+  if (types.has("equipment_identified")) score += 10;
   if (types.has("alarm_review"))         score += 10;
   if (types.has("measurement"))          score += 15;
+  if (types.has("voice_note"))            score += 10;
   if (types.has("part"))                 score += 15;
   if (types.has("photo"))                score += 10;
   if (types.has("verification"))         score += 15;
   if (types.has("recommendation"))       score += 10;
+  if (hasCustomerReview(events))         score += 5;
   return Math.min(100, score);
 }
 
@@ -148,7 +158,11 @@ export function JobActiveView({ job, events, elapsedSeconds, onComplete, onBack 
   const [toast, setToast] = useState<string | null>(null);
   const [repairDone, setRepairDone] = useState(false);
 
-  const stage   = repairDone ? "REPAIR_COMPLETED" : deriveStage(events);
+  const derivedStage = deriveStage(events);
+  // repairDone local state bridges REPAIR_IN_PROGRESS → REPAIR_COMPLETED only while
+  // the user hasn't yet recorded verification. Once verification exists, deriveStage
+  // returns VERIFICATION_COMPLETE regardless of repairDone.
+  const stage   = (repairDone && derivedStage === "REPAIR_IN_PROGRESS") ? "REPAIR_COMPLETED" : derivedStage;
   const skipped = getSkipped(events);   // hoisted so skip-button guards can reference it
   const score   = computeScore(events);
   const suggestion = SUGGESTION[stage];
@@ -232,6 +246,18 @@ export function JobActiveView({ job, events, elapsedSeconds, onComplete, onBack 
           initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -4 }}
           className="mx-4 mt-2 mb-1.5 flex-shrink-0"
         >
+          {stage === "CUSTOMER_REVIEWED" ? (
+            <div className="rounded-2xl px-3.5 py-4 border border-green-700/60 bg-green-950/30">
+              <div className="text-center">
+                <div className="text-green-400 font-bold text-sm mb-0.5">✓ Job Documentation Complete</div>
+                <div className="text-gray-400 text-xs mb-3">Ready to Generate Service Record</div>
+                <button onClick={onComplete}
+                  className="w-full bg-green-600 hover:bg-green-500 text-white font-bold text-xs py-2.5 rounded-xl transition-colors">
+                  Generate Service Record
+                </button>
+              </div>
+            </div>
+          ) : (
           <div className="rounded-2xl px-3.5 py-3 border border-gray-800 bg-gray-900/60">
             <div className="flex items-start gap-3">
               <div className="flex-1 min-w-0">
@@ -300,6 +326,7 @@ export function JobActiveView({ job, events, elapsedSeconds, onComplete, onBack 
               or use + to do something else
             </button>
           </div>
+          )}
         </motion.div>
       </AnimatePresence>
 

@@ -15,10 +15,10 @@
  * with the server-assigned ID so no duplicate job is ever created.
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useLocation } from "wouter";
 import {
-  Briefcase, Plus, Clock, ChevronRight, RefreshCw, AlertCircle,
+  Briefcase, Plus, Clock, ChevronRight, RefreshCw, AlertCircle, FileText,
 } from "lucide-react";
 import { useUser, useAuth } from "@clerk/clerk-react";
 import { Button } from "@/components/ui/button";
@@ -57,11 +57,32 @@ interface JobsListScreenProps {
 
 function JobsListScreen({ onStartNew, onResume }: JobsListScreenProps) {
   const { loadPendingJobs, pendingJobIds } = useJobMode();
+  const [, navigate] = useLocation();
   const [pendingJobs, setPendingJobs] = useState<LocalJob[]>([]);
 
   useEffect(() => {
     setPendingJobs(loadPendingJobs());
   }, [pendingJobIds, loadPendingJobs]);
+
+  const completedJobs = useMemo((): LocalJob[] => {
+    return pendingJobIds
+      .map((id) => {
+        try {
+          const raw = localStorage.getItem(`unitdown_job_${id}`);
+          if (!raw) return null;
+          const snap = JSON.parse(raw) as { job?: LocalJob };
+          return snap.job ?? null;
+        } catch { return null; }
+      })
+      .filter((j): j is LocalJob =>
+        !!j && (j.status === "completed" || (j.status as string) === "complete"),
+      )
+      .sort(
+        (a, b) =>
+          ((b as LocalJob & { completedAt?: number }).completedAt ?? b.updatedAt) -
+          ((a as LocalJob & { completedAt?: number }).completedAt ?? a.updatedAt),
+      );
+  }, [pendingJobIds]);
 
   return (
     <div className="min-h-screen bg-gray-950 text-white pb-14 sm:pb-0">
@@ -90,9 +111,9 @@ function JobsListScreen({ onStartNew, onResume }: JobsListScreenProps) {
       </div>
 
       {/* Pending jobs */}
-      <div className="px-4 py-5">
-        {pendingJobs.length > 0 ? (
-          <>
+      <div className="px-4 py-5 space-y-6">
+        {pendingJobs.length > 0 && (
+          <div>
             <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
               Resume Previous Job
             </h2>
@@ -101,22 +122,34 @@ function JobsListScreen({ onStartNew, onResume }: JobsListScreenProps) {
                 <JobCard key={j.id} job={j} onResume={onResume} />
               ))}
             </div>
-          </>
-        ) : (
-          <div className="flex flex-col items-center text-center py-16 px-6">
-            <div className="w-16 h-16 rounded-2xl bg-blue-950 flex items-center justify-center mb-4">
-              <Briefcase className="w-8 h-8 text-blue-400" />
-            </div>
-            <h3 className="text-base font-semibold text-white mb-2">
-              Ready for your first job
-            </h3>
-            <p className="text-sm text-gray-500 max-w-xs leading-relaxed">
-              Start a job when you arrive on site. UnitDown will build a complete
-              timeline — voice notes, measurements, photos, and parts — automatically
-              saved throughout the call.
-            </p>
           </div>
         )}
+
+        {/* Completed jobs / service records */}
+        <div>
+          <h2 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">
+            Completed Service Records
+          </h2>
+          {completedJobs.length > 0 ? (
+            <div className="space-y-2">
+              {completedJobs.map((j) => (
+                <CompletedJobCard
+                  key={j.id}
+                  job={j}
+                  onOpen={() => navigate(`/job/${j.id}/record`)}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-col items-center text-center py-10 px-6 rounded-2xl border border-gray-800 bg-gray-900/40">
+              <FileText className="w-8 h-8 text-gray-600 mb-3" />
+              <p className="text-sm font-medium text-gray-400 mb-1">No completed jobs yet</p>
+              <p className="text-xs text-gray-600 max-w-xs leading-relaxed">
+                Completed service records will appear here.
+              </p>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -151,6 +184,48 @@ function JobCard({ job, onResume }: { job: LocalJob; onResume: (id: string) => v
         </div>
       </div>
       <ChevronRight className="w-4 h-4 text-gray-600 group-hover:text-gray-300 transition-colors" />
+    </button>
+  );
+}
+
+// ─── Completed job card ───────────────────────────────────────────────────────
+
+function CompletedJobCard({ job, onOpen }: { job: LocalJob; onOpen: () => void }) {
+  const label =
+    [job.unitLabel, job.customer, job.site].filter(Boolean).join(" · ") ||
+    "Untitled Job";
+  const completedAt =
+    (job as LocalJob & { completedAt?: number }).completedAt ?? job.updatedAt;
+  const usrId = (job as LocalJob & { usrId?: string }).usrId;
+
+  return (
+    <button
+      onClick={onOpen}
+      className="w-full text-left flex items-center gap-3 rounded-xl border border-gray-800 bg-gray-900 px-4 py-3.5 hover:border-green-700 transition-colors group"
+    >
+      <div className="w-9 h-9 rounded-lg bg-green-950 flex items-center justify-center shrink-0">
+        <FileText className="w-4 h-4 text-green-500" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-semibold text-white truncate">{label}</div>
+        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+          <span className="flex items-center gap-1 text-xs text-gray-500">
+            <Clock className="w-3 h-3" />
+            {new Date(completedAt).toLocaleDateString("en-US", {
+              month: "short", day: "numeric", year: "numeric",
+            })}
+          </span>
+          {usrId && (
+            <>
+              <span className="w-1 h-1 rounded-full bg-gray-600" />
+              <span className="text-xs text-gray-600 font-mono">{usrId}</span>
+            </>
+          )}
+        </div>
+      </div>
+      <span className="text-[10px] font-semibold text-green-500 border border-green-800 rounded-full px-2 py-0.5 shrink-0 group-hover:bg-green-900/40 transition-colors">
+        View Report
+      </span>
     </button>
   );
 }
