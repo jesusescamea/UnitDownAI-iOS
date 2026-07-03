@@ -3,6 +3,7 @@ import { ChevronDown, ChevronRight, BookOpen, Clock } from "lucide-react";
 import { AppNav } from "@/components/AppNav";
 import { BRAND_GUIDES, GUIDE_SECTIONS } from "@/data/brandGuides";
 import type { BrandGuide } from "@/data/brandGuides";
+import EquipmentResources from "@/components/EquipmentResources";
 
 // ─── Brand card ───────────────────────────────────────────────────────────────
 
@@ -37,32 +38,45 @@ function BrandCard({ guide }: { guide: BrandGuide }) {
 
       {/* Expanded sections */}
       {open && (
-        <div className="border-t border-gray-800 divide-y divide-gray-800">
-          {GUIDE_SECTIONS.map(({ key, label }) => {
-            const section = guide[key];
-            return (
-              <div key={key} className="px-4 py-3">
-                <p className={`text-[10px] font-black uppercase tracking-widest mb-1.5 ${guide.accentText}`}>
-                  {label}
-                </p>
-                {section ? (
-                  <ul className="space-y-1">
-                    {section.items.map((item, i) => (
-                      <li key={i} className="flex items-start gap-2 text-xs text-gray-300">
-                        <span className={`mt-1.5 w-1 h-1 rounded-full flex-shrink-0 ${guide.accentText.replace("text-", "bg-")}`} />
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                ) : (
-                  <div className="flex items-center gap-1.5 text-xs text-gray-600">
-                    <Clock className="w-3 h-3 flex-shrink-0" />
-                    Guide coming soon
+        <div className="border-t border-gray-800">
+          {/* ── Equipment Resources (central API database) ─────────────── */}
+          <div className="px-4 pt-4 pb-2">
+            <p className={`text-[10px] font-black uppercase tracking-widest mb-3 ${guide.accentText}`}>
+              Manuals · Wiring Diagrams · Resources
+            </p>
+            <EquipmentResources manufacturer={guide.name} modelNumber="" />
+          </div>
+
+          {/* ── Quick-reference fault code guide (static text) ────────── */}
+          {GUIDE_SECTIONS.some((s) => guide[s.key] !== null) && (
+            <div className="border-t border-gray-800 divide-y divide-gray-800">
+              {GUIDE_SECTIONS.map(({ key, label }) => {
+                const section = guide[key];
+                return (
+                  <div key={key} className="px-4 py-3">
+                    <p className={`text-[10px] font-black uppercase tracking-widest mb-1.5 ${guide.accentText}`}>
+                      {label}
+                    </p>
+                    {section ? (
+                      <ul className="space-y-1">
+                        {section.items.map((item, i) => (
+                          <li key={i} className="flex items-start gap-2 text-xs text-gray-300">
+                            <span className={`mt-1.5 w-1 h-1 rounded-full flex-shrink-0 ${guide.accentText.replace("text-", "bg-")}`} />
+                            {item}
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <div className="flex items-center gap-1.5 text-xs text-gray-600">
+                        <Clock className="w-3 h-3 flex-shrink-0" />
+                        Guide coming soon
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

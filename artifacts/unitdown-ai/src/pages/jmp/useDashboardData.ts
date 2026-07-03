@@ -30,6 +30,18 @@ interface ApiJob {
   startedAt: number;
   updatedAt: number;
   completedAt?: number | null;
+  usrId?: string | null;
+}
+
+// ─── Exported types ───────────────────────────────────────────────────────────
+
+export interface CompletedJob {
+  id: string;
+  customer: string;
+  site: string;
+  equipment: string;
+  usrId: string | null;
+  completedAt: number | null;
 }
 
 interface ApiUnit {
@@ -242,12 +254,13 @@ function buildStats(
 // ─── Public hook ──────────────────────────────────────────────────────────────
 
 export interface DashboardData {
-  realJobs:      TodayJob[];
-  realCalEvents: CalendarEvent[];
-  realStats:     DashboardStat[];
-  realEquipment: EquipmentAttention[];
-  realActivity:  RecentActivity[];
-  loading:       boolean;
+  realJobs:           TodayJob[];
+  realCompletedJobs:  CompletedJob[];
+  realCalEvents:      CalendarEvent[];
+  realStats:          DashboardStat[];
+  realEquipment:      EquipmentAttention[];
+  realActivity:       RecentActivity[];
+  loading:            boolean;
 }
 
 export function useDashboardData(
@@ -301,11 +314,21 @@ export function useDashboardData(
   }, [clientId, getToken]);
 
   return {
-    realJobs:      jobs.filter(j => j.status !== 'completed').map(mapJob),
-    realCalEvents: jobs.map(jobToCalEvent),
-    realStats:     buildStats(jobs, units, logs),
-    realEquipment: buildEquipmentItems(units, logs),
-    realActivity:  buildActivity(logs, units),
+    realJobs:          jobs.filter(j => j.status !== 'completed').map(mapJob),
+    realCompletedJobs: jobs
+      .filter(j => j.status === 'completed')
+      .map(j => ({
+        id:          j.id,
+        customer:    j.customer ?? j.site ?? 'Service Call',
+        site:        j.site ?? '—',
+        equipment:   j.unitLabel ?? '—',
+        usrId:       j.usrId ?? null,
+        completedAt: j.completedAt ?? null,
+      })),
+    realCalEvents:     jobs.map(jobToCalEvent),
+    realStats:         buildStats(jobs, units, logs),
+    realEquipment:     buildEquipmentItems(units, logs),
+    realActivity:      buildActivity(logs, units),
     loading,
   };
 }

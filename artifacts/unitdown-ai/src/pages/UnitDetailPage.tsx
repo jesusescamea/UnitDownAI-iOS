@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation, useParams } from "wouter";
-import { useUser } from "@clerk/clerk-react";
+import { useUser, useAuth } from "@clerk/clerk-react";
 import {
   ChevronRight, Wrench, Edit2, Trash2, Pencil,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
@@ -20,6 +20,18 @@ import { CustomerSiteField } from "@/components/CustomerSiteField";
 import type { CustomerSiteValue } from "@/components/CustomerSiteField";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CompletedServiceJob {
+  id: string;
+  status: string;
+  customer: string | null;
+  site: string | null;
+  unitLabel: string | null;
+  title: string | null;
+  usrId: string | null;
+  completedAt: number | null;
+  startedAt: number;
+}
 
 interface UnitRecord {
   id: string;
@@ -440,6 +452,7 @@ export default function UnitDetailPage() {
   const [jobStarting, setJobStarting] = useState(false);
   const [events, setEvents] = useState<TimelineEvent[]>([]);
   const [unitLogs, setUnitLogs] = useState<DiagnosticLog[]>([]);
+  const [completedJobs, setCompletedJobs] = useState<CompletedServiceJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [archiving, setArchiving] = useState(false);
   const [favLoading, setFavLoading] = useState(false);
@@ -465,6 +478,7 @@ export default function UnitDetailPage() {
   const [addDefaultType, setAddDefaultType] = useState<"note" | "repair" | "maintenance">("note");
   const [editingEvent, setEditingEvent] = useState<TimelineEvent | null>(null);
 
+  const { getToken } = useAuth();
   const clientId = clerkUser?.id ?? getClientId();
   const isLoggedIn = isLoaded && !!clerkUser;
 
@@ -498,6 +512,30 @@ export default function UnitDetailPage() {
       .catch(() => setError("Failed to load unit"))
       .finally(() => setLoading(false));
   }, [isLoaded, isLoggedIn, clientId, params.id]);
+
+  // Fetch completed jobs for this unit (requires Bearer auth)
+  useEffect(() => {
+    if (!isLoaded || !isLoggedIn || !params.id) return;
+    let active = true;
+
+    void (async () => {
+      const bypassToken = (import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined) ?? null;
+      const clerkToken  = bypassToken ? null : await getToken().catch(() => null);
+      const token       = bypassToken ?? clerkToken;
+      if (!token) return;
+
+      try {
+        const r = await fetch(`/api/jobs?unitId=${encodeURIComponent(params.id)}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!r.ok || !active) return;
+        const data = await r.json() as { jobs: CompletedServiceJob[] };
+        setCompletedJobs((data.jobs ?? []).filter(j => j.status === "completed"));
+      } catch { /* no-op */ }
+    })();
+
+    return () => { active = false; };
+  }, [isLoaded, isLoggedIn, params.id, getToken]);
 
   // ── Link unit to customer/site ────────────────────────────────────────────
   function openLinkEditor() {
@@ -1006,6 +1044,39 @@ export default function UnitDetailPage() {
                 Add Entry
               </button>
             </div>
+
+            {/* ── Completed Service Calls (Job Mode records for this unit) */}
+            {completedJobs.length > 0 && (
+              <div className="mb-4">
+                <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
+                  Completed Service Calls
+                </p>
+                <div className="space-y-2">
+                  {completedJobs.map(j => (
+                    <button
+                      key={j.id}
+                      onClick={() => navigate(`/job/${j.id}/record`)}
+                      className="w-full text-left bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-3 flex items-center justify-between gap-3 hover:border-emerald-300 transition-colors active:scale-[0.99]"
+                    >
+                      <div className="min-w-0">
+                        <div className="text-sm font-bold text-slate-800 truncate">
+                          {j.customer ?? j.site ?? j.title ?? "Service Call"}
+                        </div>
+                        {j.usrId && (
+                          <div className="text-[10px] font-mono text-emerald-700 mt-0.5">{j.usrId}</div>
+                        )}
+                        <div className="text-xs text-slate-500 mt-0.5">
+                          {j.completedAt
+                            ? new Date(j.completedAt).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })
+                            : "Completed"}
+                        </div>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400 shrink-0" />
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
 
             {/* Quick-add shortcuts */}
             <div className="flex gap-2 mb-3 flex-wrap">

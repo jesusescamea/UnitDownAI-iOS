@@ -250,11 +250,17 @@ jobsRouter.get("/jobs", async (req: Request, res: Response) => {
   const userId = requireUserId(req, res);
   if (!userId) return;
 
+  const unitIdFilter = typeof req.query.unitId === "string" ? req.query.unitId : null;
+
   try {
     const result = await db
       .select()
       .from(jobs)
-      .where(eq(jobs.userId, userId))
+      .where(
+        unitIdFilter
+          ? and(eq(jobs.userId, userId), eq(jobs.unitId, unitIdFilter))
+          : eq(jobs.userId, userId)
+      )
       .orderBy(desc(jobs.startedAt));
 
     res.json({ jobs: result });

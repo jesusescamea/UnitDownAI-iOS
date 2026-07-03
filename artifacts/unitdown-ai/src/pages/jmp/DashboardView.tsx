@@ -13,7 +13,7 @@ import {
   EVENT_COLORS, EVENT_LABELS,
   type CalendarEvent, type EquipmentAttention,
 } from './dashboardData';
-import { useDashboardData } from './useDashboardData';
+import { useDashboardData, type CompletedJob } from './useDashboardData';
 import { AiDiagnosticModal } from './AiDiagnosticModal';
 import { MyVanModal } from './MyVanModal';
 import { ToolChecklistModal } from './ToolChecklistModal';
@@ -310,11 +310,27 @@ export function DashboardView({ onStartJob }: Props) {
     setSelectedDay({ day: d.getDate(), events: [] });
   }
 
-  const { realJobs, realCalEvents, realStats, realEquipment, realActivity } = useDashboardData(clerkUser?.id ?? '', getToken);
+  const { realJobs, realCompletedJobs, realCalEvents, realStats, realEquipment, realActivity } = useDashboardData(clerkUser?.id ?? '', getToken);
   // realJobs is the server source of truth; deduplicate so wizard-added
   // userJobs entries don't double-appear once the server fetch returns them.
   const realJobIds = new Set(realJobs.map(j => j.id));
   const allJobs = [...realJobs, ...userJobs.filter(j => !realJobIds.has(j.id))];
+
+  // Merge server-completed jobs with any locally-completed jobs not yet synced
+  const serverCompletedIds = new Set(realCompletedJobs.map(j => j.id));
+  const allCompletedJobs: CompletedJob[] = [
+    ...realCompletedJobs,
+    ...userJobs
+      .filter(j => j.status === 'complete' && !serverCompletedIds.has(j.id))
+      .map(j => ({
+        id:          j.id,
+        customer:    j.customer,
+        site:        j.address ?? '—',
+        equipment:   j.equipment ?? '—',
+        usrId:       (j as TodayJob & { usrId?: string | null }).usrId ?? null,
+        completedAt: (j as TodayJob & { completedAt?: number | null }).completedAt ?? null,
+      })),
+  ];
 
   const now = new Date();
   const hour = now.getHours();
@@ -499,6 +515,44 @@ export function DashboardView({ onStartJob }: Props) {
           </div>
         )}
       </div>
+
+      {/* ── Completed Jobs ───────────────────────────────────────── */}
+      {allCompletedJobs.length > 0 && (
+        <div className="px-4 pt-5">
+          <SectionHeader title="Completed Jobs" count={allCompletedJobs.length} countLabel="jobs" />
+          <div className="space-y-2">
+            {allCompletedJobs.map((job) => (
+              <button
+                key={job.id}
+                onClick={() => navigate(`/job/${job.id}/record`)}
+                className="w-full bg-gray-900 border border-gray-800 border-l-4 border-l-emerald-700 rounded-r-2xl rounded-bl-2xl p-4 text-left flex items-center justify-between gap-3 active:scale-[0.98] transition-transform"
+              >
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1 flex-wrap">
+                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-900/60 text-emerald-400 border border-emerald-800/60">
+                      Completed
+                    </span>
+                    {job.usrId && (
+                      <span className="text-[10px] font-mono text-emerald-500/80">{job.usrId}</span>
+                    )}
+                  </div>
+                  <div className="font-bold text-white text-sm leading-snug">{job.customer}</div>
+                  <div className="text-xs text-blue-300/80 mt-0.5">{job.equipment}</div>
+                  {job.completedAt && (
+                    <div className="text-[10px] text-gray-500 mt-0.5">
+                      {new Date(job.completedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </div>
+                  )}
+                </div>
+                <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                  <CheckCircle size={14} className="text-emerald-600" />
+                  <ChevronRight size={14} className="text-gray-600" />
+                </div>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* ── Start Work ───────────────────────────────────────────── */}
       <div className="px-4 pt-5">
