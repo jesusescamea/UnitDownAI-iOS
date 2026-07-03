@@ -4,7 +4,7 @@ import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ChevronRight, ChevronLeft, X, Wrench, Calendar as CalIcon, Plus,
-  AlertTriangle, MapPin, Clock, Search, Cpu, Mic, FileText,
+  AlertTriangle, MapPin, Clock, Search, Cpu, Mic, FileText, Gauge,
   Zap, CheckCircle, Maximize2, User, Settings, LogOut, ChevronDown,
   TrendingUp, TrendingDown, Minus, Lightbulb, Sparkles,
 } from 'lucide-react';
@@ -591,13 +591,13 @@ export function DashboardView({ onStartJob }: Props) {
               <div className="text-[9px] text-violet-400/80">Schedule</div>
             </div>
           </button>
-          {/* Search Equipment */}
-          <button onClick={() => setSearchOpen(true)}
-            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-blue-900/20 border-blue-900/60 active:scale-95 transition-transform">
-            <Search size={18} className="text-blue-400" />
+          {/* PT Chart */}
+          <button onClick={() => navigate('/pt-chart')}
+            className="flex flex-col items-center gap-2 py-4 rounded-2xl border bg-slate-800/60 border-slate-700 active:scale-95 transition-transform">
+            <Gauge size={18} className="text-slate-300" />
             <div className="text-center">
-              <div className="text-[10px] text-gray-200 font-bold leading-tight">Search</div>
-              <div className="text-[9px] text-blue-400/80">Equipment</div>
+              <div className="text-[10px] text-gray-200 font-bold leading-tight">PT Chart</div>
+              <div className="text-[9px] text-slate-400/80">SH / SC</div>
             </div>
           </button>
           {/* Scan Nameplate */}

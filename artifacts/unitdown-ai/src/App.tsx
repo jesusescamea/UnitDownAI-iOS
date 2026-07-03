@@ -45,6 +45,7 @@ import { JobModePage } from "./pages/JobModePage";
 import { ServiceRecordPage } from "./pages/ServiceRecordPage";
 import { LandingPage } from "./pages/LandingPage";
 import PTChartPage from "./pages/PTChartPage";
+import BrandGuidesPage from "./pages/BrandGuidesPage";
 import { JobModeProvider, useJobMode } from "./context/JobModeContext";
 import InstallPromptBanner from "./components/InstallPromptBanner";
 import { ActiveJobBanner } from "./components/job/ActiveJobBanner";
@@ -3561,6 +3562,7 @@ function App() {
               <Route path="/dashboard" component={DashboardRoute} />
               <Route path="/diagnose" component={Home} />
               <Route path="/pt-chart" component={PTChartPage} />
+              <Route path="/brand-guides-hub" component={BrandGuidesPage} />
               <Route path="/pricing" component={PricingPage} />
               <Route path="/admin" component={AdminView} />
               <Route path="/terms" component={TermsPage} />

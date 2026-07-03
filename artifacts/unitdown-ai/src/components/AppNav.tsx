@@ -5,7 +5,7 @@
  * Mobile (<640px):  Slim sticky top bar (logo + avatar only) + fixed bottom tab bar.
  *
  * One import per authenticated page delivers both bars automatically.
- * Tabs: Today · Jobs · PT Chart · Customers · Equipment · Account
+ * Tabs: Today · Jobs · Brand Guides · Customers · Equipment · Account
  */
 import { useLocation } from "wouter";
 import {
@@ -13,7 +13,7 @@ import {
   LayoutGrid,
   Briefcase,
   Wrench,
-  Gauge,
+  BookOpen,
   User,
   Users,
 } from "lucide-react";
@@ -22,7 +22,8 @@ import { useUser } from "@clerk/clerk-react";
 export type AppNavSection =
   | "dashboard"
   | "job"
-  | "pt-chart"
+  | "pt-chart"       // kept for PTChartPage back-compat
+  | "brand-guides"
   | "customers"
   | "records"
   | "account";
@@ -32,12 +33,12 @@ interface AppNavProps {
 }
 
 const TABS = [
-  { id: "dashboard" as AppNavSection, label: "Today",     Icon: LayoutGrid, path: "/dashboard"  },
-  { id: "job"       as AppNavSection, label: "Jobs",      Icon: Briefcase,  path: "/job"        },
-  { id: "pt-chart"  as AppNavSection, label: "PT Chart",  Icon: Gauge,      path: "/pt-chart"   },
-  { id: "customers" as AppNavSection, label: "Customers", Icon: Users,      path: "/customers"  },
-  { id: "records"   as AppNavSection, label: "Equipment", Icon: Wrench,     path: "/records"    },
-  { id: "account"   as AppNavSection, label: "Account",   Icon: User,       path: "/account"    },
+  { id: "dashboard"    as AppNavSection, label: "Today",        Icon: LayoutGrid, path: "/dashboard"      },
+  { id: "job"          as AppNavSection, label: "Jobs",         Icon: Briefcase,  path: "/job"            },
+  { id: "brand-guides" as AppNavSection, label: "Brand Guides", Icon: BookOpen,   path: "/brand-guides-hub" },
+  { id: "customers"    as AppNavSection, label: "Customers",    Icon: Users,      path: "/customers"      },
+  { id: "records"      as AppNavSection, label: "Equipment",    Icon: Wrench,     path: "/records"        },
+  { id: "account"      as AppNavSection, label: "Account",      Icon: User,       path: "/account"        },
 ] as const;
 
 function buildInitials(user: ReturnType<typeof useUser>["user"]): string {
