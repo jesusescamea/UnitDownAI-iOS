@@ -129,40 +129,6 @@ export function DashboardView({ onStartJob }: Props) {
   const [talkScheduleOpen, setTalkScheduleOpen] = useState(false);
   const [searchOpen,       setSearchOpen]        = useState(false);
   const [assistantOpen,    setAssistantOpen]     = useState(false);
-  const [createJobDebug,  setCreateJobDebug]    = useState<{
-    url: string; method: string; hasAuth: boolean;
-    tokenSource: 'bypass' | 'clerk' | 'none';
-    status?: number; body?: unknown;
-  } | null>(null);
-  const [testJobResult, setTestJobResult] = useState<{
-    hasViteOwnerToken: boolean;
-    hasAuthorizationHeader: boolean;
-    status?: number;
-    body?: unknown;
-  } | null>(null);
-  const [testJobLoading, setTestJobLoading] = useState(false);
-
-  async function handleTestCreateJob() {
-    const token = import.meta.env.VITE_OWNER_BYPASS_TOKEN as string | undefined;
-    setTestJobResult({ hasViteOwnerToken: !!token, hasAuthorizationHeader: !!token });
-    setTestJobLoading(true);
-    try {
-      const res = await fetch('/api/jobs', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({ title: 'Frontend direct test job' }),
-      });
-      const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as unknown;
-      setTestJobResult({ hasViteOwnerToken: !!token, hasAuthorizationHeader: !!token, status: res.status, body });
-    } catch (err) {
-      setTestJobResult({ hasViteOwnerToken: !!token, hasAuthorizationHeader: !!token, body: { error: String(err) } });
-    } finally {
-      setTestJobLoading(false);
-    }
-  }
   const { reminders, addReminder, markDone, deleteReminder } = useReminders(clerkUser?.id ?? '');
 
   const LS_KEY = 'unitdown_jmp_scheduled_jobs';
@@ -199,11 +165,6 @@ export function DashboardView({ onStartJob }: Props) {
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
 
-    // ── debug (remove after auth issue resolved) ─────────────────────────
-    setCreateJobDebug({ url, method, hasAuth: !!authToken, tokenSource });
-    console.log('[CreateJobClick] url:', url, '| method:', method,
-      '| hasAuth:', !!authToken, '| tokenSource:', tokenSource);
-
     try {
       const res = await fetch(url, {
         method,
@@ -218,13 +179,8 @@ export function DashboardView({ onStartJob }: Props) {
         }),
       });
 
-      console.log('[CreateJobClick] responseStatus:', res.status);
-      setCreateJobDebug(prev => prev ? { ...prev, status: res.status } : prev);
-
       if (!res.ok) {
         const errBody = await res.json().catch(() => ({ error: `HTTP ${res.status}` })) as { error?: string };
-        console.error('[CreateJobClick] errorBody:', errBody);
-        setCreateJobDebug(prev => prev ? { ...prev, body: errBody } : prev);
         setSchedToast(`⚠ ${res.status}: ${errBody.error ?? 'Unknown error'}`);
         setTimeout(() => setSchedToast(null), 6000);
         return;
@@ -247,10 +203,7 @@ export function DashboardView({ onStartJob }: Props) {
       setSchedToast(`✓ Job created for ${dateLabel}`);
       setTimeout(() => setSchedToast(null), 3500);
 
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[CreateJobClick] fetch threw:', msg);
-      setCreateJobDebug(prev => prev ? { ...prev, body: { error: msg } } : prev);
+    } catch {
       setSchedToast('⚠ Could not reach server — check your connection');
       setTimeout(() => setSchedToast(null), 5000);
     }
@@ -372,37 +325,6 @@ export function DashboardView({ onStartJob }: Props) {
 
   return (
     <div className="min-h-screen bg-gray-950 text-white overflow-y-auto pb-24">
-
-      {/* ── TEST CREATE JOB — remove after auth issue resolved ────────── */}
-      <div style={{ background: '#1e1b4b', borderBottom: '2px solid #6366f1', padding: '10px 14px' }}>
-        <button
-          onClick={() => { void handleTestCreateJob(); }}
-          disabled={testJobLoading}
-          style={{
-            background: testJobLoading ? '#4338ca' : '#6366f1',
-            color: '#fff', fontWeight: 700, fontSize: 13,
-            padding: '8px 18px', borderRadius: 8, border: 'none', cursor: 'pointer',
-            letterSpacing: '0.05em',
-          }}
-        >
-          {testJobLoading ? 'TESTING…' : '⚡ TEST CREATE JOB'}
-        </button>
-        {testJobResult && (
-          <div style={{ marginTop: 8, fontFamily: 'monospace', fontSize: 11, lineHeight: 1.7 }}>
-            <div>hasViteOwnerToken: <span style={{ color: testJobResult.hasViteOwnerToken ? '#4ade80' : '#f87171' }}>{String(testJobResult.hasViteOwnerToken)}</span></div>
-            <div>hasAuthorizationHeader: <span style={{ color: testJobResult.hasAuthorizationHeader ? '#4ade80' : '#f87171' }}>{String(testJobResult.hasAuthorizationHeader)}</span></div>
-            {testJobResult.status !== undefined && (
-              <div>status: <span style={{ color: testJobResult.status < 300 ? '#4ade80' : '#f87171' }}>{testJobResult.status}</span></div>
-            )}
-            {testJobResult.body !== undefined && (
-              <div style={{ color: testJobResult.status !== undefined && testJobResult.status < 300 ? '#4ade80' : '#f87171', wordBreak: 'break-all' }}>
-                body: {JSON.stringify(testJobResult.body)}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-      {/* ── END TEST ─────────────────────────────────────────────────── */}
 
       <AppNav active="dashboard" />
       <div className="max-w-2xl mx-auto">
@@ -1000,27 +922,6 @@ export function DashboardView({ onStartJob }: Props) {
           />
         )}
       </AnimatePresence>
-
-      {/* ── DEBUG PANEL — remove after auth issue resolved ─────────── */}
-      {wizardOpen && createJobDebug && (
-        <div style={{
-          position: 'fixed', bottom: 0, left: 0, right: 0, zIndex: 9999,
-          background: 'rgba(0,0,0,0.92)', color: '#4ade80', fontFamily: 'monospace',
-          fontSize: 11, padding: '8px 12px', borderTop: '2px solid #4ade80',
-        }}>
-          <div style={{ color: '#fbbf24', fontWeight: 'bold', marginBottom: 3 }}>◆ CreateJob Debug</div>
-          <div>url: {createJobDebug.url}</div>
-          <div>method: {createJobDebug.method}</div>
-          <div>hasAuth: <span style={{ color: createJobDebug.hasAuth ? '#4ade80' : '#f87171' }}>{String(createJobDebug.hasAuth)}</span></div>
-          <div>tokenSource: <span style={{ color: createJobDebug.tokenSource === 'none' ? '#f87171' : '#4ade80' }}>{createJobDebug.tokenSource}</span></div>
-          {createJobDebug.status !== undefined && (
-            <div>status: <span style={{ color: createJobDebug.status < 300 ? '#4ade80' : '#f87171' }}>{createJobDebug.status}</span></div>
-          )}
-          {createJobDebug.body !== undefined && (
-            <div style={{ color: '#f87171' }}>body: {JSON.stringify(createJobDebug.body)}</div>
-          )}
-        </div>
-      )}
 
       {/* ── "Job scheduled" toast ─────────────────────────────────── */}
       <AnimatePresence>
