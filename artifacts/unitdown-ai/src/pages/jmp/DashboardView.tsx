@@ -523,44 +523,6 @@ export function DashboardView({ onStartJob }: Props) {
         )}
       </div>
 
-      {/* ── Completed Jobs ───────────────────────────────────────── */}
-      {allCompletedJobs.length > 0 && (
-        <div className="px-4 pt-5">
-          <SectionHeader title="Completed Jobs" count={allCompletedJobs.length} countLabel="jobs" />
-          <div className="space-y-2">
-            {allCompletedJobs.map((job) => (
-              <button
-                key={job.id}
-                onClick={() => navigate(`/job/${job.id}/record`)}
-                className="w-full bg-gray-900 border border-gray-800 border-l-4 border-l-emerald-700 rounded-r-2xl rounded-bl-2xl p-4 text-left flex items-center justify-between gap-3 active:scale-[0.98] transition-transform"
-              >
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-1 flex-wrap">
-                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-emerald-900/60 text-emerald-400 border border-emerald-800/60">
-                      Completed
-                    </span>
-                    {job.usrId && (
-                      <span className="text-[10px] font-mono text-emerald-500/80">{job.usrId}</span>
-                    )}
-                  </div>
-                  <div className="font-bold text-white text-sm leading-snug">{job.customer}</div>
-                  <div className="text-xs text-blue-300/80 mt-0.5">{job.equipment}</div>
-                  {job.completedAt && (
-                    <div className="text-[10px] text-gray-500 mt-0.5">
-                      {new Date(job.completedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })}
-                    </div>
-                  )}
-                </div>
-                <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                  <CheckCircle size={14} className="text-emerald-600" />
-                  <ChevronRight size={14} className="text-gray-600" />
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-
       {/* ── Start Work ───────────────────────────────────────────── */}
       <div className="px-4 pt-5">
         <SectionHeader title="Start Work" />
@@ -641,85 +603,6 @@ export function DashboardView({ onStartJob }: Props) {
         </div>
       </div>
 
-      {/* ── Equipment Intelligence ───────────────────────────────── */}
-      <div className="px-4 pt-5">
-        <SectionHeader title="Equipment" subtitle="AI-assisted pattern analysis" />
-        {realEquipment.length === 0 ? (
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
-            <div className="text-2xl mb-2">🔍</div>
-            <div className="font-semibold text-white mb-1">No equipment patterns detected yet</div>
-            <div className="text-xs text-gray-500">Patterns will appear as you log diagnostics on saved equipment.</div>
-          </div>
-        ) : (
-        <div className="space-y-3">
-          {realEquipment.map((eq, i) => {
-            const sev = SEV_STYLE[eq.severity];
-            return (
-              <motion.button key={eq.id}
-                initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.06 }}
-                onClick={() => setEquipmentDetail(eq)} whileTap={{ scale: 0.98 }}
-                className={`w-full text-left ${sev.bg} border ${sev.ring} rounded-2xl p-4`}>
-                <div className="flex items-start gap-3">
-                  <div className={`w-2.5 h-2.5 rounded-full ${sev.dot} flex-shrink-0 mt-1.5`} />
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2 mb-2">
-                      <div className="min-w-0">
-                        <div className="font-bold text-white text-sm leading-snug">{eq.unit}</div>
-                        <div className="text-[10px] text-blue-300/70">{eq.unitTag}</div>
-                        <div className="text-[9px] font-mono text-gray-600">{eq.model}</div>
-                      </div>
-                      <span className={`text-[9px] font-bold uppercase tracking-wider flex-shrink-0 mt-0.5 px-1.5 py-0.5 rounded-full ${sev.badgeBg}`}>{sev.badge}</span>
-                    </div>
-
-                    {/* Pattern + stats */}
-                    <div className="bg-black/20 rounded-xl px-3 py-2.5 mb-2">
-                      <div className="text-xs font-bold text-white mb-1">{eq.aiInsight.pattern}</div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {eq.aiInsight.stats.map((s, si) => (
-                          <span key={si} className="text-[9px] bg-white/10 text-gray-300 px-1.5 py-0.5 rounded-full">{s}</span>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* AI Insight */}
-                    <div className="bg-blue-950/40 border border-blue-800/40 rounded-xl px-3 py-2.5 mb-2">
-                      <div className="flex items-center gap-1.5 mb-1.5">
-                        <Sparkles size={10} className="text-blue-400 flex-shrink-0" />
-                        <span className="text-[9px] font-bold uppercase tracking-wider text-blue-400">AI Insight</span>
-                      </div>
-                      <p className="text-[10px] text-blue-100/80 leading-relaxed mb-2">{eq.aiInsight.analysis}</p>
-                      <div className="space-y-0.5">
-                        {eq.aiInsight.rootCauses.slice(0, 3).map((rc, ri) => (
-                          <div key={ri} className="flex items-start gap-1.5 text-[10px] text-gray-300">
-                            <span className="text-blue-500 flex-shrink-0 mt-0.5">•</span>
-                            <span>{rc}</span>
-                          </div>
-                        ))}
-                        {eq.aiInsight.rootCauses.length > 3 && (
-                          <div className="text-[9px] text-blue-400 mt-1">+{eq.aiInsight.rootCauses.length - 3} more root causes</div>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-3 text-[9px] text-gray-600">
-                        <span>{eq.visits} visit{eq.visits !== 1 ? 's' : ''} / {eq.period}</span>
-                        <span>·</span>
-                        <span>Last: {eq.lastService}</span>
-                      </div>
-                      <span className="text-[9px] text-blue-400 font-semibold flex items-center gap-0.5">
-                        Full history <ChevronRight size={10} />
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </motion.button>
-            );
-          })}
-        </div>
-        )}
-      </div>
-
       {/* ── Important Reminders ──────────────────────────────────── */}
       <RemindersSection
         reminders={reminders}
@@ -727,42 +610,6 @@ export function DashboardView({ onStartJob }: Props) {
         onMarkDone={markDone}
         onDeleteReminder={deleteReminder}
       />
-
-      {/* ── Recent Activity ──────────────────────────────────────── */}
-      <div className="px-4 pt-5">
-        <SectionHeader title="Recent Activity" subtitle="Field history" />
-        {realActivity.length === 0 ? (
-          <div className="bg-gray-900 border border-gray-800 rounded-2xl p-5 text-center">
-            <div className="text-2xl mb-2">📋</div>
-            <div className="font-semibold text-white mb-1">No recent activity yet</div>
-            <div className="text-xs text-gray-500">Diagnostic logs and completed jobs will appear here.</div>
-          </div>
-        ) : (
-        <div className="relative">
-          <div className="absolute left-[11px] top-0 bottom-0 w-px bg-gray-800" />
-          <div className="space-y-0">
-            {realActivity.map((a, i) => (
-              <motion.div key={a.id}
-                initial={{ opacity: 0, x: -8 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: i * 0.04 }}
-                className="flex items-start gap-3 pl-1">
-                <div className="w-5 h-5 rounded-full bg-gray-800 border border-gray-700 flex items-center justify-center flex-shrink-0 mt-0.5 text-[9px] z-10">
-                  {a.icon}
-                </div>
-                <div className="flex-1 min-w-0 pb-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <div className="text-xs font-semibold text-white leading-snug">{a.summary}</div>
-                      <div className="text-[10px] text-gray-500 mt-0.5">{a.customer} · {a.equipment}</div>
-                    </div>
-                    <div className="text-[9px] text-gray-600 flex-shrink-0 mt-0.5 font-mono text-right">{a.timeLabel}</div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-        )}
-      </div>
 
       {/* ═══ Modals ════════════════════════════════════════════════ */}
 
