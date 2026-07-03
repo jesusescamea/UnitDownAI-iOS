@@ -176,6 +176,7 @@ export function DashboardView({ onStartJob }: Props) {
       const records = JSON.parse(raw) as Array<{ job: TodayJob; calEvent: CalendarEvent; scheduledDate?: string; isToday?: boolean }>;
       // Filter jobs whose scheduledDate matches today — also handles legacy records that used isToday
       setUserJobs(records.filter(r => {
+        if (r.job.status === 'complete') return false;
         if (r.scheduledDate) return r.scheduledDate === todayStr;
         return r.isToday === true;
       }).map(r => r.job));
@@ -213,6 +214,7 @@ export function DashboardView({ onStartJob }: Props) {
           unitLabel: result.job.unitTag  !== '—' ? result.job.unitTag  : undefined,
           title:     result.job.symptom  || result.title,
           startedAt: result.scheduledMs,
+          unitId:    result.unitId       || undefined,
         }),
       });
 

@@ -235,6 +235,7 @@ export function JobModePage({ jobId }: JobModePageProps) {
             unitLabel: result.job.unitTag  !== "—" ? result.job.unitTag  : undefined,
             title:     result.job.symptom  || result.title,
             startedAt: result.scheduledMs,
+            unitId:    result.unitId       || undefined,
           }),
         });
 

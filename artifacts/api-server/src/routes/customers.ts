@@ -216,18 +216,28 @@ customersRouter.get("/customers/:id", async (req: Request, res: Response) => {
       .orderBy(desc(unitRecords.updatedAt))
       .limit(50);
 
-    // Fetch jobs — match by customer name (text denormalized field)
-    const recentJobs = await db
+    // Fetch jobs — prefer unitId FK link, fall back to name-match for legacy free-text jobs
+    const customerUnitIds = linkedUnits.map((u) => u.id);
+
+    const jobsByUnit = customerUnitIds.length > 0
+      ? await db
+          .select()
+          .from(jobs)
+          .where(and(eq(jobs.userId, clientId), inArray(jobs.unitId, customerUnitIds)))
+          .orderBy(desc(jobs.startedAt))
+          .limit(100)
+      : [];
+
+    const seenJobIds = new Set(jobsByUnit.map((j) => j.id));
+
+    const jobsByName = await db
       .select()
       .from(jobs)
-      .where(
-        and(
-          eq(jobs.userId, clientId),
-          ilike(jobs.customer, `%${customer.name}%`),
-        ),
-      )
+      .where(and(eq(jobs.userId, clientId), ilike(jobs.customer, `%${customer.name}%`)))
       .orderBy(desc(jobs.startedAt))
       .limit(100);
+
+    const recentJobs = [...jobsByUnit, ...jobsByName.filter((j) => !seenJobIds.has(j.id))];
 
     const linkedUnitIds = linkedUnits.map((unit) => unit.id);
     const logs = linkedUnitIds.length > 0

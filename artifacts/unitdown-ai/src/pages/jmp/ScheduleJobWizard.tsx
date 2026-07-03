@@ -19,6 +19,8 @@ export interface ScheduleWizardResult {
   scheduledMs: number;
   /** Human-readable job title derived from customer + job type — suitable as the event title. */
   title: string;
+  /** unit_records.id for the selected piece of equipment, if any. */
+  unitId?: string;
 }
 
 interface Props {
@@ -99,7 +101,7 @@ const STEPS = [
   { label: 'Review',   icon: ClipboardList },
 ];
 
-// ─── Saved equipment (mock data — will be replaced by GET /api/units?clientId=...) ──────────────
+// ─── Saved equipment — real data from GET /api/units ──────────────────────────
 
 interface SavedEquipmentRecord {
   id:             string;
@@ -113,49 +115,45 @@ interface SavedEquipmentRecord {
   refrigerant:    string;
   voltage:        string;
   openIssue:      string | null;
+  siteId:         string | null;
 }
 
-const SAVED_EQUIPMENT_BY_CUSTOMER: Record<string, SavedEquipmentRecord[]> = {
-  'summit medical plaza': [
-    { id: 'eq-SMP-RTU3', unitLabel: 'RTU-3', equipmentType: 'RTU (Packaged Rooftop Unit)',
-      manufacturer: 'Carrier', modelNumber: '50XCQ006', serialNumber: '4321A8876',
-      locationOnSite: 'Rooftop, North Wing', lastService: 'Jun 27, 2026',
-      refrigerant: 'R-410A', voltage: '208/230V 3-Phase',
-      openIssue: 'Repeated Code 82 — High Pressure Lockout' },
-    { id: 'eq-SMP-AHU1', unitLabel: 'AHU-1', equipmentType: 'AHU (Air Handler)',
-      manufacturer: 'Carrier', modelNumber: 'CNPVP4821ALA', serialNumber: '3219C4421',
-      locationOnSite: 'Basement, Mechanical Room', lastService: 'Mar 12, 2024',
-      refrigerant: 'R-410A', voltage: '208/230V 1-Phase', openIssue: null },
-  ],
-  'northgate data center': [
-    { id: 'eq-NDC-CRAC1', unitLabel: 'CRAC-1', equipmentType: 'CRAC (Computer Room A/C)',
-      manufacturer: 'Liebert', modelNumber: 'DS150', serialNumber: '0921LD5431',
-      locationOnSite: 'Server Room B', lastService: 'Jun 27, 2026',
-      refrigerant: 'R-407C', voltage: '208/230V 3-Phase', openIssue: null },
-  ],
-  'ridgeline office park': [
-    { id: 'eq-ROP-RTU7', unitLabel: 'RTU-7', equipmentType: 'RTU (Packaged Rooftop Unit)',
-      manufacturer: 'Trane', modelNumber: 'YCD150', serialNumber: '7821TY3301',
-      locationOnSite: 'Rooftop', lastService: 'Jun 27, 2026',
-      refrigerant: 'R-410A', voltage: '460V 3-Phase', openIssue: null },
-    { id: 'eq-ROP-RTU8', unitLabel: 'RTU-8', equipmentType: 'RTU (Packaged Rooftop Unit)',
-      manufacturer: 'Trane', modelNumber: 'YCD090', serialNumber: '7821TY3302',
-      locationOnSite: 'Rooftop', lastService: 'Apr 15, 2025',
-      refrigerant: 'R-410A', voltage: '460V 3-Phase', openIssue: null },
-    { id: 'eq-ROP-AHU1', unitLabel: 'AHU-1', equipmentType: 'AHU (Air Handler)',
-      manufacturer: 'Trane', modelNumber: 'TAM8', serialNumber: '6612TR9901',
-      locationOnSite: 'Mechanical Room', lastService: 'Apr 15, 2025',
-      refrigerant: 'R-410A', voltage: '208/230V 1-Phase', openIssue: null },
-  ],
-};
+interface ApiUnitRecord {
+  id:              string;
+  nickname?:       string | null;
+  location?:       string | null;
+  manufacturer?:   string | null;
+  modelNumber?:    string | null;
+  serialNumber?:   string | null;
+  equipmentType?:  string | null;
+  refrigerantType?: string | null;
+  voltage?:        string | null;
+  updatedAt?:      string | null;
+  siteId?:         string | null;
+}
 
-function getSavedEquipment(businessName: string): SavedEquipmentRecord[] {
-  const lower = businessName.toLowerCase().trim();
-  if (!lower) return [];
-  for (const [key, equip] of Object.entries(SAVED_EQUIPMENT_BY_CUSTOMER)) {
-    if (lower.includes(key) || key.includes(lower)) return equip;
-  }
-  return [];
+function mapUnitRecord(r: ApiUnitRecord): SavedEquipmentRecord {
+  const label = r.nickname?.trim()
+    || [r.manufacturer, r.modelNumber].filter(Boolean).join(' ')
+    || r.equipmentType
+    || 'Unit';
+  const lastService = r.updatedAt
+    ? new Date(r.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : '—';
+  return {
+    id:             r.id,
+    unitLabel:      label,
+    equipmentType:  r.equipmentType ?? 'HVAC Unit',
+    manufacturer:   r.manufacturer  ?? '',
+    modelNumber:    r.modelNumber   ?? '',
+    serialNumber:   r.serialNumber  ?? '',
+    locationOnSite: r.location      ?? '',
+    lastService,
+    refrigerant:    r.refrigerantType ?? '',
+    voltage:        r.voltage         ?? '',
+    openIssue:      null,
+    siteId:         r.siteId          ?? null,
+  };
 }
 
 // ─── Customer / site types (real data from API) ────────────────────────────────
@@ -215,15 +213,19 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [selectedSiteId, setSelectedSiteId]         = useState<string | null>(null);
   const [selectedEquipId, setSelectedEquipId]       = useState<string | null>(null);
+  const [selectedUnitId, setSelectedUnitId]         = useState<string | null>(null);
   const [equipMode, setEquipMode]                   = useState<'manual' | null>(null);
   const [showScanNote,   setShowScanNote]   = useState(false);
   const [showImportNote, setShowImportNote] = useState(false);
   const [siteMode,       setSiteMode]       = useState<'saved' | 'new'>('saved');
 
-  // ── Real customer data from API ─────────────────────────────────────────────
-  const [savedCustomers, setSavedCustomers] = useState<SavedCustomerRecord[]>([]);
-  const [savedSites,     setSavedSites]     = useState<SavedSiteRecord[]>([]);
-  const fetchedSitesFor = useRef<string | null>(null);
+  // ── Real customer / site / equipment data from API ──────────────────────────
+  const [savedCustomers,  setSavedCustomers]  = useState<SavedCustomerRecord[]>([]);
+  const [savedSites,      setSavedSites]      = useState<SavedSiteRecord[]>([]);
+  const [savedEquipment,  setSavedEquipment]  = useState<SavedEquipmentRecord[]>([]);
+  const [equipmentLoading, setEquipmentLoading] = useState(false);
+  const fetchedSitesFor     = useRef<string | null>(null);
+  const fetchedEquipmentFor = useRef<string | null>(null);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -261,6 +263,20 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
       .catch(() => { /* keep empty on error */ });
   }, [selectedCustomerId, user?.id]);
 
+  // Fetch equipment from /api/units when a customer is selected
+  useEffect(() => {
+    if (!selectedCustomerId || !user?.id || fetchedEquipmentFor.current === selectedCustomerId) return;
+    fetchedEquipmentFor.current = selectedCustomerId;
+    setEquipmentLoading(true);
+    fetch(`/api/units?clientId=${encodeURIComponent(user.id)}&customerId=${encodeURIComponent(selectedCustomerId)}`)
+      .then(r => r.ok ? r.json() as Promise<{ units: ApiUnitRecord[] }> : null)
+      .then(data => {
+        setSavedEquipment(data?.units?.map(mapUnitRecord) ?? []);
+      })
+      .catch(() => setSavedEquipment([]))
+      .finally(() => setEquipmentLoading(false));
+  }, [selectedCustomerId, user?.id]);
+
   // Auto-assign logged-in user as technician once Clerk user loads
   useEffect(() => {
     if (user) setData(prev => ({ ...prev, assignedTech: techName }));
@@ -273,6 +289,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
 
   function selectEquipment(eq: SavedEquipmentRecord) {
     setSelectedEquipId(eq.id);
+    setSelectedUnitId(eq.id);
     setEquipMode(null);
     setShowScanNote(false);
     setShowImportNote(false);
@@ -293,6 +310,9 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
     setSelectedCustomerId(cust.id);
     setSelectedSiteId(null);
     setSelectedEquipId(null);
+    setSelectedUnitId(null);
+    setSavedEquipment([]);
+    fetchedEquipmentFor.current = null;
     setEquipMode(null);
     setSiteMode('saved');
     setData(prev => ({
@@ -319,8 +339,6 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
       accessNotes:    site.accessNotes,
     }));
   }
-
-  const savedEquipment = getSavedEquipment(data.businessName);
 
   function validate(): boolean {
     const e: typeof errors = {};
@@ -406,7 +424,7 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
       label: `${job.customer} — ${effectiveJobType}`,
     };
 
-    onCreate({ job, calEvent, isToday, scheduledMs: selectedDate.getTime(), title: calEvent.label });
+    onCreate({ job, calEvent, isToday, scheduledMs: selectedDate.getTime(), title: calEvent.label, unitId: selectedUnitId ?? undefined });
   }
 
   const StepIcon = STEPS[step].icon;
@@ -688,21 +706,23 @@ export function ScheduleJobWizard({ onClose, onCreate, defaultDate }: Props) {
                 <div>
                   <div className="flex items-center gap-2 mb-2">
                     <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                      {data.businessName.trim()
-                        ? savedEquipment.length > 0
-                          ? `Saved Equipment — ${data.businessName}`
-                          : 'No saved equipment for this site'
+                      {selectedCustomerId && data.businessName.trim()
+                        ? `Saved Equipment — ${data.businessName}`
                         : 'Saved Equipment'}
                     </span>
                   </div>
 
-                  {!data.businessName.trim() ? (
+                  {!selectedCustomerId ? (
                     <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-center">
-                      <p className="text-xs text-gray-500">Enter a customer name in step 1 to see saved equipment.</p>
+                      <p className="text-xs text-gray-500">Select a customer in step 1 to see saved equipment.</p>
+                    </div>
+                  ) : equipmentLoading ? (
+                    <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-center">
+                      <p className="text-xs text-gray-500">Loading equipment…</p>
                     </div>
                   ) : savedEquipment.length === 0 ? (
                     <div className="bg-gray-900 border border-gray-800 rounded-xl px-4 py-3 text-center">
-                      <p className="text-xs text-gray-500">No saved equipment for this site yet.</p>
+                      <p className="text-xs text-gray-500">No saved equipment for this customer yet. Add equipment using the options below.</p>
                     </div>
                   ) : (
                     <div className="space-y-2">

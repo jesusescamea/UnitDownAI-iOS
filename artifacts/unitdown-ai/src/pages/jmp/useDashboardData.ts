@@ -301,7 +301,7 @@ export function useDashboardData(
   }, [clientId, getToken]);
 
   return {
-    realJobs:      jobs.map(mapJob),
+    realJobs:      jobs.filter(j => j.status !== 'completed').map(mapJob),
     realCalEvents: jobs.map(jobToCalEvent),
     realStats:     buildStats(jobs, units, logs),
     realEquipment: buildEquipmentItems(units, logs),

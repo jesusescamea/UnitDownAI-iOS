@@ -67,14 +67,19 @@ unitsRouter.get("/units", async (req: Request, res: Response) => {
   const clientId = requireClientId(req, res);
   if (!clientId) return;
 
-  const q = (req.query.q as string | undefined)?.trim();
+  const q          = (req.query.q          as string | undefined)?.trim();
   const showArchived = req.query.archived === "true";
+  const customerId = (req.query.customerId as string | undefined)?.trim() || null;
 
   try {
     const rows = await db
       .select()
       .from(unitRecords)
-      .where(and(eq(unitRecords.userId, clientId), eq(unitRecords.isArchived, showArchived)))
+      .where(and(
+        eq(unitRecords.userId, clientId),
+        eq(unitRecords.isArchived, showArchived),
+        customerId ? eq(unitRecords.customerId, customerId) : undefined,
+      ))
       .orderBy(desc(unitRecords.updatedAt));
 
     let filtered = rows;
