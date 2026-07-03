@@ -43,7 +43,10 @@ interface JobRecord {
   title?: string | null;
   status?: string | null;
   startedAt?: number | null;
+  completedAt?: number | null;
   unitLabel?: string | null;
+  unitId?: string | null;
+  usrId?: string | null;
 }
 
 interface DiagnosticLog {
@@ -494,8 +497,9 @@ function DetailScreen({
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading]   = useState(true);
   const [error, setError]       = useState<string | null>(null);
-  const [archiving, setArchiving] = useState(false);
-  const [showJobs, setShowJobs]   = useState(false);
+  const [archiving, setArchiving]               = useState(false);
+  const [showJobs, setShowJobs]                 = useState(false);
+  const [showServiceRecords, setShowServiceRecords] = useState(true);
 
   const load = useCallback(async () => {
     if (!clientId) {
@@ -584,7 +588,10 @@ function DetailScreen({
   }
 
   const allUnits = [...(customer.units ?? []), ...(customer.sites ?? []).flatMap(s => s.units ?? [])];
-  const recentJobs = customer.recentJobs ?? [];
+  const recentJobs     = customer.recentJobs ?? [];
+  const activeJobs     = recentJobs.filter(j => j.status !== 'completed');
+  const completedJobs  = recentJobs.filter(j => j.status === 'completed')
+                           .sort((a, b) => (b.completedAt ?? b.startedAt ?? 0) - (a.completedAt ?? a.startedAt ?? 0));
   const diagnosticLogs = customer.diagnosticLogs ?? [];
 
   return (
@@ -731,14 +738,14 @@ function DetailScreen({
           <Link size={13} /> Link Existing Equipment
         </button>
 
-        {/* Recent Jobs */}
+        {/* Active Jobs */}
         <div className="mb-4">
           <button
             onClick={() => setShowJobs(v => !v)}
             className="w-full flex items-center justify-between mb-2"
           >
             <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">
-              Jobs {recentJobs.length > 0 ? `(${recentJobs.length})` : ''}
+              Jobs {activeJobs.length > 0 ? `(${activeJobs.length})` : ''}
             </div>
             {showJobs ? <ChevronUp size={14} className="text-gray-600" /> : <ChevronDown size={14} className="text-gray-600" />}
           </button>
@@ -752,11 +759,11 @@ function DetailScreen({
                 transition={{ duration: 0.18 }}
                 className="overflow-hidden"
               >
-                {recentJobs.length === 0 ? (
-                  <div className="rounded-2xl bg-gray-900 border border-gray-800 border-dashed text-xs text-gray-500 text-center py-5">No jobs found for this customer.</div>
+                {activeJobs.length === 0 ? (
+                  <div className="rounded-2xl bg-gray-900 border border-gray-800 border-dashed text-xs text-gray-500 text-center py-5">No active jobs for this customer.</div>
                 ) : (
                   <div className="space-y-1.5">
-                    {recentJobs.map(job => (
+                    {activeJobs.map(job => (
                       <button
                         key={job.id}
                         onClick={() => navigate(`/job/${job.id}`)}
@@ -772,9 +779,7 @@ function DetailScreen({
                             {job.site && <span className="text-[9px] text-gray-500 truncate">{job.site}</span>}
                             {job.status && (
                               <span className={`text-[9px] px-1 rounded ${
-                                job.status === 'completed' ? 'bg-green-900/40 text-green-400' :
-                                job.status === 'active'    ? 'bg-blue-900/40 text-blue-400'   :
-                                'bg-gray-800 text-gray-500'
+                                job.status === 'active' ? 'bg-blue-900/40 text-blue-400' : 'bg-gray-800 text-gray-500'
                               }`}>{job.status}</span>
                             )}
                           </div>
@@ -782,6 +787,78 @@ function DetailScreen({
                         <ChevronRight size={14} className="text-gray-600" />
                       </button>
                     ))}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* Service Records / USR Reports */}
+        <div className="mb-4">
+          <button
+            onClick={() => setShowServiceRecords(v => !v)}
+            className="w-full flex items-center justify-between mb-2"
+          >
+            <div className="text-xs font-bold text-gray-400 uppercase tracking-wider">
+              Service Records {completedJobs.length > 0 ? `(${completedJobs.length})` : ''}
+            </div>
+            {showServiceRecords ? <ChevronUp size={14} className="text-gray-600" /> : <ChevronDown size={14} className="text-gray-600" />}
+          </button>
+
+          <AnimatePresence>
+            {showServiceRecords && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.18 }}
+                className="overflow-hidden"
+              >
+                {completedJobs.length === 0 ? (
+                  <div className="rounded-2xl bg-gray-900 border border-gray-800 border-dashed text-xs text-gray-500 text-center py-5">
+                    No completed service records yet.
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    {completedJobs.map(job => {
+                      const hasUsr = Boolean(job.usrId);
+                      return (
+                        <button
+                          key={job.id}
+                          onClick={() => navigate(`/job/${job.id}/record`)}
+                          className="w-full flex items-center gap-3 px-3 py-3 rounded-xl bg-green-950/20 border border-green-900/40 text-left active:scale-[0.98] transition-transform"
+                        >
+                          <CheckCircle size={14} className="text-green-500 flex-shrink-0" />
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm text-white font-bold truncate">
+                              {job.title || job.unitLabel || 'Service Call'}
+                            </div>
+                            <div className="flex flex-wrap gap-x-2 gap-y-0.5 mt-0.5">
+                              <span className="text-[9px] text-gray-500">
+                                {formatDate(job.completedAt ?? job.startedAt)}
+                              </span>
+                              {job.site && (
+                                <span className="text-[9px] text-gray-500 truncate">{job.site}</span>
+                              )}
+                              {job.unitLabel && (
+                                <span className="text-[9px] text-gray-500 truncate">{job.unitLabel}</span>
+                              )}
+                            </div>
+                            <div className="mt-1">
+                              {hasUsr ? (
+                                <span className="text-[9px] font-mono font-bold text-green-400 bg-green-900/30 px-1.5 py-0.5 rounded">
+                                  {job.usrId}
+                                </span>
+                              ) : (
+                                <span className="text-[9px] text-amber-500">Completed — report pending</span>
+                              )}
+                            </div>
+                          </div>
+                          <ChevronRight size={14} className="text-gray-600" />
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </motion.div>
