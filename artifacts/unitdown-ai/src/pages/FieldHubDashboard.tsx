@@ -6,7 +6,7 @@
  * Every section shows an honest empty state when data is absent.
  * No mock data, no fake counts.
  */
-import { useState, useEffect, useCallback, type ElementType } from "react";
+import { useState, useEffect, useCallback, useMemo, type ElementType } from "react";
 import { useLocation } from "wouter";
 import { useUser } from "@clerk/clerk-react";
 import {
@@ -19,8 +19,9 @@ import {
   Building2,
   Wrench,
   Mic,
+  CheckCircle2,
 } from "lucide-react";
-import { useJobMode } from "@/context/JobModeContext";
+import { useJobMode, type LocalJob } from "@/context/JobModeContext";
 import { ScheduleJobWizard, type ScheduleWizardResult } from "@/pages/jmp/ScheduleJobWizard";
 import { DispatchInboxModal } from "@/pages/jmp/dispatch/DispatchInboxModal";
 import { useToast } from "@/hooks/use-toast";
@@ -175,6 +176,25 @@ export default function FieldHubDashboard() {
     (j) => j.status === "active" || j.status === "paused",
   );
 
+  const recentCompletedJobs = useMemo((): LocalJob[] => {
+    if (pendingJobIds.length === 0) return [];
+    const results: LocalJob[] = [];
+    for (const id of pendingJobIds) {
+      try {
+        const raw = localStorage.getItem(`unitdown_job_${id}`);
+        if (!raw) continue;
+        const snap = JSON.parse(raw) as { job?: LocalJob };
+        const j = snap.job;
+        if (j && j.status === "completed") {
+          results.push(j);
+        }
+      } catch { }
+    }
+    return results
+      .sort((a, b) => (b.completedAt ?? b.updatedAt) - (a.completedAt ?? a.updatedAt))
+      .slice(0, 5);
+  }, [pendingJobIds]);
+
   const today = new Date().toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -288,6 +308,56 @@ export default function FieldHubDashboard() {
                     <p className="text-xs text-slate-500 capitalize">{job.status}</p>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                </button>
+              ))}
+            </div>
+          </section>
+        )}
+
+        {/* ── Recent Completed Jobs ────────────────────────────────────────────── */}
+        {recentCompletedJobs.length > 0 && (
+          <section>
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">
+                Recent Completed Jobs
+              </p>
+              <button
+                onClick={() => navigate("/job")}
+                className="text-xs font-semibold text-blue-600 hover:underline"
+              >
+                View all
+              </button>
+            </div>
+            <div className="space-y-2">
+              {recentCompletedJobs.map((job) => (
+                <button
+                  key={job.id}
+                  onClick={() => job.usrId ? navigate(`/job/${job.id}/record`) : navigate(`/job/${job.id}`)}
+                  className="w-full flex items-center gap-3 bg-white rounded-xl border border-emerald-200 px-4 py-3 hover:border-emerald-400 hover:shadow-sm transition-all text-left"
+                >
+                  <div className="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0">
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-bold text-slate-900 truncate">
+                      {job.title || job.unitLabel || job.customer || "Service Job"}
+                    </p>
+                    <p className="text-xs text-slate-500 truncate">
+                      {[job.customer, job.site].filter(Boolean).join(" · ") || "—"}
+                    </p>
+                  </div>
+                  <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
+                    {job.usrId && (
+                      <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 rounded px-1.5 py-0.5">
+                        USR
+                      </span>
+                    )}
+                    <span className="text-[10px] text-slate-400 whitespace-nowrap">
+                      {job.completedAt
+                        ? formatRelativeTime(job.completedAt)
+                        : formatRelativeTime(job.updatedAt)}
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>

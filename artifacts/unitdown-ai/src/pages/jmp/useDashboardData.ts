@@ -314,7 +314,7 @@ export function useDashboardData(
   }, [clientId, getToken]);
 
   return {
-    realJobs:          jobs.filter(j => j.status !== 'completed').map(mapJob),
+    realJobs:          jobs.filter(j => j.status !== 'completed' && j.status !== 'complete').map(mapJob),
     realCompletedJobs: jobs
       .filter(j => j.status === 'completed')
       .map(j => ({
