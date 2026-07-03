@@ -5,7 +5,7 @@ import {
   ChevronRight, Wrench, Edit2, Trash2, Pencil,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
   MapPin, Activity, Loader2, FileText, Settings, Camera, Search,
-  ZoomIn, X, Star, Bell, Info, Briefcase,
+  ZoomIn, X, Star, Bell, Info, Briefcase, Link2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -16,11 +16,15 @@ import ScheduledEventModal, { type ScheduledEvent } from "@/components/Scheduled
 import RtuIcon from "@/components/RtuIcon";
 import { useJobMode } from "@/context/JobModeContext";
 import { AppNav } from "@/components/AppNav";
+import { CustomerSiteField } from "@/components/CustomerSiteField";
+import type { CustomerSiteValue } from "@/components/CustomerSiteField";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 interface UnitRecord {
   id: string;
+  customerId: string | null;
+  siteId: string | null;
   siteCustomerName: string | null;
   nickname: string | null;
   location: string | null;
@@ -446,6 +450,13 @@ export default function UnitDetailPage() {
   // Tab state
   const [activeTab, setActiveTab] = useState<ActiveTab>("timeline");
 
+  // Customer/site link editor state
+  const [showLinkEditor, setShowLinkEditor]   = useState(false);
+  const [linkValue, setLinkValue]             = useState<CustomerSiteValue>({ customerId: null, siteId: null, customerName: "" });
+  const [linkPickerKey, setLinkPickerKey]     = useState(0);
+  const [linkSaving, setLinkSaving]           = useState(false);
+  const [linkError, setLinkError]             = useState<string | null>(null);
+
   // Timeline UI state
   const [activeFilter, setActiveFilter] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
@@ -487,6 +498,50 @@ export default function UnitDetailPage() {
       .catch(() => setError("Failed to load unit"))
       .finally(() => setLoading(false));
   }, [isLoaded, isLoggedIn, clientId, params.id]);
+
+  // ── Link unit to customer/site ────────────────────────────────────────────
+  function openLinkEditor() {
+    if (!unit) return;
+    setLinkValue({
+      customerId: unit.customerId ?? null,
+      siteId: unit.siteId ?? null,
+      customerName: unit.siteCustomerName ?? "",
+    });
+    setLinkError(null);
+    setLinkPickerKey(k => k + 1);
+    setShowLinkEditor(true);
+  }
+
+  async function saveLinkCustomer() {
+    if (!unit) return;
+    setLinkSaving(true);
+    setLinkError(null);
+    try {
+      const res = await fetch(`/api/units/${unit.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientId,
+          unit: {
+            customerId: linkValue.customerId,
+            siteId: linkValue.siteId,
+            siteCustomerName: linkValue.customerName || null,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error((d as Record<string, string>).error ?? "Save failed");
+      }
+      const data = await res.json() as { unit: UnitRecord };
+      setUnit(data.unit);
+      setShowLinkEditor(false);
+    } catch (err: unknown) {
+      setLinkError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setLinkSaving(false);
+    }
+  }
 
   // Derived: filtered + searched events
   const filteredEvents = useMemo(() => {
@@ -1054,6 +1109,67 @@ export default function UnitDetailPage() {
                 fullUrl={unit.nameplateImageUrl}
               />
             )}
+
+            {/* Customer / Site link card */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-4">
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-extrabold text-slate-400 uppercase tracking-widest">Customer / Site</p>
+                {!showLinkEditor && (
+                  <button
+                    type="button"
+                    onClick={openLinkEditor}
+                    className="flex items-center gap-1 text-xs font-bold text-blue-600 hover:text-blue-700 transition-colors"
+                  >
+                    <Link2 className="w-3 h-3" />
+                    {unit.customerId ? "Change" : "Link"}
+                  </button>
+                )}
+              </div>
+
+              {!showLinkEditor ? (
+                unit.customerId || unit.siteCustomerName ? (
+                  <div className="space-y-1">
+                    <p className="text-sm font-semibold text-slate-800">
+                      {unit.siteCustomerName ?? "Linked customer"}
+                    </p>
+                    {!unit.siteId && (
+                      <p className="text-xs text-slate-400">No site assigned</p>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-400 italic">Not linked to a customer</p>
+                )
+              ) : (
+                <div className="space-y-3">
+                  <CustomerSiteField
+                    key={linkPickerKey}
+                    clientId={clientId}
+                    initialCustomerId={unit.customerId ?? null}
+                    initialSiteId={unit.siteId ?? null}
+                    onChange={setLinkValue}
+                  />
+                  {linkError && (
+                    <p className="text-xs text-red-600 font-medium">{linkError}</p>
+                  )}
+                  <div className="flex gap-2 pt-1">
+                    <Button
+                      onClick={() => void saveLinkCustomer()}
+                      disabled={linkSaving}
+                      className="flex-1 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl h-9 text-xs"
+                    >
+                      {linkSaving ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Save Link"}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => setShowLinkEditor(false)}
+                      className="flex-1 text-xs font-bold text-slate-500 border border-slate-200 rounded-xl h-9 hover:bg-slate-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Equipment details */}
             {hasEquipment && (

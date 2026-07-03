@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useLocation, useParams } from "wouter";
 import { trackUnitSaved, maybeRequestReview } from "@/lib/appReview";
 import { awardReward } from "@/lib/rewards";
@@ -15,6 +15,8 @@ import { Textarea } from "@/components/ui/textarea";
 import NameplateScannerModal from "@/components/NameplateScannerModal";
 import { DuplicateModal, type DuplicateEntry } from "@/components/DuplicateModal";
 import { AppNav } from "@/components/AppNav";
+import { CustomerSiteField } from "@/components/CustomerSiteField";
+import type { CustomerSiteValue } from "@/components/CustomerSiteField";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -185,6 +187,9 @@ export default function UnitFormPage() {
     return f;
   };
 
+  // Ref that stores loaded customerId/siteId for the edit picker (set after unit fetch)
+  const _editInitRef = useRef<{ customerId: string | null; siteId: string | null } | null>(null);
+
   const [form, setForm] = useState<UnitFormData>(initialForm);
   const [uncertainFields, setUncertainFields] = useState<Set<string>>(new Set());
   const [rawOcrText, setRawOcrText] = useState<string | null>(null);
@@ -196,6 +201,22 @@ export default function UnitFormPage() {
   const [loadingUnit, setLoadingUnit] = useState(isEdit);
   const [error, setError] = useState<string | null>(null);
   const [scannerOpen, setScannerOpen] = useState(false);
+
+  // ── Customer / site linking state ─────────────────────────────────────────
+  // Initial values passed to the picker — set once (from URL params or loaded unit)
+  const [initialPickerCustomerId] = useState<string | null>(() => {
+    if (isEdit) return null; // set later when unit loads
+    return new URLSearchParams(window.location.search).get("customerId") ?? null;
+  });
+  const [initialPickerSiteId] = useState<string | null>(() => {
+    if (isEdit) return null;
+    return new URLSearchParams(window.location.search).get("siteId") ?? null;
+  });
+  // Mutable tracker — updated by the picker's onChange
+  const [linkedCustomerId, setLinkedCustomerId] = useState<string | null>(null);
+  const [linkedSiteId, setLinkedSiteId]         = useState<string | null>(null);
+  // Key to remount picker when unit loads in edit mode (so initialCustomerId is re-applied)
+  const [pickerKey, setPickerKey] = useState(0);
 
   // ── Duplicate detection state ─────────────────────────────────────────────
   const [duplicates, setDuplicates] = useState<DuplicateEntry[]>([]);
@@ -211,33 +232,42 @@ export default function UnitFormPage() {
       .then((r) => r.json())
       .then((d) => {
         if (d.unit) {
-          const u = d.unit;
+          const u = d.unit as Record<string, unknown>;
           setForm({
-            siteCustomerName: u.siteCustomerName ?? "",
-            nickname: u.nickname ?? "",
-            location: u.location ?? "",
-            manufacturer: u.manufacturer ?? "",
-            modelNumber: u.modelNumber ?? "",
-            serialNumber: u.serialNumber ?? "",
-            equipmentType: u.equipmentType ?? "",
-            systemType: u.systemType ?? "",
-            refrigerantType: u.refrigerantType ?? "",
-            voltage: u.voltage ?? "",
-            phase: u.phase ?? "",
-            mca: u.mca ?? "",
-            mocp: u.mocp ?? "",
-            rla: u.rla ?? "",
-            lra: u.lra ?? "",
-            capacityTons: u.capacityTons ?? "",
-            manufactureDate: u.manufactureDate ?? "",
-            notes: u.notes ?? "",
-            nameplateImageUrl: u.nameplateImageUrl ?? "",
-            nameplatePreviewUrl: u.nameplatePreviewUrl ?? "",
+            siteCustomerName: (u.siteCustomerName as string) ?? "",
+            nickname: (u.nickname as string) ?? "",
+            location: (u.location as string) ?? "",
+            manufacturer: (u.manufacturer as string) ?? "",
+            modelNumber: (u.modelNumber as string) ?? "",
+            serialNumber: (u.serialNumber as string) ?? "",
+            equipmentType: (u.equipmentType as string) ?? "",
+            systemType: (u.systemType as string) ?? "",
+            refrigerantType: (u.refrigerantType as string) ?? "",
+            voltage: (u.voltage as string) ?? "",
+            phase: (u.phase as string) ?? "",
+            mca: (u.mca as string) ?? "",
+            mocp: (u.mocp as string) ?? "",
+            rla: (u.rla as string) ?? "",
+            lra: (u.lra as string) ?? "",
+            capacityTons: (u.capacityTons as string) ?? "",
+            manufactureDate: (u.manufactureDate as string) ?? "",
+            notes: (u.notes as string) ?? "",
+            nameplateImageUrl: (u.nameplateImageUrl as string) ?? "",
+            nameplatePreviewUrl: (u.nameplatePreviewUrl as string) ?? "",
           });
+          // Initialize customer/site picker from the loaded unit
+          const loadedCustomerId = typeof u.customerId === "string" ? u.customerId : null;
+          const loadedSiteId     = typeof u.siteId === "string" ? u.siteId : null;
+          setLinkedCustomerId(loadedCustomerId);
+          setLinkedSiteId(loadedSiteId);
+          // Store into refs via a temporary state trick: pass as initialCustomerId by bumping key
+          _editInitRef.current = { customerId: loadedCustomerId, siteId: loadedSiteId };
+          setPickerKey(k => k + 1);
         }
       })
       .catch(() => setError("Failed to load unit"))
       .finally(() => setLoadingUnit(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoaded, isEdit, isLoggedIn, clientId, params.id]);
 
   const handleChange = useCallback((name: keyof UnitFormData, val: string) => {
@@ -362,15 +392,10 @@ export default function UnitFormPage() {
     const payload: Record<string, unknown> = Object.fromEntries(
       Object.entries(form).map(([k, v]) => [k, v.trim() || null]),
     );
-    if (!isEdit) {
-      const params = new URLSearchParams(window.location.search);
-      const customerId = params.get("customerId");
-      const siteId = params.get("siteId");
-      if (customerId) payload.customerId = customerId;
-      if (siteId) payload.siteId = siteId;
-    }
+    payload.customerId = linkedCustomerId;
+    payload.siteId = linkedSiteId;
     return payload;
-  }, [form, isEdit]);
+  }, [form, linkedCustomerId, linkedSiteId]);
 
   // ── Core POST/PATCH save (no duplicate check) ─────────────────────────────
   const performSave = useCallback(async (payload: Record<string, unknown>) => {
@@ -650,8 +675,22 @@ export default function UnitFormPage() {
 
         {/* Section: Identification */}
         <div className="bg-white rounded-2xl border border-slate-200 p-4 space-y-3">
-          <SectionHeader title="Identification" desc="Site, customer, and unit name" />
-          <Field label="Site / Customer Name" name="siteCustomerName" value={form.siteCustomerName} onChange={handleChange} placeholder="e.g. Westgate Office Park" />
+          <SectionHeader title="Identification" desc="Customer, site, and unit name" />
+          <div>
+            <Label className="text-xs font-semibold text-slate-700 mb-1 block">Customer</Label>
+            <CustomerSiteField
+              key={pickerKey}
+              clientId={clientId}
+              initialCustomerId={isEdit ? (_editInitRef.current?.customerId ?? null) : initialPickerCustomerId}
+              initialSiteId={isEdit ? (_editInitRef.current?.siteId ?? null) : initialPickerSiteId}
+              placeholder="Search customers…"
+              onChange={(val: CustomerSiteValue) => {
+                setLinkedCustomerId(val.customerId);
+                setLinkedSiteId(val.siteId);
+                handleChange("siteCustomerName", val.customerName);
+              }}
+            />
+          </div>
           <Field label="Unit Nickname" name="nickname" value={form.nickname} onChange={handleChange} placeholder="e.g. RTU-3 (roof)" />
           <Field label="Location" name="location" value={form.location} onChange={handleChange} placeholder="e.g. Roof — South end" />
         </div>
