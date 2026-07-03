@@ -684,6 +684,9 @@ export function JobModeProvider({ children }: { children: ReactNode }) {
 
     if (navigator.onLine) {
       try {
+        // Flush queued events to the server BEFORE calling /complete so that
+        // job_timeline_events is fully populated when the service record is assembled.
+        await flushQueue();
         const result = await apiFetch<{ job: LocalJob; events: LocalEvent[] }>(
           `/jobs/${jobId}/complete`,
           { method: "POST" },

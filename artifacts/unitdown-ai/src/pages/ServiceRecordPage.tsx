@@ -485,6 +485,24 @@ export function ServiceRecordPage({ jobId }: ServiceRecordPageProps) {
         const r = await fetch(`/api/jobs/${jobId}/service-record`, { headers });
         if (!r.ok) throw new Error(`${r.status}`);
         const data = await r.json() as ServiceRecord;
+
+        // Guard: server returned 200 but events may not have synced yet.
+        // If the server timeline is empty, prefer the local snapshot when it
+        // has richer data (events flushed after completeJob returned, or an
+        // offline/race scenario where localStorage is the ground truth).
+        if (!data.timeline || data.timeline.length === 0) {
+          try {
+            const localRaw = localStorage.getItem(`unitdown_job_${jobId}`);
+            if (localRaw) {
+              const localRecord = buildRecordFromLocalSnapshot(localRaw, jobId);
+              if (localRecord && localRecord.timeline.length > 0) {
+                if (!cancelled) { setRecord(localRecord); setFromLocal(true); setLoading(false); }
+                return;
+              }
+            }
+          } catch { /* ignore storage errors — fall through to server data */ }
+        }
+
         if (!cancelled) { setRecord(data); setLoading(false); }
         return;
       } catch {
