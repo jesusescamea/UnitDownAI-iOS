@@ -20,7 +20,7 @@ import { useLocation } from "wouter";
 import {
   Briefcase, Plus, Clock, ChevronRight, RefreshCw, AlertCircle, FileText,
 } from "lucide-react";
-import { useUser, useAuth } from "@clerk/clerk-react";
+import { useUser, useAuth } from "@clerk/react";
 import { Button } from "@/components/ui/button";
 
 import { useJobMode, type LocalJob } from "@/context/JobModeContext";

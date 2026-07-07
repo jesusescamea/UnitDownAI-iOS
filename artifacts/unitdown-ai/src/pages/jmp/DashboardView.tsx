@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useUser, useClerk, useAuth } from '@clerk/clerk-react';
+import { useUser, useClerk, useAuth } from '@clerk/react';
 import { useLocation } from 'wouter';
 import { motion, AnimatePresence } from 'framer-motion';
 import {

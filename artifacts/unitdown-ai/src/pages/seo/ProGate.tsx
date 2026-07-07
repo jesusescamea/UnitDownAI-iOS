@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Lock, CheckCircle2, Loader2, ArrowRight, RotateCcw } from "lucide-react";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 import { purchasePro, restorePurchases, checkIAPSubscriptionActive } from "@/lib/appleIAP";
 import { Browser } from "@capacitor/browser";
 import { isDemoProEmail } from "@/lib/demoAccess";

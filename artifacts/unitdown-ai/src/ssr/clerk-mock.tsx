@@ -37,3 +37,14 @@ export const SignIn = () => null;
 export const SignUp = () => null;
 export const UserButton = () => null;
 export const RedirectToSignIn = () => null;
+
+// Sub-path exports (e.g. @clerk/react/internal) used at module level in main.tsx
+// are intercepted by the SSR alias which maps @clerk/react → this file.
+// The prerender entry-server.tsx doesn't call main.tsx, so this export is only
+// a safety net in case any SSR code imports from the internal sub-path.
+export function publishableKeyFromHost(
+  _hostname: string,
+  fallback?: string,
+): string {
+  return fallback ?? "";
+}

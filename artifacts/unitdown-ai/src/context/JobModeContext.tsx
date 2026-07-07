@@ -33,7 +33,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { useAuth, useUser } from "@clerk/clerk-react";
+import { useAuth, useUser } from "@clerk/react";
 import {
   enqueueOp,
   getQueuedOps,

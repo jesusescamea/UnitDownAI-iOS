@@ -17,7 +17,7 @@ import {
   Wrench, CheckSquare, Cpu, CheckCircle, Sparkles,
   AlertTriangle, Search, ArrowLeft, ChevronRight, Zap, FileText,
 } from "lucide-react";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 import { useJobMode } from "@/context/JobModeContext";
 import type { LocalJob, LocalEvent, EventType } from "@/context/JobModeContext";
 import { VoiceNoteModal } from "@/components/job/modals/VoiceNoteModal";

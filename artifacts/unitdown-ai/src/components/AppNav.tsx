@@ -17,7 +17,7 @@ import {
   User,
   Users,
 } from "lucide-react";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 
 export type AppNavSection =
   | "dashboard"

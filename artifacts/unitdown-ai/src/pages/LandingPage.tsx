@@ -14,7 +14,7 @@
 
 import { useState, useCallback, useEffect, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 import {
   ThermometerSnowflake, Sun, Moon, ChevronRight, Cpu,
   Briefcase, FileText, Wrench, Scan, Package,

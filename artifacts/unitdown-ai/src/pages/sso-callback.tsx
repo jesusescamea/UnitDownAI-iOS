@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
+import { AuthenticateWithRedirectCallback } from "@clerk/react";
 import { ThermometerSnowflake, AlertCircle } from "lucide-react";
 import { useLocation } from "wouter";
 

@@ -1,5 +1,5 @@
 import { useState, useCallback } from "react";
-import { useSignIn } from "@clerk/clerk-react";
+import { useSignIn } from "@clerk/react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { ShieldCheck, LogIn, UserPlus } from "lucide-react";
@@ -32,7 +32,10 @@ interface EmailWallModalProps {
 }
 
 export default function EmailWallModal({ open, onClose }: EmailWallModalProps) {
-  const { signIn, isLoaded } = useSignIn();
+  const { signIn: _signInResource, fetchStatus } = useSignIn();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const signIn = _signInResource as any;
+  const isLoaded = signIn != null;
   // shouldShowAppleSignIn() returns true unconditionally (Apple guideline 4.8:
   // Sign in with Apple must appear wherever any third-party social login exists).
   const showApple = shouldShowAppleSignIn();

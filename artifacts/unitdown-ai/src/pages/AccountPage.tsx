@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useTheme } from "@/context/ThemeContext";
 import { useLocation } from "wouter";
 import { AppNav } from "@/components/AppNav";
-import { useClerk, useSignIn } from "@clerk/clerk-react";
+import { useClerk, useSignIn } from "@clerk/react";
 import { useClerkTimeout } from "@/hooks/useClerkTimeout";
 import { ClerkTimeoutFallback } from "@/components/ClerkTimeoutFallback";
 import { shouldUseAppleIAP, isIOS, isIOSApp } from "@/lib/platform";
@@ -142,7 +142,10 @@ export default function AccountPage() {
   const { user, isLoaded, timedOut: clerkTimedOut } = useClerkTimeout(5_000);
   const { theme, setTheme } = useTheme();
   const { signOut } = useClerk();
-  const { signIn, isLoaded: signInLoaded } = useSignIn();
+  const { signIn: _signInResource, fetchStatus: signInFetchStatus } = useSignIn();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const signIn = _signInResource as any;
+  const signInLoaded = signIn != null;
   const [, navigate] = useLocation();
 
   const isGuest = !user;

@@ -46,7 +46,7 @@ export default defineConfig({
         replacement: path.resolve(__dirname, "src"),
       },
       {
-        find: "@clerk/clerk-react",
+        find: "@clerk/react",
         replacement: path.resolve(__dirname, "src/ssr/clerk-mock.tsx"),
       },
       {

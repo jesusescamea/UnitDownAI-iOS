@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { Switch, Route, Router as WouterRouter, useLocation, Link } from "wouter";
-import { useUser, useClerk, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
+import { useUser, useClerk, UserButton } from "@clerk/react";
 import { useClerkTimeout } from "@/hooks/useClerkTimeout";
 import { ClerkTimeoutFallback } from "@/components/ClerkTimeoutFallback";
 import { shouldUseAppleIAP } from "@/lib/platform";

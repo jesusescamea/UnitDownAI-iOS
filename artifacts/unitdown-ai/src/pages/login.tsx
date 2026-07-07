@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { useSignIn } from "@clerk/clerk-react";
+import { useSignIn, useClerk } from "@clerk/react";
 import { useLocation } from "wouter";
 import { ThermometerSnowflake, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,11 @@ function ErrorBanner({ message }: { message: string }) {
 }
 
 export default function LoginPage() {
-  const { signIn, setActive, isLoaded } = useSignIn();
+  const { signIn: _signInResource, fetchStatus } = useSignIn();
+  const { setActive } = useClerk();
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const signIn = _signInResource as any;
+  const isLoaded = signIn != null;
   const [, navigate] = useLocation();
 
   // Evaluated once on mount — stable for the lifetime of this page render.
@@ -204,7 +208,8 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const result = await withTimeout(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result: any = await withTimeout(
         signIn.attemptFirstFactor({ strategy: "email_code", code: otpCode.trim() })
       );
       if (result.status === "complete") {
@@ -253,7 +258,8 @@ export default function LoginPage() {
         });
         if (res.ok) {
           const { token } = (await res.json()) as { token: string };
-          const result = await withTimeout(
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const result: any = await withTimeout(
             signIn.create({ strategy: "ticket", ticket: token })
           );
           if (result.status === "complete") {
@@ -298,7 +304,8 @@ export default function LoginPage() {
     setShowSendCode(false);
     setLoading(true);
     try {
-      const result = await withTimeout(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result: any = await withTimeout(
         signIn.create({ identifier: email.trim(), strategy: "password", password })
       );
       if (result.status === "complete") {
@@ -373,7 +380,8 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const result = await withTimeout(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result: any = await withTimeout(
         signIn.attemptFirstFactor({
           strategy: "reset_password_email_code",
           code: resetCode.trim(),
@@ -405,7 +413,8 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const result = await withTimeout(
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const result: any = await withTimeout(
         signIn.resetPassword({ password: newPassword, signOutOfOtherSessions: false })
       );
       if (result.status === "complete") {

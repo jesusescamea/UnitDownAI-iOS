@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { brandPages } from "./brand-data";
 import { ArrowRight, ChevronRight, Tag, Zap, Lock, CheckCircle2 } from "lucide-react";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 import { checkIAPSubscriptionActive } from "@/lib/appleIAP";
 import { isDemoProEmail } from "@/lib/demoAccess";
 import { useSeoHead } from "@/lib/useSeoHead";

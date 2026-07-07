@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useLocation, useParams } from "wouter";
-import { useUser, useAuth } from "@clerk/clerk-react";
+import { useUser, useAuth } from "@clerk/react";
 import {
   ChevronRight, Wrench, Edit2, Trash2, Pencil,
   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,

@@ -12,7 +12,7 @@
 
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@clerk/clerk-react";
+import { useAuth } from "@clerk/react";
 import {
   ArrowLeft,
   FileText,

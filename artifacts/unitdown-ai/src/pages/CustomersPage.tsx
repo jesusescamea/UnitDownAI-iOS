@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useLocation } from 'wouter';
-import { useUser } from '@clerk/clerk-react';
+import { useUser } from '@clerk/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft, Plus, Search, X, ChevronRight, Building2, Phone,

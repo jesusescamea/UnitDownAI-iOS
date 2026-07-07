@@ -1,4 +1,4 @@
-import { SignUp } from "@clerk/clerk-react";
+import { SignUp } from "@clerk/react";
 import { useLocation } from "wouter";
 import { ThermometerSnowflake, ArrowLeft } from "lucide-react";
 

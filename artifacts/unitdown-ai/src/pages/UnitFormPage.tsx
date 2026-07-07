@@ -3,7 +3,7 @@ import { useLocation, useParams } from "wouter";
 import { trackUnitSaved, maybeRequestReview } from "@/lib/appReview";
 import { awardReward } from "@/lib/rewards";
 import { useToast } from "@/hooks/use-toast";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 import {
   ChevronRight, Camera, Loader2, AlertTriangle, CheckCircle2,
   ThermometerSnowflake, Save, Trash2,

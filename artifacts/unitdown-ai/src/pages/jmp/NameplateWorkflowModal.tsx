@@ -6,7 +6,7 @@ import {
   Zap, Link2, Package, UserPlus, Save, Copy, ChevronDown, ChevronUp,
   Wrench,
 } from 'lucide-react';
-import { useUser } from '@clerk/clerk-react';
+import { useUser } from '@clerk/react';
 import NameplateScannerModal from '../../components/NameplateScannerModal';
 import { useUnassignedScans, type NameplateFields } from './useUnassignedScans';
 

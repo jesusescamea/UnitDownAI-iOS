@@ -8,7 +8,7 @@
  */
 import { useState, useEffect, useCallback, useMemo, type ElementType } from "react";
 import { useLocation } from "wouter";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 import {
   ThermometerSnowflake,
   Briefcase,

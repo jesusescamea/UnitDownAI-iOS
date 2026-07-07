@@ -7,7 +7,7 @@ import {
   Check, SkipForward, GitMerge, ChevronDown, FileUp,
   AlertCircle, Settings, WifiOff, Mic,
 } from 'lucide-react';
-import { useUser } from '@clerk/clerk-react';
+import { useUser } from '@clerk/react';
 import type { ImportedJob, ProviderType } from './types';
 import type { ScheduleWizardResult } from '../ScheduleJobWizard';
 import type { TodayJob } from '../mockData';

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useLocation, useParams } from "wouter";
-import { useUser } from "@clerk/clerk-react";
+import { useUser } from "@clerk/react";
 import {
   ChevronRight, ThermometerSnowflake, AlertCircle, CheckCircle2,
   CircleDot, Clock, Wrench, Save, Loader2, ChevronDown, ChevronUp,

@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useUser } from '@clerk/clerk-react';
+import { useUser } from '@clerk/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { X, CheckCircle, AlertTriangle, XCircle, ChevronRight } from 'lucide-react';
 import {

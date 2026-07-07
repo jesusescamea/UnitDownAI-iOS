@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect, Component, type ReactNode } from 'react';
-import { useUser } from '@clerk/clerk-react';
+import { useUser } from '@clerk/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   X, Search, Plus, Minus, ChevronRight, CheckCircle, AlertTriangle,
