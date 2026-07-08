@@ -19,23 +19,32 @@ initTheme();
 // This is a no-op on web and Android; only activates when isIOSApp() is true.
 installIOSPaymentGuard();
 
-// REQUIRED — resolves the publishable key from window.location.hostname so the
-// same build can serve multiple Clerk custom domains. Falls back to the env var
-// when the hostname doesn't map to a registered Clerk domain.
-// Do not inline the env var or replace publishableKeyFromHost with anything else.
-const clerkPubKey = publishableKeyFromHost(
-  window.location.hostname,
-  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
-);
+// On Capacitor iOS, window.location.hostname is "localhost" (the WKWebView
+// bridge origin). Passing "localhost" to publishableKeyFromHost causes Clerk
+// to construct clerk.localhost as the FAPI domain, which is unreachable inside
+// the native app. Skip the hostname-based derivation entirely for native builds
+// and use the publishable key directly — its payload already encodes the correct
+// FAPI domain (clerk.unitdown.org).
+//
+// On web, keep the publishableKeyFromHost call so that the same bundle can serve
+// multiple Clerk custom domains (e.g. unitdown.org → clerk.unitdown.org).
+const clerkPubKey = isNative()
+  ? import.meta.env.VITE_CLERK_PUBLISHABLE_KEY
+  : publishableKeyFromHost(
+      window.location.hostname,
+      import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
+    );
 
 if (!clerkPubKey) {
   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
 }
 
-// REQUIRED — empty in dev (Clerk hits dev FAPI directly), auto-set in prod.
-// Do NOT gate on import.meta.env.PROD / NODE_ENV — the empty dev value is
-// intentional, and any branching breaks the prod proxy.
-const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+// Proxy URL: only applicable on web. The /api/__clerk reverse proxy is served
+// by the Express API server, which is not reachable from the Capacitor iOS
+// WKWebView (window.location is https://localhost in the simulator/device shell).
+// On native, Clerk must call the Clerk FAPI directly — set proxyUrl to undefined
+// so Clerk does not attempt to route through a proxy that does not exist.
+const clerkProxyUrl = isNative() ? undefined : import.meta.env.VITE_CLERK_PROXY_URL;
 
 // The canonical production web origin. Used for post-auth redirects when
 // running inside the Capacitor native shell.
