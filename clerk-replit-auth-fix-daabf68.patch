@@ -1,0 +1,926 @@
+From daabf68267d9d74550caf10ae01425a6229b2069 Mon Sep 17 00:00:00 2001
+From: Replit Agent <agent@replit.com>
+Date: Tue, 7 Jul 2026 23:33:16 +0000
+Subject: [PATCH] Update authentication to use latest Clerk version and improve
+ API proxy
+
+Migrate Clerk authentication from v5 to v6, update API proxy middleware for production, and fix related type errors and initialization issues.
+
+Replit-Commit-Author: Agent
+Replit-Commit-Session-Id: 910e58ca-4158-4bfd-84b6-815706a94450
+Replit-Commit-Checkpoint-Type: full_checkpoint
+Replit-Commit-Event-Id: 9dc7fc5c-16a4-403d-819f-bf2698019c8f
+Replit-Helium-Checkpoint-Created: true
+---
+ artifacts/api-server/package.json             |  5 +-
+ artifacts/api-server/src/app.ts               | 35 ++++++++-
+ .../src/middlewares/clerkProxyMiddleware.ts   | 64 +++++++++++++++--
+ artifacts/unitdown-ai/package.json            |  2 +-
+ artifacts/unitdown-ai/src/App.tsx             |  2 +-
+ .../unitdown-ai/src/components/AppNav.tsx     |  2 +-
+ .../src/components/EmailWallModal.tsx         |  7 +-
+ .../src/context/JobModeContext.tsx            |  2 +-
+ .../unitdown-ai/src/hooks/useClerkTimeout.ts  |  2 +-
+ artifacts/unitdown-ai/src/main.tsx            | 71 ++++++-------------
+ .../unitdown-ai/src/pages/AccountPage.tsx     |  7 +-
+ .../unitdown-ai/src/pages/CustomersPage.tsx   |  2 +-
+ .../src/pages/DiagnosticLogDetailPage.tsx     |  2 +-
+ .../src/pages/FieldHubDashboard.tsx           |  2 +-
+ .../unitdown-ai/src/pages/JobModePage.tsx     |  2 +-
+ .../unitdown-ai/src/pages/LandingPage.tsx     |  2 +-
+ .../src/pages/ServiceRecordPage.tsx           |  2 +-
+ .../unitdown-ai/src/pages/UnitDetailPage.tsx  |  2 +-
+ .../unitdown-ai/src/pages/UnitFormPage.tsx    |  2 +-
+ .../src/pages/jmp/DashboardView.tsx           |  2 +-
+ .../src/pages/jmp/EquipmentSearchModal.tsx    |  2 +-
+ .../unitdown-ai/src/pages/jmp/MyVanModal.tsx  |  2 +-
+ .../src/pages/jmp/NameplateWorkflowModal.tsx  |  2 +-
+ .../src/pages/jmp/ScheduleJobWizard.tsx       |  2 +-
+ .../src/pages/jmp/ToolChecklistModal.tsx      |  2 +-
+ .../pages/jmp/dispatch/DispatchInboxModal.tsx |  2 +-
+ .../src/pages/job/JobActiveView.tsx           |  2 +-
+ artifacts/unitdown-ai/src/pages/login.tsx     | 23 ++++--
+ .../unitdown-ai/src/pages/seo/BrandHub.tsx    |  2 +-
+ .../unitdown-ai/src/pages/seo/ProGate.tsx     |  2 +-
+ artifacts/unitdown-ai/src/pages/signup.tsx    |  2 +-
+ .../unitdown-ai/src/pages/sso-callback.tsx    |  2 +-
+ artifacts/unitdown-ai/src/ssr/clerk-mock.tsx  | 11 +++
+ artifacts/unitdown-ai/vite.config.ssr.ts      |  2 +-
+ pnpm-lock.yaml                                | 42 +++++++++--
+ 35 files changed, 210 insertions(+), 107 deletions(-)
+
+diff --git a/artifacts/api-server/package.json b/artifacts/api-server/package.json
+index 2354fbe..c2fc33e 100644
+--- a/artifacts/api-server/package.json
++++ b/artifacts/api-server/package.json
+@@ -11,6 +11,7 @@
+   },
+   "dependencies": {
+     "@clerk/express": "^2.1.11",
++    "@clerk/shared": "^4.24.0",
+     "@google-cloud/storage": "^7.21.0",
+     "@types/multer": "^2.1.0",
+     "@workspace/api-zod": "workspace:*",
+@@ -19,13 +20,13 @@
+     "cookie-parser": "^1.4.7",
+     "cors": "^2",
+     "drizzle-orm": "catalog:",
+-    "zod": "catalog:",
+     "express": "^5",
+     "google-auth-library": "^10.7.0",
+     "http-proxy-middleware": "^3.0.5",
+     "multer": "^2.1.1",
+     "pino": "^9",
+-    "pino-http": "^10"
++    "pino-http": "^10",
++    "zod": "catalog:"
+   },
+   "devDependencies": {
+     "@types/cookie-parser": "^1.4.10",
+diff --git a/artifacts/api-server/src/app.ts b/artifacts/api-server/src/app.ts
+index e6e5e0a..a020489 100644
+--- a/artifacts/api-server/src/app.ts
++++ b/artifacts/api-server/src/app.ts
+@@ -2,10 +2,16 @@ import express, { type Express, type Request, type Response, type NextFunction }
+ import cors from "cors";
+ import cookieParser from "cookie-parser";
+ import pinoHttp from "pino-http";
++import { clerkMiddleware } from "@clerk/express";
++import { publishableKeyFromHost } from "@clerk/shared/keys";
+ import router from "./routes";
+ import { guideRouter, brandRouter } from "./routes/seo";
+ import { logger } from "./lib/logger";
+-import { CLERK_PROXY_PATH, clerkProxyMiddleware } from "./middlewares/clerkProxyMiddleware";
++import {
++  CLERK_PROXY_PATH,
++  clerkProxyMiddleware,
++  getClerkProxyHost,
++} from "./middlewares/clerkProxyMiddleware";
+ 
+ const app: Express = express();
+ 
+@@ -24,13 +30,36 @@ app.use(
+ );
+ 
+ app.set("trust proxy", 1);
+-app.use(cors({ origin: true, credentials: true }));
+-app.use(cookieParser());
++
++// Mount Clerk proxy BEFORE body parsers — the proxy streams raw bytes.
+ app.use(CLERK_PROXY_PATH, clerkProxyMiddleware());
+ 
++app.use(cors({ origin: true, credentials: true }));
++app.use(cookieParser());
+ app.use(express.json());
+ app.use(express.urlencoded({ extended: true }));
+ 
++// Resolve the publishable key from the incoming request host so the same
++// server can serve multiple Clerk custom domains. Falls back to
++// CLERK_PUBLISHABLE_KEY when the host doesn't map to a custom domain.
++//
++// getClerkProxyHost is shared with clerkProxyMiddleware so that both
++// halves of the auth setup agree on which hostname is canonical.
++//
++// Only mount when CLERK_SECRET_KEY is present — clerkMiddleware throws on
++// missing keys, so in dev environments without keys we skip it and rely on
++// the per-route conditionalClerkMiddleware() in serverAuth.ts instead.
++if (process.env.CLERK_SECRET_KEY) {
++  app.use(
++    clerkMiddleware((req) => ({
++      publishableKey: publishableKeyFromHost(
++        getClerkProxyHost(req) ?? "",
++        process.env.CLERK_PUBLISHABLE_KEY,
++      ),
++    })),
++  );
++}
++
+ app.use("/api", router);
+ app.use("/guides", guideRouter);
+ app.use("/brand-guides", brandRouter);
+diff --git a/artifacts/api-server/src/middlewares/clerkProxyMiddleware.ts b/artifacts/api-server/src/middlewares/clerkProxyMiddleware.ts
+index 3d1bdb2..0716bbe 100644
+--- a/artifacts/api-server/src/middlewares/clerkProxyMiddleware.ts
++++ b/artifacts/api-server/src/middlewares/clerkProxyMiddleware.ts
+@@ -53,13 +53,8 @@ export function getClerkProxyHost(req: {
+ }
+ 
+ export function clerkProxyMiddleware(): RequestHandler {
+-  // Skip proxy for test/dev Clerk instances (pk_test_ keys use a dev-browser
+-  // cookie flow that breaks through a proxy). For live keys the proxy works in
+-  // any environment and is required when clerk.<custom-domain> is not reachable
+-  // (e.g. DNS CNAME not configured) — the proxy forwards to frontend-api.clerk.dev
+-  // which is always reachable, including the clerk.browser.js script load.
+-  const publishableKey = process.env.CLERK_PUBLISHABLE_KEY ?? "";
+-  if (!publishableKey.startsWith("pk_live_")) {
++  // Only run proxy in production — Clerk proxying doesn't work for dev instances
++  if (process.env.NODE_ENV !== "production") {
+     return (_req, _res, next) => next();
+   }
+ 
+@@ -71,6 +66,9 @@ export function clerkProxyMiddleware(): RequestHandler {
+   return createProxyMiddleware({
+     target: CLERK_FAPI,
+     changeOrigin: true,
++    // Take over the response so it can be re-sent with a Content-Length (see
++    // proxyRes); the deployment edge rejects chunked proxied responses.
++    selfHandleResponse: true,
+     pathRewrite: (path: string) =>
+       path.replace(new RegExp(`^${CLERK_PROXY_PATH}`), ""),
+     on: {
+@@ -91,6 +89,58 @@ export function clerkProxyMiddleware(): RequestHandler {
+           proxyReq.setHeader("X-Forwarded-For", clientIp);
+         }
+       },
++      // Clerk's dynamic Frontend API responses (/v1/environment, /v1/client,
++      // JWKS, ...) arrive without a Content-Length, so relaying them would use
++      // Transfer-Encoding: chunked — which the deployment edge (Cloud Run)
++      // rejects, turning the app's 200 into a 500. Buffer only those so they can
++      // be re-sent with a Content-Length; the body is forwarded untouched so
++      // Content-Encoding is preserved. Length-known responses (e.g. /npm/*
++      // assets) and body-less responses stream through without buffering.
++      proxyRes: (proxyRes, req, res) => {
++        const headers = { ...proxyRes.headers };
++        // Transfer-Encoding/Connection are hop-by-hop (RFC 7230 §6.1).
++        delete headers["transfer-encoding"];
++        delete headers["connection"];
++        delete headers["keep-alive"];
++
++        const status = proxyRes.statusCode ?? 502;
++        // Content-Length is forbidden on 1xx/204; HEAD/304 may keep theirs.
++        if (status < 200 || status === 204) {
++          delete headers["content-length"];
++        }
++
++        const bodyless =
++          req.method === "HEAD" ||
++          status < 200 ||
++          status === 204 ||
++          status === 304;
++        if (headers["content-length"] !== undefined || bodyless) {
++          res.writeHead(status, headers);
++          // Headers are already sent, so abort the response if the upstream
++          // stream errors mid-pipe (e.g. ECONNRESET) rather than leaving an
++          // unhandled 'error' or a hung client.
++          proxyRes.on("error", () => res.destroy());
++          proxyRes.pipe(res);
++          return;
++        }
++
++        const chunks: Buffer[] = [];
++        proxyRes.on("data", (chunk: Buffer) => chunks.push(chunk));
++        proxyRes.on("end", () => {
++          const body = Buffer.concat(chunks);
++          headers["content-length"] = String(body.length);
++          res.writeHead(status, headers);
++          res.end(body);
++        });
++        proxyRes.on("error", () => {
++          if (!res.headersSent) {
++            // Set a length so the empty 502 isn't sent chunked (which the
++            // deployment edge would reject just like the original response).
++            res.writeHead(502, { "content-length": "0" });
++          }
++          res.end();
++        });
++      },
+     },
+   }) as RequestHandler;
+ }
+diff --git a/artifacts/unitdown-ai/package.json b/artifacts/unitdown-ai/package.json
+index ad2b4bb..b3af5c6 100644
+--- a/artifacts/unitdown-ai/package.json
++++ b/artifacts/unitdown-ai/package.json
+@@ -83,7 +83,7 @@
+     "@capacitor/core": "^8.3.1",
+     "@capacitor/ios": "^8.3.1",
+     "@capacitor/splash-screen": "^8.0.1",
+-    "@clerk/clerk-react": "^5.61.3",
++    "@clerk/react": "^6.11.4",
+     "idb": "^8.0.3"
+   }
+ }
+diff --git a/artifacts/unitdown-ai/src/App.tsx b/artifacts/unitdown-ai/src/App.tsx
+index 899ca4a..cf2757e 100644
+--- a/artifacts/unitdown-ai/src/App.tsx
++++ b/artifacts/unitdown-ai/src/App.tsx
+@@ -1,6 +1,6 @@
+ import { useState, useEffect, useRef, useCallback } from "react";
+ import { Switch, Route, Router as WouterRouter, useLocation, Link } from "wouter";
+-import { useUser, useClerk, UserButton, SignedIn, SignedOut } from "@clerk/clerk-react";
++import { useUser, useClerk, UserButton } from "@clerk/react";
+ import { useClerkTimeout } from "@/hooks/useClerkTimeout";
+ import { ClerkTimeoutFallback } from "@/components/ClerkTimeoutFallback";
+ import { shouldUseAppleIAP } from "@/lib/platform";
+diff --git a/artifacts/unitdown-ai/src/components/AppNav.tsx b/artifacts/unitdown-ai/src/components/AppNav.tsx
+index c6c95f1..4b13a87 100644
+--- a/artifacts/unitdown-ai/src/components/AppNav.tsx
++++ b/artifacts/unitdown-ai/src/components/AppNav.tsx
+@@ -17,7 +17,7 @@ import {
+   User,
+   Users,
+ } from "lucide-react";
+-import { useUser } from "@clerk/clerk-react";
++import { useUser } from "@clerk/react";
+ 
+ export type AppNavSection =
+   | "dashboard"
+diff --git a/artifacts/unitdown-ai/src/components/EmailWallModal.tsx b/artifacts/unitdown-ai/src/components/EmailWallModal.tsx
+index 5c9be39..8e197e0 100644
+--- a/artifacts/unitdown-ai/src/components/EmailWallModal.tsx
++++ b/artifacts/unitdown-ai/src/components/EmailWallModal.tsx
+@@ -1,5 +1,5 @@
+ import { useState, useCallback } from "react";
+-import { useSignIn } from "@clerk/clerk-react";
++import { useSignIn } from "@clerk/react";
+ import { Dialog, DialogContent } from "@/components/ui/dialog";
+ import { Button } from "@/components/ui/button";
+ import { ShieldCheck, LogIn, UserPlus } from "lucide-react";
+@@ -32,7 +32,10 @@ interface EmailWallModalProps {
+ }
+ 
+ export default function EmailWallModal({ open, onClose }: EmailWallModalProps) {
+-  const { signIn, isLoaded } = useSignIn();
++  const { signIn: _signInResource, fetchStatus } = useSignIn();
++  // eslint-disable-next-line @typescript-eslint/no-explicit-any
++  const signIn = _signInResource as any;
++  const isLoaded = signIn != null;
+   // shouldShowAppleSignIn() returns true unconditionally (Apple guideline 4.8:
+   // Sign in with Apple must appear wherever any third-party social login exists).
+   const showApple = shouldShowAppleSignIn();
+diff --git a/artifacts/unitdown-ai/src/context/JobModeContext.tsx b/artifacts/unitdown-ai/src/context/JobModeContext.tsx
+index f487b6e..e4eed96 100644
+--- a/artifacts/unitdown-ai/src/context/JobModeContext.tsx
++++ b/artifacts/unitdown-ai/src/context/JobModeContext.tsx
+@@ -33,7 +33,7 @@ import {
+   useState,
+   type ReactNode,
+ } from "react";
+-import { useAuth, useUser } from "@clerk/clerk-react";
++import { useAuth, useUser } from "@clerk/react";
+ import {
+   enqueueOp,
+   getQueuedOps,
+diff --git a/artifacts/unitdown-ai/src/hooks/useClerkTimeout.ts b/artifacts/unitdown-ai/src/hooks/useClerkTimeout.ts
+index 8da096d..e18af41 100644
+--- a/artifacts/unitdown-ai/src/hooks/useClerkTimeout.ts
++++ b/artifacts/unitdown-ai/src/hooks/useClerkTimeout.ts
+@@ -1,4 +1,4 @@
+-import { useUser } from "@clerk/clerk-react";
++import { useUser } from "@clerk/react";
+ import { useState, useEffect } from "react";
+ 
+ export interface ClerkTimeoutResult {
+diff --git a/artifacts/unitdown-ai/src/main.tsx b/artifacts/unitdown-ai/src/main.tsx
+index f63ea66..6ca3646 100644
+--- a/artifacts/unitdown-ai/src/main.tsx
++++ b/artifacts/unitdown-ai/src/main.tsx
+@@ -1,5 +1,6 @@
+ import { createRoot } from "react-dom/client";
+-import { ClerkProvider } from "@clerk/clerk-react";
++import { ClerkProvider } from "@clerk/react";
++import { publishableKeyFromHost } from "@clerk/react/internal";
+ import App from "./App";
+ import "./index.css";
+ import { installIOSPaymentGuard } from "./lib/iosPaymentGuard";
+@@ -18,40 +19,26 @@ initTheme();
+ // This is a no-op on web and Android; only activates when isIOSApp() is true.
+ installIOSPaymentGuard();
+ 
+-const PUBLISHABLE_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
++// REQUIRED — resolves the publishable key from window.location.hostname so the
++// same build can serve multiple Clerk custom domains. Falls back to the env var
++// when the hostname doesn't map to a registered Clerk domain.
++// Do not inline the env var or replace publishableKeyFromHost with anything else.
++const clerkPubKey = publishableKeyFromHost(
++  window.location.hostname,
++  import.meta.env.VITE_CLERK_PUBLISHABLE_KEY,
++);
+ 
+-if (!PUBLISHABLE_KEY) {
++if (!clerkPubKey) {
+   throw new Error("Missing VITE_CLERK_PUBLISHABLE_KEY");
+ }
+ 
+-// Clerk key type guard.
+-//
+-// pk_test_* keys are "dev instance" keys. They use a cookie-based "dev browser"
+-// session-sync flow (a redirect to clerk.shared.lcl.dev that sets a
+-// __clerk_db_jwt cookie). That flow is blocked in two situations:
+-//
+-//   1. Cross-origin iframes (Replit preview pane, any embedded context) because
+-//      modern browsers reject SameSite=None cookies from cross-origin frames.
+-//
+-//   2. Through the /api/__clerk proxy — the proxy intercepts the dev_browser
+-//      handshake and returns a 400, permanently preventing isLoaded from
+-//      becoming true.
+-//
+-// SOLUTION: Always use pk_live_* in VITE_CLERK_PUBLISHABLE_KEY.
+-// Development/testing on localhost still works fine with live keys.
+-const isLiveKey = PUBLISHABLE_KEY.startsWith("pk_live_");
++// REQUIRED — empty in dev (Clerk hits dev FAPI directly), auto-set in prod.
++// Do NOT gate on import.meta.env.PROD / NODE_ENV — the empty dev value is
++// intentional, and any branching breaks the prod proxy.
++const clerkProxyUrl = import.meta.env.VITE_CLERK_PROXY_URL;
+ 
+-if (!isLiveKey && import.meta.env.PROD) {
+-  // Deployed to production with a test key — this will cause a proxy 400 and
+-  // a permanent Clerk init failure. Log a loud warning.
+-  console.error(
+-    "[UnitDown] VITE_CLERK_PUBLISHABLE_KEY is a pk_test_ key. " +
+-    "Production deployments must use a pk_live_ key or Clerk will fail to initialize."
+-  );
+-}
+-
+-// The canonical production web origin.  Used as the Clerk proxy base and for
+-// post-auth redirects when we are running inside the Capacitor native shell.
++// The canonical production web origin. Used for post-auth redirects when
++// running inside the Capacitor native shell.
+ //
+ // App Store Connect Bundle ID: co.median.ios.abmwydj
+ // This matches capacitor.config.ts appId and PRODUCT_BUNDLE_IDENTIFIER in
+@@ -59,7 +46,7 @@ if (!isLiveKey && import.meta.env.PROD) {
+ // Info.plist inherits via $(PRODUCT_BUNDLE_IDENTIFIER) — no separate edit needed.
+ const PRODUCTION_ORIGIN = "https://unitdown.org";
+ 
+-// Resolve the effective origin for all Clerk URLs:
++// Resolve the effective origin for post-auth redirect URLs:
+ //
+ //   • Capacitor iOS native  → window.location.origin == "https://localhost"
+ //                             (Capacitor's local WKWebView bridge). That URL
+@@ -74,28 +61,12 @@ const PRODUCTION_ORIGIN = "https://unitdown.org";
+ //                             (localhost:XXXX)
+ const effectiveOrigin = isNative() ? PRODUCTION_ORIGIN : window.location.origin;
+ 
+-// Route all Clerk Frontend API calls through the server-side proxy at
+-// /api/__clerk so auth works on custom domains without DNS CNAME setup.
+-//
+-// The proxy is used with ALL live keys in ALL environments:
+-//   • pk_test_ + proxy → Clerk's dev_browser endpoint returns 400 through the
+-//     proxy (the proxy forwards a different Host header), permanently blocking init.
+-//   • pk_test_ without proxy → dev browser cookie is blocked in cross-origin
+-//     iframes (Replit preview), but at least localhost dev works.
+-//   • pk_live_ + proxy → correct path everywhere — also fixes script loading:
+-//     when proxyUrl is set, Clerk loads clerk.browser.js from the proxy host
+-//     (/api/__clerk/npm/...) instead of the FAPI domain (clerk.unitdown.org),
+-//     which may not be reachable in some environments (e.g. Replit preview).
+-//   • pk_live_ without proxy → direct FAPI load; fails if clerk.unitdown.org
+-//     is unreachable (no DNS CNAME configured).
+-const proxyUrl = isLiveKey ? `${effectiveOrigin}/api/__clerk` : undefined;
+-
+ createRoot(document.getElementById("root")!).render(
+   <RootErrorBoundary>
+     <ThemeProvider>
+     <ClerkProvider
+-      publishableKey={PUBLISHABLE_KEY}
+-      proxyUrl={proxyUrl}
++      publishableKey={clerkPubKey}
++      proxyUrl={clerkProxyUrl}
+       // ── Sign-in / sign-up paths live inside the app ──────────────────────────
+       signInUrl="/login"
+       signUpUrl="/signup"
+@@ -106,8 +77,6 @@ createRoot(document.getElementById("root")!).render(
+       // (shared-gateway.replit.com) or any stale URL in Clerk's instance config.
+       signInFallbackRedirectUrl={effectiveOrigin}
+       signUpFallbackRedirectUrl={effectiveOrigin}
+-      afterSignInUrl={effectiveOrigin}
+-      afterSignUpUrl={effectiveOrigin}
+       // ── Post sign-out: return to effective origin ────────────────────────────
+       afterSignOutUrl={effectiveOrigin}
+     >
+diff --git a/artifacts/unitdown-ai/src/pages/AccountPage.tsx b/artifacts/unitdown-ai/src/pages/AccountPage.tsx
+index 9e53830..8414c50 100644
+--- a/artifacts/unitdown-ai/src/pages/AccountPage.tsx
++++ b/artifacts/unitdown-ai/src/pages/AccountPage.tsx
+@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
+ import { useTheme } from "@/context/ThemeContext";
+ import { useLocation } from "wouter";
+ import { AppNav } from "@/components/AppNav";
+-import { useClerk, useSignIn } from "@clerk/clerk-react";
++import { useClerk, useSignIn } from "@clerk/react";
+ import { useClerkTimeout } from "@/hooks/useClerkTimeout";
+ import { ClerkTimeoutFallback } from "@/components/ClerkTimeoutFallback";
+ import { shouldUseAppleIAP, isIOS, isIOSApp } from "@/lib/platform";
+@@ -142,7 +142,10 @@ export default function AccountPage() {
+   const { user, isLoaded, timedOut: clerkTimedOut } = useClerkTimeout(5_000);
+   const { theme, setTheme } = useTheme();
+   const { signOut } = useClerk();
+-  const { signIn, isLoaded: signInLoaded } = useSignIn();
++  const { signIn: _signInResource, fetchStatus: signInFetchStatus } = useSignIn();
++  // eslint-disable-next-line @typescript-eslint/no-explicit-any
++  const signIn = _signInResource as any;
++  const signInLoaded = signIn != null;
+   const [, navigate] = useLocation();
+ 
+   const isGuest = !user;
+diff --git a/artifacts/unitdown-ai/src/pages/CustomersPage.tsx b/artifacts/unitdown-ai/src/pages/CustomersPage.tsx
+index d6f3286..a4cf4df 100644
+--- a/artifacts/unitdown-ai/src/pages/CustomersPage.tsx
++++ b/artifacts/unitdown-ai/src/pages/CustomersPage.tsx
+@@ -11,7 +11,7 @@
+ 
+ import { useState, useEffect, useCallback, useRef } from 'react';
+ import { useLocation } from 'wouter';
+-import { useUser } from '@clerk/clerk-react';
++import { useUser } from '@clerk/react';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import {
+   ArrowLeft, Plus, Search, X, ChevronRight, Building2, Phone,
+diff --git a/artifacts/unitdown-ai/src/pages/DiagnosticLogDetailPage.tsx b/artifacts/unitdown-ai/src/pages/DiagnosticLogDetailPage.tsx
+index 849eb0a..15c6b0e 100644
+--- a/artifacts/unitdown-ai/src/pages/DiagnosticLogDetailPage.tsx
++++ b/artifacts/unitdown-ai/src/pages/DiagnosticLogDetailPage.tsx
+@@ -1,6 +1,6 @@
+ import { useState, useEffect, useCallback } from "react";
+ import { useLocation, useParams } from "wouter";
+-import { useUser } from "@clerk/clerk-react";
++import { useUser } from "@clerk/react";
+ import {
+   ChevronRight, ThermometerSnowflake, AlertCircle, CheckCircle2,
+   CircleDot, Clock, Wrench, Save, Loader2, ChevronDown, ChevronUp,
+diff --git a/artifacts/unitdown-ai/src/pages/FieldHubDashboard.tsx b/artifacts/unitdown-ai/src/pages/FieldHubDashboard.tsx
+index ff4400f..ff9b71e 100644
+--- a/artifacts/unitdown-ai/src/pages/FieldHubDashboard.tsx
++++ b/artifacts/unitdown-ai/src/pages/FieldHubDashboard.tsx
+@@ -8,7 +8,7 @@
+  */
+ import { useState, useEffect, useCallback, useMemo, type ElementType } from "react";
+ import { useLocation } from "wouter";
+-import { useUser } from "@clerk/clerk-react";
++import { useUser } from "@clerk/react";
+ import {
+   ThermometerSnowflake,
+   Briefcase,
+diff --git a/artifacts/unitdown-ai/src/pages/JobModePage.tsx b/artifacts/unitdown-ai/src/pages/JobModePage.tsx
+index 7bab8c9..f9abb95 100644
+--- a/artifacts/unitdown-ai/src/pages/JobModePage.tsx
++++ b/artifacts/unitdown-ai/src/pages/JobModePage.tsx
+@@ -20,7 +20,7 @@ import { useLocation } from "wouter";
+ import {
+   Briefcase, Plus, Clock, ChevronRight, RefreshCw, AlertCircle, FileText,
+ } from "lucide-react";
+-import { useUser, useAuth } from "@clerk/clerk-react";
++import { useUser, useAuth } from "@clerk/react";
+ import { Button } from "@/components/ui/button";
+ 
+ import { useJobMode, type LocalJob } from "@/context/JobModeContext";
+diff --git a/artifacts/unitdown-ai/src/pages/LandingPage.tsx b/artifacts/unitdown-ai/src/pages/LandingPage.tsx
+index 331e895..844120d 100644
+--- a/artifacts/unitdown-ai/src/pages/LandingPage.tsx
++++ b/artifacts/unitdown-ai/src/pages/LandingPage.tsx
+@@ -14,7 +14,7 @@
+ 
+ import { useState, useCallback, useEffect, type ReactNode } from "react";
+ import { useLocation } from "wouter";
+-import { useUser } from "@clerk/clerk-react";
++import { useUser } from "@clerk/react";
+ import {
+   ThermometerSnowflake, Sun, Moon, ChevronRight, Cpu,
+   Briefcase, FileText, Wrench, Scan, Package,
+diff --git a/artifacts/unitdown-ai/src/pages/ServiceRecordPage.tsx b/artifacts/unitdown-ai/src/pages/ServiceRecordPage.tsx
+index 1e3c03d..8dbbfe3 100644
+--- a/artifacts/unitdown-ai/src/pages/ServiceRecordPage.tsx
++++ b/artifacts/unitdown-ai/src/pages/ServiceRecordPage.tsx
+@@ -12,7 +12,7 @@
+ 
+ import { useState, useEffect } from "react";
+ import { useLocation } from "wouter";
+-import { useAuth } from "@clerk/clerk-react";
++import { useAuth } from "@clerk/react";
+ import {
+   ArrowLeft,
+   FileText,
+diff --git a/artifacts/unitdown-ai/src/pages/UnitDetailPage.tsx b/artifacts/unitdown-ai/src/pages/UnitDetailPage.tsx
+index 4a8fd16..42278a8 100644
+--- a/artifacts/unitdown-ai/src/pages/UnitDetailPage.tsx
++++ b/artifacts/unitdown-ai/src/pages/UnitDetailPage.tsx
+@@ -1,6 +1,6 @@
+ import { useState, useEffect, useCallback, useMemo, useRef } from "react";
+ import { useLocation, useParams } from "wouter";
+-import { useUser, useAuth } from "@clerk/clerk-react";
++import { useUser, useAuth } from "@clerk/react";
+ import {
+   ChevronRight, Wrench, Edit2, Trash2, Pencil,
+   Plus, History, CheckCircle2, AlertCircle, CircleDot, Clock,
+diff --git a/artifacts/unitdown-ai/src/pages/UnitFormPage.tsx b/artifacts/unitdown-ai/src/pages/UnitFormPage.tsx
+index 879a718..5ff1c31 100644
+--- a/artifacts/unitdown-ai/src/pages/UnitFormPage.tsx
++++ b/artifacts/unitdown-ai/src/pages/UnitFormPage.tsx
+@@ -3,7 +3,7 @@ import { useLocation, useParams } from "wouter";
+ import { trackUnitSaved, maybeRequestReview } from "@/lib/appReview";
+ import { awardReward } from "@/lib/rewards";
+ import { useToast } from "@/hooks/use-toast";
+-import { useUser } from "@clerk/clerk-react";
++import { useUser } from "@clerk/react";
+ import {
+   ChevronRight, Camera, Loader2, AlertTriangle, CheckCircle2,
+   ThermometerSnowflake, Save, Trash2,
+diff --git a/artifacts/unitdown-ai/src/pages/jmp/DashboardView.tsx b/artifacts/unitdown-ai/src/pages/jmp/DashboardView.tsx
+index fc26b2a..263a6f8 100644
+--- a/artifacts/unitdown-ai/src/pages/jmp/DashboardView.tsx
++++ b/artifacts/unitdown-ai/src/pages/jmp/DashboardView.tsx
+@@ -1,5 +1,5 @@
+ import { useState, useEffect } from 'react';
+-import { useUser, useClerk, useAuth } from '@clerk/clerk-react';
++import { useUser, useClerk, useAuth } from '@clerk/react';
+ import { useLocation } from 'wouter';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import {
+diff --git a/artifacts/unitdown-ai/src/pages/jmp/EquipmentSearchModal.tsx b/artifacts/unitdown-ai/src/pages/jmp/EquipmentSearchModal.tsx
+index de4b499..37c82de 100644
+--- a/artifacts/unitdown-ai/src/pages/jmp/EquipmentSearchModal.tsx
++++ b/artifacts/unitdown-ai/src/pages/jmp/EquipmentSearchModal.tsx
+@@ -1,5 +1,5 @@
+ import { useState, useEffect, useRef } from 'react';
+-import { useUser } from '@clerk/clerk-react';
++import { useUser } from '@clerk/react';
+ import { useLocation } from 'wouter';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import {
+diff --git a/artifacts/unitdown-ai/src/pages/jmp/MyVanModal.tsx b/artifacts/unitdown-ai/src/pages/jmp/MyVanModal.tsx
+index f665205..93f47ce 100644
+--- a/artifacts/unitdown-ai/src/pages/jmp/MyVanModal.tsx
++++ b/artifacts/unitdown-ai/src/pages/jmp/MyVanModal.tsx
+@@ -1,5 +1,5 @@
+ import { useState, useRef, useCallback, useMemo, useEffect, Component, type ReactNode } from 'react';
+-import { useUser } from '@clerk/clerk-react';
++import { useUser } from '@clerk/react';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import {
+   X, Search, Plus, Minus, ChevronRight, CheckCircle, AlertTriangle,
+diff --git a/artifacts/unitdown-ai/src/pages/jmp/NameplateWorkflowModal.tsx b/artifacts/unitdown-ai/src/pages/jmp/NameplateWorkflowModal.tsx
+index 3498751..ad7b133 100644
+--- a/artifacts/unitdown-ai/src/pages/jmp/NameplateWorkflowModal.tsx
++++ b/artifacts/unitdown-ai/src/pages/jmp/NameplateWorkflowModal.tsx
+@@ -6,7 +6,7 @@ import {
+   Zap, Link2, Package, UserPlus, Save, Copy, ChevronDown, ChevronUp,
+   Wrench,
+ } from 'lucide-react';
+-import { useUser } from '@clerk/clerk-react';
++import { useUser } from '@clerk/react';
+ import NameplateScannerModal from '../../components/NameplateScannerModal';
+ import { useUnassignedScans, type NameplateFields } from './useUnassignedScans';
+ 
+diff --git a/artifacts/unitdown-ai/src/pages/jmp/ScheduleJobWizard.tsx b/artifacts/unitdown-ai/src/pages/jmp/ScheduleJobWizard.tsx
+index b1dcaa3..567e284 100644
+--- a/artifacts/unitdown-ai/src/pages/jmp/ScheduleJobWizard.tsx
++++ b/artifacts/unitdown-ai/src/pages/jmp/ScheduleJobWizard.tsx
+@@ -1,5 +1,5 @@
+ import { useState, useEffect, useRef } from 'react';
+-import { useUser } from '@clerk/clerk-react';
++import { useUser } from '@clerk/react';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import {
+   X, ChevronLeft, ChevronRight, User, MapPin, Cpu,
+diff --git a/artifacts/unitdown-ai/src/pages/jmp/ToolChecklistModal.tsx b/artifacts/unitdown-ai/src/pages/jmp/ToolChecklistModal.tsx
+index df13766..129decc 100644
+--- a/artifacts/unitdown-ai/src/pages/jmp/ToolChecklistModal.tsx
++++ b/artifacts/unitdown-ai/src/pages/jmp/ToolChecklistModal.tsx
+@@ -1,5 +1,5 @@
+ import { useState, useMemo, useEffect } from 'react';
+-import { useUser } from '@clerk/clerk-react';
++import { useUser } from '@clerk/react';
+ import { motion, AnimatePresence } from 'framer-motion';
+ import { X, CheckCircle, AlertTriangle, XCircle, ChevronRight } from 'lucide-react';
+ import {
+diff --git a/artifacts/unitdown-ai/src/pages/jmp/dispatch/DispatchInboxModal.tsx b/artifacts/unitdown-ai/src/pages/jmp/dispatch/DispatchInboxModal.tsx
+index e92c4f6..f25ec00 100644
+--- a/artifacts/unitdown-ai/src/pages/jmp/dispatch/DispatchInboxModal.tsx
++++ b/artifacts/unitdown-ai/src/pages/jmp/dispatch/DispatchInboxModal.tsx
+@@ -7,7 +7,7 @@ import {
+   Check, SkipForward, GitMerge, ChevronDown, FileUp,
+   AlertCircle, Settings, WifiOff, Mic,
+ } from 'lucide-react';
+-import { useUser } from '@clerk/clerk-react';
++import { useUser } from '@clerk/react';
+ import type { ImportedJob, ProviderType } from './types';
+ import type { ScheduleWizardResult } from '../ScheduleJobWizard';
+ import type { TodayJob } from '../mockData';
+diff --git a/artifacts/unitdown-ai/src/pages/job/JobActiveView.tsx b/artifacts/unitdown-ai/src/pages/job/JobActiveView.tsx
+index b266415..737bac1 100644
+--- a/artifacts/unitdown-ai/src/pages/job/JobActiveView.tsx
++++ b/artifacts/unitdown-ai/src/pages/job/JobActiveView.tsx
+@@ -17,7 +17,7 @@ import {
+   Wrench, CheckSquare, Cpu, CheckCircle, Sparkles,
+   AlertTriangle, Search, ArrowLeft, ChevronRight, Zap, FileText,
+ } from "lucide-react";
+-import { useUser } from "@clerk/clerk-react";
++import { useUser } from "@clerk/react";
+ import { useJobMode } from "@/context/JobModeContext";
+ import type { LocalJob, LocalEvent, EventType } from "@/context/JobModeContext";
+ import { VoiceNoteModal } from "@/components/job/modals/VoiceNoteModal";
+diff --git a/artifacts/unitdown-ai/src/pages/login.tsx b/artifacts/unitdown-ai/src/pages/login.tsx
+index 9930f8f..dd9caa4 100644
+--- a/artifacts/unitdown-ai/src/pages/login.tsx
++++ b/artifacts/unitdown-ai/src/pages/login.tsx
+@@ -1,5 +1,5 @@
+ import { useState, useCallback, useEffect } from "react";
+-import { useSignIn } from "@clerk/clerk-react";
++import { useSignIn, useClerk } from "@clerk/react";
+ import { useLocation } from "wouter";
+ import { ThermometerSnowflake, ArrowLeft, Eye, EyeOff } from "lucide-react";
+ import { Button } from "@/components/ui/button";
+@@ -54,7 +54,11 @@ function ErrorBanner({ message }: { message: string }) {
+ }
+ 
+ export default function LoginPage() {
+-  const { signIn, setActive, isLoaded } = useSignIn();
++  const { signIn: _signInResource, fetchStatus } = useSignIn();
++  const { setActive } = useClerk();
++  // eslint-disable-next-line @typescript-eslint/no-explicit-any
++  const signIn = _signInResource as any;
++  const isLoaded = signIn != null;
+   const [, navigate] = useLocation();
+ 
+   // Evaluated once on mount — stable for the lifetime of this page render.
+@@ -204,7 +208,8 @@ export default function LoginPage() {
+     setError(null);
+     setLoading(true);
+     try {
+-      const result = await withTimeout(
++      // eslint-disable-next-line @typescript-eslint/no-explicit-any
++      const result: any = await withTimeout(
+         signIn.attemptFirstFactor({ strategy: "email_code", code: otpCode.trim() })
+       );
+       if (result.status === "complete") {
+@@ -253,7 +258,8 @@ export default function LoginPage() {
+         });
+         if (res.ok) {
+           const { token } = (await res.json()) as { token: string };
+-          const result = await withTimeout(
++          // eslint-disable-next-line @typescript-eslint/no-explicit-any
++          const result: any = await withTimeout(
+             signIn.create({ strategy: "ticket", ticket: token })
+           );
+           if (result.status === "complete") {
+@@ -298,7 +304,8 @@ export default function LoginPage() {
+     setShowSendCode(false);
+     setLoading(true);
+     try {
+-      const result = await withTimeout(
++      // eslint-disable-next-line @typescript-eslint/no-explicit-any
++      const result: any = await withTimeout(
+         signIn.create({ identifier: email.trim(), strategy: "password", password })
+       );
+       if (result.status === "complete") {
+@@ -373,7 +380,8 @@ export default function LoginPage() {
+     setError(null);
+     setLoading(true);
+     try {
+-      const result = await withTimeout(
++      // eslint-disable-next-line @typescript-eslint/no-explicit-any
++      const result: any = await withTimeout(
+         signIn.attemptFirstFactor({
+           strategy: "reset_password_email_code",
+           code: resetCode.trim(),
+@@ -405,7 +413,8 @@ export default function LoginPage() {
+     setError(null);
+     setLoading(true);
+     try {
+-      const result = await withTimeout(
++      // eslint-disable-next-line @typescript-eslint/no-explicit-any
++      const result: any = await withTimeout(
+         signIn.resetPassword({ password: newPassword, signOutOfOtherSessions: false })
+       );
+       if (result.status === "complete") {
+diff --git a/artifacts/unitdown-ai/src/pages/seo/BrandHub.tsx b/artifacts/unitdown-ai/src/pages/seo/BrandHub.tsx
+index 98e182a..f5e3064 100644
+--- a/artifacts/unitdown-ai/src/pages/seo/BrandHub.tsx
++++ b/artifacts/unitdown-ai/src/pages/seo/BrandHub.tsx
+@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
+ import { Link } from "wouter";
+ import { brandPages } from "./brand-data";
+ import { ArrowRight, ChevronRight, Tag, Zap, Lock, CheckCircle2 } from "lucide-react";
+-import { useUser } from "@clerk/clerk-react";
++import { useUser } from "@clerk/react";
+ import { checkIAPSubscriptionActive } from "@/lib/appleIAP";
+ import { isDemoProEmail } from "@/lib/demoAccess";
+ import { useSeoHead } from "@/lib/useSeoHead";
+diff --git a/artifacts/unitdown-ai/src/pages/seo/ProGate.tsx b/artifacts/unitdown-ai/src/pages/seo/ProGate.tsx
+index f6cdacf..d5a1f85 100644
+--- a/artifacts/unitdown-ai/src/pages/seo/ProGate.tsx
++++ b/artifacts/unitdown-ai/src/pages/seo/ProGate.tsx
+@@ -1,7 +1,7 @@
+ import { useState, useEffect } from "react";
+ import { Link } from "wouter";
+ import { Lock, CheckCircle2, Loader2, ArrowRight, RotateCcw } from "lucide-react";
+-import { useUser } from "@clerk/clerk-react";
++import { useUser } from "@clerk/react";
+ import { purchasePro, restorePurchases, checkIAPSubscriptionActive } from "@/lib/appleIAP";
+ import { Browser } from "@capacitor/browser";
+ import { isDemoProEmail } from "@/lib/demoAccess";
+diff --git a/artifacts/unitdown-ai/src/pages/signup.tsx b/artifacts/unitdown-ai/src/pages/signup.tsx
+index a1d641e..3c09289 100644
+--- a/artifacts/unitdown-ai/src/pages/signup.tsx
++++ b/artifacts/unitdown-ai/src/pages/signup.tsx
+@@ -1,4 +1,4 @@
+-import { SignUp } from "@clerk/clerk-react";
++import { SignUp } from "@clerk/react";
+ import { useLocation } from "wouter";
+ import { ThermometerSnowflake, ArrowLeft } from "lucide-react";
+ 
+diff --git a/artifacts/unitdown-ai/src/pages/sso-callback.tsx b/artifacts/unitdown-ai/src/pages/sso-callback.tsx
+index 95a523e..851c4fb 100644
+--- a/artifacts/unitdown-ai/src/pages/sso-callback.tsx
++++ b/artifacts/unitdown-ai/src/pages/sso-callback.tsx
+@@ -1,5 +1,5 @@
+ import { useEffect, useState } from "react";
+-import { AuthenticateWithRedirectCallback } from "@clerk/clerk-react";
++import { AuthenticateWithRedirectCallback } from "@clerk/react";
+ import { ThermometerSnowflake, AlertCircle } from "lucide-react";
+ import { useLocation } from "wouter";
+ 
+diff --git a/artifacts/unitdown-ai/src/ssr/clerk-mock.tsx b/artifacts/unitdown-ai/src/ssr/clerk-mock.tsx
+index b6547ab..03e9df9 100644
+--- a/artifacts/unitdown-ai/src/ssr/clerk-mock.tsx
++++ b/artifacts/unitdown-ai/src/ssr/clerk-mock.tsx
+@@ -37,3 +37,14 @@ export const SignIn = () => null;
+ export const SignUp = () => null;
+ export const UserButton = () => null;
+ export const RedirectToSignIn = () => null;
++
++// Sub-path exports (e.g. @clerk/react/internal) used at module level in main.tsx
++// are intercepted by the SSR alias which maps @clerk/react → this file.
++// The prerender entry-server.tsx doesn't call main.tsx, so this export is only
++// a safety net in case any SSR code imports from the internal sub-path.
++export function publishableKeyFromHost(
++  _hostname: string,
++  fallback?: string,
++): string {
++  return fallback ?? "";
++}
+diff --git a/artifacts/unitdown-ai/vite.config.ssr.ts b/artifacts/unitdown-ai/vite.config.ssr.ts
+index 77f7b02..c46c5b3 100644
+--- a/artifacts/unitdown-ai/vite.config.ssr.ts
++++ b/artifacts/unitdown-ai/vite.config.ssr.ts
+@@ -46,7 +46,7 @@ export default defineConfig({
+         replacement: path.resolve(__dirname, "src"),
+       },
+       {
+-        find: "@clerk/clerk-react",
++        find: "@clerk/react",
+         replacement: path.resolve(__dirname, "src/ssr/clerk-mock.tsx"),
+       },
+       {
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 9c98b2c..f11f63b 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -176,6 +176,9 @@ importers:
+       '@clerk/express':
+         specifier: ^2.1.11
+         version: 2.1.11(express@5.2.1)
++      '@clerk/shared':
++        specifier: ^4.24.0
++        version: 4.24.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+       '@google-cloud/storage':
+         specifier: ^7.21.0
+         version: 7.21.0
+@@ -453,6 +456,9 @@ importers:
+       '@clerk/clerk-react':
+         specifier: ^5.61.3
+         version: 5.61.3(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
++      '@clerk/react':
++        specifier: ^6.11.4
++        version: 6.11.4(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+       idb:
+         specifier: ^8.0.3
+         version: 8.0.3
+@@ -1326,6 +1332,13 @@ packages:
+     peerDependencies:
+       express: ^4.17.0 || ^5.0.0
+ 
++  '@clerk/react@6.11.4':
++    resolution: {integrity: sha512-3ft1broqXA6hSMXOhnVwEXDCqmaXSvYW65au6fOdhc26YPQbLL6e56FkJ4y/1c3uObpivuwe9MXj3ln4ZD0zmw==}
++    engines: {node: '>=20.9.0'}
++    peerDependencies:
++      react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
++      react-dom: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
++
+   '@clerk/shared@3.47.5':
+     resolution: {integrity: sha512-rDVe73/VN2NZXhtrLRHshkUpQDrevAqDRxeXUl2M0IBEBkcl+VMHlV7fep53cVWo0b3gIqLk82pmmi+WoyF/xg==}
+     engines: {node: '>=18.17.0'}
+@@ -1338,8 +1351,8 @@ packages:
+       react-dom:
+         optional: true
+ 
+-  '@clerk/shared@4.8.7':
+-    resolution: {integrity: sha512-rnQnsYy4Rb4WPEmVCF4CLmIn1359SP17IAH7fDqWc3agaOcEaP/iQPSxmC9PMuzVBA7S+LtfO/dGH2dLOczsTQ==}
++  '@clerk/shared@4.24.0':
++    resolution: {integrity: sha512-QgAihmKS4ld3YSqSPMaKnzU4RGV+60k5khcjiz0xi4BCUST+UJAbV8f3Hw0osxq/Rw9rsxmRlcoxhEMsN5SOFA==}
+     engines: {node: '>=20.9.0'}
+     peerDependencies:
+       react: ^18.0.0 || ~19.0.3 || ~19.1.4 || ~19.2.3 || ~19.3.0-0
+@@ -3875,6 +3888,10 @@ packages:
+     resolution: {integrity: sha512-cEiJEAEoIbWfCZYKWhVwFuvPX1gETRYPw6LlaTKoxD3s2AkXzkCjnp6h0V77ozyqj0jakteJ4YqDJT830+lVGw==}
+     engines: {node: '>=14'}
+ 
++  js-cookie@3.0.7:
++    resolution: {integrity: sha512-z/wZZgDrkNV1eA0ULjM/F9/50Ya8fbzgKneSpoPsXSGd0KnpdtHfOZWK+GcwLk+EZbS4F9RBhU+K2RgzuDaItw==}
++    engines: {node: '>=20'}
++
+   js-tokens@4.0.0:
+     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
+ 
+@@ -6089,7 +6106,7 @@ snapshots:
+ 
+   '@clerk/backend@3.4.3':
+     dependencies:
+-      '@clerk/shared': 4.8.7
++      '@clerk/shared': 4.24.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+       standardwebhooks: 1.0.0
+       tslib: 2.8.1
+     transitivePeerDependencies:
+@@ -6106,13 +6123,20 @@ snapshots:
+   '@clerk/express@2.1.11(express@5.2.1)':
+     dependencies:
+       '@clerk/backend': 3.4.3
+-      '@clerk/shared': 4.8.7
++      '@clerk/shared': 4.24.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+       express: 5.2.1
+       tslib: 2.8.1
+     transitivePeerDependencies:
+       - react
+       - react-dom
+ 
++  '@clerk/react@6.11.4(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
++    dependencies:
++      '@clerk/shared': 4.24.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
++      react: 19.1.0
++      react-dom: 19.1.0(react@19.1.0)
++      tslib: 2.8.1
++
+   '@clerk/shared@3.47.5(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+     dependencies:
+       csstype: 3.1.3
+@@ -6125,13 +6149,15 @@ snapshots:
+       react: 19.1.0
+       react-dom: 19.1.0(react@19.1.0)
+ 
+-  '@clerk/shared@4.8.7':
++  '@clerk/shared@4.24.0(react-dom@19.1.0(react@19.1.0))(react@19.1.0)':
+     dependencies:
+       '@tanstack/query-core': 5.100.6
+       dequal: 2.0.3
+       glob-to-regexp: 0.4.1
+-      js-cookie: 3.0.5
+-      std-env: 3.10.0
++      js-cookie: 3.0.7
++    optionalDependencies:
++      react: 19.1.0
++      react-dom: 19.1.0(react@19.1.0)
+ 
+   '@commander-js/extra-typings@14.0.0(commander@14.0.3)':
+     dependencies:
+@@ -8829,6 +8855,8 @@ snapshots:
+ 
+   js-cookie@3.0.5: {}
+ 
++  js-cookie@3.0.7: {}
++
+   js-tokens@4.0.0: {}
+ 
+   js-yaml@4.1.1:
+-- 
+2.50.1
+
